@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  erp-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    networks:
+      - erp-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.erp-frontend.rule=Host(`erp.example.com`)"
+
+  # Dev server (for development only)
+  erp-frontend-dev:
+    image: node:20-alpine
+    container_name: erp-frontend-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install --legacy-peer-deps && npm run dev -- --host"
+    environment:
+    - VITE_API_URL=http://localhost:8000/api/v1
+    - CHOKIDAR_USEPOLLING=true    # ← เพิ่มบรรทัดนี้
+    - CHOKIDAR_INTERVAL=500
+    - WATCHPACK_POLLING=true
+    networks:
+      - erp-network
+    profiles:
+      - dev
+
+networks:
+  erp-network:
+    driver: bridge

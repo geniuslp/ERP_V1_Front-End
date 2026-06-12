@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #f0f5ff;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f0f5ff; }
+::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2563eb; }
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border-radius: 8px;
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-radius: 8px;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #eff6ff !important;
+}
+
+.import-row-error > td {
+  background: #fff1f0 !important;
+}
+
+.import-row-error:hover > td {
+  background: #ffe0de !important;
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af) !important;
+}

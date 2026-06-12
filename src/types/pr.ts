@@ -1,0 +1,62 @@
+export type PRStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+
+export interface PRListItem {
+  id: number
+  pr_no: string
+  status: PRStatus
+  requested_by: string
+  approver_name: string | null
+  location_code: string
+  project_code: string | null
+  remarks: string | null
+  pr_date: string
+}
+
+export interface PRLine {
+  id: number
+  line_no: number
+  mat_code: string
+  qty_requested: number
+  qty_reserved: number
+  qty_to_order: number
+  status: string
+  remarks?: string
+  mat_name?: string
+  unit_name?: string
+  brand_name?: string
+  spec_name?: string
+  group_name?: string
+  subgroup_name?: string
+}
+
+export interface PRAttachment {
+  id: number
+  file_name: string
+  file_path: string
+  file_size: number
+  file_type: string
+  uploaded_at: string
+  uploaded_by: number
+}
+
+export interface PRDetail extends PRListItem {
+  requester_id: number
+  approver_id: number | null
+  lines: PRLine[]
+  attachments: PRAttachment[]
+}
+
+export interface PRListResponse {
+  success: boolean
+  data: {
+    items: PRListItem[]
+    total: number
+    page: number
+    limit: number
+  }
+}
+
+export interface PRDetailResponse {
+  success: boolean
+  data: PRDetail
+}
