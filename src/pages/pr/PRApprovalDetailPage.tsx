@@ -275,13 +275,13 @@ const PRApprovalDetailPage: React.FC = () => {
               onConfirm={handleApprove}
               okText="อนุมัติ"
               cancelText="ยกเลิก"
-              okButtonProps={{ style: { background: '#16a34a', borderColor: '#16a34a' } }}
+              okButtonProps={{ style: { background: '#22c55e', borderColor: '#22c55e' } }}
             >
               <Button
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 loading={approving}
-                style={{ background: '#16a34a', borderColor: '#16a34a' }}
+                style={{ background: '#22c55e', borderColor: '#22c55e' }}
               >
                 อนุมัติ
               </Button>

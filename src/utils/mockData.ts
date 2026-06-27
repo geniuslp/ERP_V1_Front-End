@@ -1,4 +1,4 @@
-import type { PurchaseRequest, PurchaseOrder } from '@/types'
+import type { PurchaseRequest, PurchaseOrder, Memo } from '@/types'
 
 export const MOCK_PR_LIST: PurchaseRequest[] = [
   {
@@ -99,5 +99,68 @@ export const MOCK_PO_LIST: PurchaseOrder[] = [
     totalAmount: 15000,
     createdBy: 'manager',
     items: [],
+  },
+]
+
+export const mockMemos: Memo[] = [
+  {
+    id: 'memo-001',
+    memoNo: 'MEM-2506-0042',
+    title: 'วัสดุเดินสายไฟฟ้าชั้น 2 อาคาร B',
+    projectName: 'ติดตั้งระบบไฟฟ้า Zone B',
+    supplierName: 'บ. สยามวัสดุ จำกัด',
+    requestedBy: 'สมชาย ใจดี',
+    requestedById: 'user-005',
+    department: 'แผนกก่อสร้าง',
+    note: 'ต้องการวัสดุสำหรับงานเดินสายไฟฟ้าชั้น 2 อาคาร B ตามแบบแปลน Rev.3',
+    items: [
+      { id: 'mi-001', description: 'สายไฟ THW 2.5 Sq.mm. สีแดง (ม้วนละ 100 ม.)', unit: 'ม้วน', quantity: 5, estimatedPrice: 1200, remark: 'ยี่ห้อ Yazaki' },
+      { id: 'mi-002', description: 'ท่อ EMT 3/4" พร้อมอุปกรณ์ประกอบ', unit: 'เส้น', quantity: 30, estimatedPrice: 180 },
+      { id: 'mi-003', description: 'กล่องพักสายสี่เหลี่ยม 4"×4"', unit: 'ใบ', quantity: 20, estimatedPrice: 45 },
+      { id: 'mi-004', description: 'สวิตช์ไฟ 2 ทาง ยี่ห้อ Panasonic', unit: 'ชิ้น', quantity: 10, estimatedPrice: 220, remark: 'แนะนำร้าน A' },
+    ],
+    totalAmount: 13150,
+    status: 'pending_po',
+    linkedPoIds: [],
+    createdAt: '2025-06-23T09:00:00Z',
+    updatedAt: '2025-06-23T09:00:00Z',
+  },
+  {
+    id: 'memo-002',
+    memoNo: 'MEM-2506-0041',
+    title: 'อุปกรณ์ PPE ประจำเดือน มิ.ย.',
+    projectName: 'งานบำรุงรักษาทั่วไป',
+    requestedBy: 'วิภา รักดี',
+    requestedById: 'user-007',
+    department: 'แผนก Safety',
+    note: 'ต้องการเพิ่มสต็อก PPE ประจำเดือน',
+    items: [
+      { id: 'mi-005', description: 'หมวกนิรภัย สีเหลือง มอก.', unit: 'ใบ', quantity: 20, estimatedPrice: 150 },
+      { id: 'mi-006', description: 'รองเท้านิรภัย Safety Jogger S3', unit: 'คู่', quantity: 10, estimatedPrice: 1800 },
+      { id: 'mi-007', description: 'ถุงมือหนัง ป้องกันการตัด', unit: 'คู่', quantity: 50, estimatedPrice: 85 },
+    ],
+    totalAmount: 25250,
+    status: 'po_created',
+    linkedPoIds: ['po-099'],
+    createdAt: '2025-06-20T14:30:00Z',
+    updatedAt: '2025-06-21T10:00:00Z',
+  },
+  {
+    id: 'memo-003',
+    memoNo: 'MEM-2506-0038',
+    title: 'น้ำมันหล่อลื่นงานซ่อมบำรุง PM Q2',
+    projectName: 'PM ประจำไตรมาส Q2',
+    requestedBy: 'สุรชัย แก้วใส',
+    requestedById: 'user-003',
+    department: 'แผนกซ่อมบำรุง',
+    items: [
+      { id: 'mi-008', description: 'น้ำมันเครื่อง Shell Rimula R4 15W-40', unit: 'ถัง', quantity: 4, estimatedPrice: 2200 },
+      { id: 'mi-009', description: 'จาระบี Molykote EM-30L', unit: 'กก.', quantity: 5, estimatedPrice: 650 },
+    ],
+    totalAmount: 12050,
+    status: 'draft',
+    linkedPoIds: [],
+    createdAt: '2025-06-18T08:15:00Z',
+    updatedAt: '2025-06-18T08:15:00Z',
   },
 ]

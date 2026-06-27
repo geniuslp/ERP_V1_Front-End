@@ -1,40 +1,159 @@
-import React, { useState } from 'react'
-import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col } from 'antd'
-import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
+import React, { useEffect, useState } from 'react'
+import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col, Tag, message } from 'antd'
+import { SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
-import StatusBadge from '@/components/common/StatusBadge'
+import { useAppSelector } from '@/store'
 
-const data = [
-  { key: '1', prNumber: 'PR-2024-0001', title: 'ซื้อวัสดุสำนักงาน', requester: 'สมชาย ใจดี', dept: 'IT', status: 'pending', amount: 15000, date: '2024-09-01' },
-  { key: '2', prNumber: 'PR-2024-0002', title: 'ซื้ออุปกรณ์คอมพิวเตอร์', requester: 'สมหญิง รักดี', dept: 'HR', status: 'approved', amount: 85000, date: '2024-09-02' },
-  { key: '3', prNumber: 'PR-2024-0003', title: 'ซื้อวัสดุทำความสะอาด', requester: 'มานะ ขยันดี', dept: 'OPS', status: 'draft', amount: 5000, date: '2024-09-03' },
-  { key: '4', prNumber: 'PR-2024-0004', title: 'ซื้อเฟอร์นิเจอร์สำนักงาน', requester: 'สุดา ดีใจ', dept: 'FIN', status: 'rejected', amount: 120000, date: '2024-09-04' },
-  { key: '5', prNumber: 'PR-2024-0005', title: 'ซื้อกระดาษ A4', requester: 'วิชัย มานะ', dept: 'IT', status: 'approved', amount: 3500, date: '2024-09-05' },
-]
+const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-const columns = [
-  { title: 'เลขที่ PR', dataIndex: 'prNumber', key: 'prNumber', render: (v: string) => <span style={{ color: '#2563eb', fontWeight: 600 }}>{v}</span> },
-  { title: 'รายการ', dataIndex: 'title', key: 'title' },
-  { title: 'ผู้ขอ', dataIndex: 'requester', key: 'requester' },
-  { title: 'แผนก', dataIndex: 'dept', key: 'dept' },
-  { title: 'สถานะ', dataIndex: 'status', key: 'status', render: (v: string) => <StatusBadge status={v} /> },
-  { title: 'มูลค่า (บาท)', dataIndex: 'amount', key: 'amount', align: 'right' as const, render: (v: number) => v.toLocaleString() },
-  { title: 'วันที่', dataIndex: 'date', key: 'date' },
-  {
-    title: 'จัดการ', key: 'action', width: 80,
-    render: () => <Button type="link" icon={<EyeOutlined />} size="small">ดู</Button>,
-  },
-]
+const LOCKED_STATUSES = ['APPROVED', 'FULFILLED', 'CANCELLED']
+
+const statusConfig: Record<string, { color: string; label: string }> = {
+  DRAFT:            { color: 'default', label: 'ร่าง' },
+  PENDING_APPROVAL: { color: 'orange',  label: 'รออนุมัติ' },
+  APPROVED:         { color: 'green',   label: 'อนุมัติแล้ว' },
+  REJECTED:         { color: 'red',     label: 'ปฏิเสธ' },
+  STOCK_CHECK:      { color: 'blue',    label: 'ตรวจสต็อก' },
+  PARTIALLY_FILLED: { color: 'gold',    label: 'สั่งซื้อบางส่วน' },
+  FULFILLED:        { color: 'green',   label: 'เสร็จสิ้น' },
+  CANCELLED:        { color: 'default', label: 'ยกเลิก' },
+}
+
+interface PRItem {
+  id: number
+  prNo: string
+  status: string
+  requestedBy: string
+  approverName: string | null
+  locationCode: string
+  projectCode: string | null
+  remarks: string | null
+  prDate: string
+}
 
 const PRStatusPage: React.FC = () => {
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<string | undefined>()
+  const navigate = useNavigate()
+  const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
-  const filtered = data.filter((d) => {
-    const matchSearch = !search || d.prNumber.includes(search) || d.title.includes(search)
-    const matchStatus = !status || d.status === status
-    return matchSearch && matchStatus
-  })
+  const [items, setItems]   = useState<PRItem[]>([])
+  const [total, setTotal]   = useState(0)
+  const [page, setPage]     = useState(1)
+  const [limit, setLimit]   = useState(20)
+  const [loading, setLoading] = useState(false)
+
+  // filter state — kept for UI, not yet sent to API
+  const [search, setSearch]   = useState('')
+  const [status, setStatus]   = useState<string | undefined>()
+
+  const fetchData = async (p = page, l = limit) => {
+    setLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/pr`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { page: p, limit: l },
+      })
+      const d = res.data?.data ?? res.data
+      const raw = Array.isArray(d) ? d : d?.items ?? []
+      setItems(raw.map((r: any) => ({
+        id:           r.id,
+        prNo:         r.pr_no          ?? '',
+        status:       r.status         ?? 'DRAFT',
+        requestedBy:  r.requested_by   ?? '—',
+        approverName: r.approver_name  ?? null,
+        locationCode: r.location_code  ?? '—',
+        projectCode:  r.project_code   ?? null,
+        remarks:      r.remarks        ?? null,
+        prDate:       r.pr_date        ?? '',
+      })))
+      setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchData(page, limit) }, [page, limit])
+
+  const columns = [
+    {
+      title: 'เลขที่ PR',
+      dataIndex: 'prNo',
+      key: 'prNo',
+      render: (v: string, record: PRItem) => (
+        <a
+          style={{ color: '#2563eb', fontWeight: 600 }}
+          onClick={() => navigate(`/purchase-request/${record.id}/view`)}
+        >
+          {v}
+        </a>
+      ),
+    },
+    {
+      title: 'รายการ',
+      dataIndex: 'remarks',
+      key: 'remarks',
+      ellipsis: true,
+      render: (v: string | null) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+    },
+    {
+      title: 'ผู้ขอ',
+      dataIndex: 'requestedBy',
+      key: 'requestedBy',
+    },
+    {
+      title: 'แผนก',
+      dataIndex: 'locationCode',
+      key: 'locationCode',
+    },
+    {
+      title: 'สถานะ',
+      dataIndex: 'status',
+      key: 'status',
+      render: (v: string) => {
+        const cfg = statusConfig[v] ?? { color: 'default', label: v }
+        return <Tag color={cfg.color}>{cfg.label}</Tag>
+      },
+    },
+    {
+      title: 'มูลค่า (บาท)',
+      key: 'amount',
+      align: 'right' as const,
+      render: () => <span style={{ color: '#9ca3af' }}>—</span>,
+    },
+    {
+      title: 'วันที่',
+      dataIndex: 'prDate',
+      key: 'prDate',
+      render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
+    },
+    {
+      title: 'จัดการ',
+      key: 'action',
+      width: 100,
+      render: (_: any, record: PRItem) => (
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/purchase-request/${record.id}/view`)}
+          />
+          {!LOCKED_STATUSES.includes(record.status) && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => navigate(`/purchase-request/${record.id}/edit`)}
+            />
+          )}
+        </Space>
+      ),
+    },
+  ]
 
   return (
     <div>
@@ -42,28 +161,77 @@ const PRStatusPage: React.FC = () => {
         title="ตรวจสอบสถานะ PR"
         subtitle="ติดตามสถานะใบขอซื้อทั้งหมด"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'ตรวจสอบสถานะ' }]}
+        extra={
+          <Button icon={<ReloadOutlined />} onClick={() => fetchData(page, limit)} loading={loading}>
+            รีเฟรช
+          </Button>
+        }
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
           <Col xs={24} md={8}>
-            <Input prefix={<SearchOutlined />} placeholder="ค้นหาเลขที่หรือรายการ" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="ค้นหาเลขที่หรือรายการ (ยังไม่รองรับ)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              disabled
+            />
           </Col>
           <Col xs={24} md={6}>
-            <Select placeholder="กรองตามสถานะ" allowClear style={{ width: '100%' }} value={status} onChange={setStatus}
+            <Select
+              placeholder="กรองตามสถานะ (ยังไม่รองรับ)"
+              allowClear
+              style={{ width: '100%' }}
+              value={status}
+              onChange={setStatus}
+              disabled
               options={[
-                { value: 'draft', label: 'ร่าง' }, { value: 'pending', label: 'รออนุมัติ' },
-                { value: 'approved', label: 'อนุมัติแล้ว' }, { value: 'rejected', label: 'ปฏิเสธ' },
-              ]} />
+                { value: 'DRAFT',            label: 'ร่าง' },
+                { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
+                { value: 'APPROVED',         label: 'อนุมัติแล้ว' },
+                { value: 'REJECTED',         label: 'ปฏิเสธ' },
+                { value: 'STOCK_CHECK',      label: 'ตรวจสต็อก' },
+                { value: 'PARTIALLY_FILLED', label: 'สั่งซื้อบางส่วน' },
+                { value: 'FULFILLED',        label: 'เสร็จสิ้น' },
+                { value: 'CANCELLED',        label: 'ยกเลิก' },
+              ]}
+            />
           </Col>
           <Col xs={24} md={6}>
-            <DatePicker.RangePicker style={{ width: '100%' }} placeholder={['วันเริ่ม', 'วันสิ้นสุด']} />
+            <DatePicker.RangePicker
+              style={{ width: '100%' }}
+              placeholder={['วันเริ่ม (ยังไม่รองรับ)', 'วันสิ้นสุด']}
+              disabled
+            />
           </Col>
           <Col>
-            <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatus(undefined) }}>รีเซ็ต</Button>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => { setSearch(''); setStatus(undefined) }}
+            >
+              รีเซ็ต
+            </Button>
           </Col>
         </Row>
-        <Table dataSource={filtered} columns={columns} rowKey="key" size="small"
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `ทั้งหมด ${t} รายการ` }} />
+
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={items}
+          columns={columns}
+          size="small"
+          locale={{ emptyText: 'ไม่พบข้อมูล' }}
+          pagination={{
+            current: page,
+            pageSize: limit,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50'],
+            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+            onChange: (p, l) => { setPage(p); setLimit(l) },
+          }}
+        />
       </Card>
     </div>
   )

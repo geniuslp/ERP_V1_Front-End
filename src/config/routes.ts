@@ -15,6 +15,15 @@ export const ROUTES = {
     HISTORY: '/po/history',
     DETAIL: '/po/:id',
   },
+  MEMO: {
+    ROOT: '/memo',
+    LIST: '/memo',
+    CREATE: '/memo/create',
+    DETAIL: '/memo/:id',
+    EDIT: '/memo/:id/edit',
+    APPROVAL: '/memo/approval',
+    APPROVAL_DETAIL: '/memo/:id/approval-detail',
+  },
   MASTER: {
     ROOT: '/master',
     GROUPS: '/master/groups',
@@ -29,5 +38,10 @@ export const ROUTES = {
     ROLES: '/system/roles',
     MENUS: '/system/menus',
     PERMISSIONS: '/system/permissions',
+  },
+  ADMIN: {
+    ROOT: '/admin',
+    APPROVAL_MATRIX: '/admin/approval-matrix',
+    PERMISSION_MATRIX: '/admin/permission-matrix',
   },
 } as const

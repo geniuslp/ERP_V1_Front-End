@@ -29,6 +29,39 @@ export interface PRLine {
   subgroup_name?: string
 }
 
+export interface PRPriceHistoryEntry {
+  price: number
+  date: string
+  qty: number
+  supplier_name: string
+  po_no: string
+  source_pr_no?: string | null
+  project_code?: string | null
+  project_name?: string | null
+}
+
+export interface PRLineWithPOStatus {
+  id: number
+  line_no: number
+  mat_code: string
+  mat_name: string
+  unit: string
+  qty_requested: number
+  qty_reserved: number
+  qty_ordered: number
+  qty_remaining: number
+  referenced_pos: string[]
+  last_price?: number | null
+  last_price_date?: string | null
+  price_history?: PRPriceHistoryEntry[]
+  selected_unit_price?: number
+}
+
+export interface PRLinesWithPOStatusResponse {
+  pr_no: string
+  lines: PRLineWithPOStatus[]
+}
+
 export interface PRAttachment {
   id: number
   file_name: string

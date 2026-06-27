@@ -4,7 +4,7 @@ export const antdTheme: ThemeConfig = {
   token: {
     colorPrimary: '#1d4ed8',
     colorLink: '#2563eb',
-    colorSuccess: '#16a34a',
+    colorSuccess: '#22c55e',
     colorWarning: '#d97706',
     colorError: '#dc2626',
     colorInfo: '#0ea5e9',

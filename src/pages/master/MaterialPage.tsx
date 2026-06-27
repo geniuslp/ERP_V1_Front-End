@@ -8,6 +8,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
   CloseOutlined, AppstoreOutlined, CheckCircleOutlined, TagsOutlined,
   UploadOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
+  FileExcelOutlined,
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
@@ -428,6 +429,29 @@ const MaterialPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false)
   const [importSubmitting, setImportSubmitting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/master/materials/export`, {
+        headers: authHeader,
+        responseType: 'blob',
+      })
+      const now = new Date()
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `materials_${dateStr}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'Export ไม่สำเร็จ')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const handleSubmitAll = async () => {
     const invalid = pendingRows.some((r) =>
@@ -567,8 +591,13 @@ const MaterialPage: React.FC = () => {
         <div style={{ ...panelStyle, marginBottom: 20 }}>
           <div style={{ ...panelHead, flexWrap: 'wrap', gap: 10 }}>
             <Title level={5} style={{ margin: 0 }}>รายการวัสดุทั้งหมด</Title>
-            <Select allowClear placeholder="กรองตามกลุ่ม" style={{ width: '100%', maxWidth: 260 }} options={groupOptions}
-              value={filterGroup} onChange={(v) => setFilterGroup(v)} />
+            <Space wrap>
+              <Select allowClear placeholder="กรองตามกลุ่ม" style={{ width: 260 }} options={groupOptions}
+                value={filterGroup} onChange={(v) => setFilterGroup(v)} />
+              <Button icon={<FileExcelOutlined />} loading={exporting} onClick={handleExport}>
+                Export Excel
+              </Button>
+            </Space>
           </div>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table

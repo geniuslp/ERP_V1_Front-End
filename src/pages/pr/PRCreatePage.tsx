@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col } from 'antd'
+import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip } from 'antd'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
   EditOutlined, CloseOutlined, StopOutlined,
+  FileTextOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PRItemsTable from '@/components/common/PRItemsTable'
+import MemoSidebarPanel from '@/pages/pr/components/MemoSidebarPanel'
 import axios from 'axios'
-import type { User } from '@/types'
+import type { User, Memo } from '@/types'
 import { useAppSelector } from '@/store'
 
 interface AttachedFile {
@@ -117,6 +119,8 @@ const PRCreatePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [requestedBy, setRequestedBy] = useState<number | null>(null)
   const [approverId, setApproverId] = useState<number | null>(null)
+  const [memoOpen, setMemoOpen] = useState(false)
+  const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null)
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -271,6 +275,7 @@ const PRCreatePage: React.FC = () => {
           project_code,
           remarks,
           status,
+          memo_id: selectedMemo?.id ?? null,
           lines: lineItems.map((item, i) => ({
             line_no: i + 1,
             mat_code: item.mat_code,
@@ -339,13 +344,25 @@ const PRCreatePage: React.FC = () => {
   )
 
   return (
-    <div>
+    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
       <style>{responsiveStyle}</style>
+
+      {/* ── Left: PR Form ── */}
+      <div style={{ flex: 1, overflow: 'auto', padding: 24, minWidth: 0, transition: 'all .25s ease' }}>
 
       <PageHeader
         title="ออกใบขอซื้อ (PR)"
         subtitle="สร้างใบขอซื้อสินค้า/บริการเพื่อส่งอนุมัติ"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'สร้างใบขอซื้อ' }]}
+        extra={
+          <Button
+            icon={<FileTextOutlined />}
+            type={memoOpen ? 'primary' : 'default'}
+            onClick={() => setMemoOpen((v) => !v)}
+          >
+            Memo {memoOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
+          </Button>
+        }
       />
 
       <div style={{ marginBottom: 16 }}>
@@ -415,6 +432,28 @@ const PRCreatePage: React.FC = () => {
                     options={projects}
                   />
                 </Form.Item>
+              </Field>
+
+              <Field label="Memo Reference">
+                <Input.Group compact style={{ display: 'flex' }}>
+                  <Input
+                    style={{ flex: 1, color: '#2563eb', fontWeight: 500 }}
+                    value={selectedMemo?.memoNo ?? ''}
+                    placeholder="— not selected"
+                    readOnly
+                  />
+                  <Tooltip title="Clear">
+                    <Button
+                      icon={<CloseOutlined />}
+                      disabled={!selectedMemo}
+                      onClick={() => {
+                        setSelectedMemo(null)
+                        form.setFieldValue('memo_id', undefined)
+                        form.setFieldValue('memo_no_ref', undefined)
+                      }}
+                    />
+                  </Tooltip>
+                </Input.Group>
               </Field>
 
               <Field label="หมายเหตุ" alignTop>
@@ -611,6 +650,19 @@ const PRCreatePage: React.FC = () => {
           </div>
         </Card>
       </Form>
+      </div>
+
+      {/* ── Right: Memo Sidebar ── */}
+      <MemoSidebarPanel
+        open={memoOpen}
+        onClose={() => setMemoOpen(false)}
+        selectedMemoId={selectedMemo?.id}
+        onSelect={(memo) => {
+          form.setFieldValue('memo_id', memo.id)
+          form.setFieldValue('memo_no_ref', memo.memoNo)
+          setSelectedMemo(memo)
+        }}
+      />
     </div>
   )
 }

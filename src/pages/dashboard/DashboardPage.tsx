@@ -37,7 +37,7 @@ const DashboardPage: React.FC = () => {
           <StatCard title="PR รออนุมัติ" value="24" icon={<ClockCircleOutlined />} color="#f59e0b" trend={{ value: 12, label: 'จากเดือนที่แล้ว' }} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard title="PR อนุมัติแล้ว" value="156" icon={<CheckCircleOutlined />} color="#16a34a" trend={{ value: 8, label: 'จากเดือนที่แล้ว' }} />
+          <StatCard title="PR อนุมัติแล้ว" value="156" icon={<CheckCircleOutlined />} color="#22c55e" trend={{ value: 8, label: 'จากเดือนที่แล้ว' }} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           <StatCard title="PO ทั้งหมด" value="89" icon={<ShoppingCartOutlined />} color="#2563eb" trend={{ value: 5, label: 'จากเดือนที่แล้ว' }} />
@@ -69,7 +69,7 @@ const DashboardPage: React.FC = () => {
             style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)', height: '100%' }}
           >
             {[
-              { label: 'อนุมัติแล้ว', value: 62, color: '#16a34a' },
+              { label: 'อนุมัติแล้ว', value: 62, color: '#22c55e' },
               { label: 'รออนุมัติ', value: 15, color: '#f59e0b' },
               { label: 'ปฏิเสธ', value: 10, color: '#dc2626' },
               { label: 'ร่าง', value: 13, color: '#94a3b8' },

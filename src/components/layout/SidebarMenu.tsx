@@ -4,6 +4,7 @@ import {
   DashboardOutlined, FileTextOutlined, ShoppingCartOutlined,
   SettingOutlined, PlusOutlined, SearchOutlined, HistoryOutlined,
   TeamOutlined, ApartmentOutlined, AppstoreOutlined, SafetyOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppSelector } from '@/store'
@@ -24,17 +25,23 @@ const iconMap: Record<string, React.ReactNode> = {
 }
 
 const subIconMap: Record<string, React.ReactNode> = {
+  'memo-list': <SearchOutlined />,
+  'memo-create': <PlusOutlined />,
+  'memo-approval': <CheckCircleOutlined />,
   'pr-create': <PlusOutlined />,
   'pr-status': <SearchOutlined />,
   'pr-history': <HistoryOutlined />,
+  'pr-approval': <CheckCircleOutlined />,
   'po-create': <PlusOutlined />,
   'po-status': <SearchOutlined />,
   'po-history': <HistoryOutlined />,
+  'po-approval': <CheckCircleOutlined />,
   'system-config': <SettingOutlined />,
   'system-users': <TeamOutlined />,
   'system-roles': <ApartmentOutlined />,
   'system-menus': <AppstoreOutlined />,
   'system-permissions': <SafetyOutlined />,
+  'admin-permission-matrix': <SafetyOutlined />,
 }
 
 interface SidebarMenuProps {
@@ -83,8 +90,11 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
 
   const getOpenKeys = () => {
     const path = location.pathname
+    if (path.startsWith('/memo')) return ['memo']
     if (path.startsWith('/pr')) return ['pr']
     if (path.startsWith('/po')) return ['po']
+    if (path.startsWith('/master')) return ['master']
+    if (path.startsWith('/admin')) return ['admin']
     if (path.startsWith('/system')) return ['system']
     return []
   }
@@ -97,7 +107,6 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
       defaultOpenKeys={getOpenKeys()}
       items={buildMenuItems()}
       style={{ background: 'transparent', border: 'none', marginTop: 8, padding: '0 8px' }}
-      inlineCollapsed={collapsed}
     />
   )
 }

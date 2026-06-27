@@ -29,7 +29,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, trend })
           {value}
         </div>
         {trend && (
-          <div style={{ marginTop: 6, fontSize: 12, color: trend.value > 0 ? '#16a34a' : '#dc2626' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: trend.value > 0 ? '#22c55e' : '#dc2626' }}>
             {trend.value > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
             {' '}{Math.abs(trend.value)}% {trend.label}
           </div>

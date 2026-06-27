@@ -97,6 +97,53 @@ export interface PurchaseOrder {
   createdBy: string
 }
 
+// ─── Memo ──────────────────────────────────────────────────────
+export interface MemoItem {
+  id: string
+  description: string
+  unit: string
+  quantity: number
+  estimatedPrice: number
+  remark?: string
+}
+
+export type MemoStatus =
+  | 'DRAFT'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'draft'
+  | 'pending_po'
+  | 'po_created'
+  | 'cancelled'
+
+export interface Memo {
+  id: string
+  memoNo: string
+  title: string
+  projectName?: string
+  projectCode?: string
+  requestedBy: string
+  requestedById: string
+  department?: string
+  note?: string
+  items: MemoItem[]
+  totalAmount: number
+  status: MemoStatus
+  linkedPoIds?: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MemoFormValues {
+  title: string
+  project_code?: string
+  department?: string
+  note?: string
+  items: Omit<MemoItem, 'id'>[]
+}
+
 // ─── Master Data ───────────────────────────────────────────────
 export interface Group {
   id: string

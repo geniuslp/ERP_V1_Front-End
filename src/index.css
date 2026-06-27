@@ -45,3 +45,8 @@ body {
 .ant-btn-primary:hover {
   background: linear-gradient(135deg, #1d4ed8, #1e40af) !important;
 }
+
+.perm-checkbox-read .ant-checkbox-checked .ant-checkbox-inner { background-color: #2563eb; border-color: #2563eb; }
+.perm-checkbox-write .ant-checkbox-checked .ant-checkbox-inner { background-color: #22c55e; border-color: #22c55e; }
+.perm-checkbox-update .ant-checkbox-checked .ant-checkbox-inner { background-color: #d97706; border-color: #d97706; }
+.perm-checkbox-delete .ant-checkbox-checked .ant-checkbox-inner { background-color: #dc2626; border-color: #dc2626; }
