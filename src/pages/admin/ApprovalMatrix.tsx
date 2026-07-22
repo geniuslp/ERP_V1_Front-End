@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
-import { Button, Space, Table, Switch, Select, Tooltip, Popconfirm, Modal, message, Badge } from 'antd'
+import { Button, Space, Table, Switch, Select, Tooltip, Popconfirm, Modal, message, Badge, Tabs } from 'antd'
 import {
   AppstoreOutlined, ReloadOutlined, CheckOutlined, CloseOutlined,
   PlusOutlined, DeleteOutlined, TeamOutlined, SaveOutlined, UndoOutlined,
@@ -10,6 +10,7 @@ import PageHeader from '@/components/common/PageHeader'
 import MatrixGrid from '@/components/approval/MatrixGrid'
 import DocTypeModal from '@/components/approval/DocTypeModal'
 import RoleModal from '@/components/approval/RoleModal'
+import ApprovalExtraApproverTab from '@/pages/system/ApprovalExtraApproverTab'
 import { approvalConfigService } from '@/services/approvalConfig.service'
 import type { ApprovalDocType, ApprovalConfig, ApprovalRole, CreateRolePayload } from '@/types/approval.types'
 
@@ -20,7 +21,7 @@ const parseCellKey = (key: string): { docType: string; roleId: number } => {
   return { docType: key.slice(0, sep), roleId: parseInt(key.slice(sep + 1)) }
 }
 
-const ApprovalMatrix: React.FC = () => {
+const ApprovalMatrixOverviewTab: React.FC = () => {
   const accessToken =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
     sessionStorage.getItem('accessToken') ??
@@ -318,24 +319,19 @@ const ApprovalMatrix: React.FC = () => {
 
   return (
     <div>
-      <PageHeader
-        title="Approval Matrix"
-        subtitle="คลิก cell เพื่อเพิ่ม/ลบ Rule ใน draft — กด บันทึก เพื่อ submit ทั้งหมดพร้อมกัน"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Admin' }, { title: 'Approval Matrix' }]}
-        extra={
-          <Space>
-            <Button icon={<TeamOutlined />} onClick={() => setRoleModalOpen(true)}>
-              จัดการ Role
-            </Button>
-            <Button icon={<AppstoreOutlined />} onClick={() => setDocTypeModalOpen(true)}>
-              จัดการประเภทเอกสาร
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>
-              โหลดใหม่
-            </Button>
-          </Space>
-        }
-      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <Space>
+          <Button icon={<TeamOutlined />} onClick={() => setRoleModalOpen(true)}>
+            จัดการ Role
+          </Button>
+          <Button icon={<AppstoreOutlined />} onClick={() => setDocTypeModalOpen(true)}>
+            จัดการประเภทเอกสาร
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>
+            โหลดใหม่
+          </Button>
+        </Space>
+      </div>
 
       {/* ── Matrix Card ── */}
       <div
@@ -536,5 +532,33 @@ const ApprovalMatrix: React.FC = () => {
     </div>
   )
 }
+
+const ApprovalMatrix: React.FC = () => (
+  <div>
+    <PageHeader
+      title="Approval Matrix"
+      subtitle="จัดการ Rule การอนุมัติ และผู้อนุมัติเพิ่มเติม"
+      breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Admin' }, { title: 'Approval Matrix' }]}
+    />
+
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 12,
+        border: 'none',
+        boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+        padding: 24,
+      }}
+    >
+      <Tabs
+        defaultActiveKey="overview"
+        items={[
+          { key: 'overview', label: 'ภาพรวม', children: <ApprovalMatrixOverviewTab /> },
+          { key: 'extra-approver', label: 'ผู้อนุมัติเพิ่มเติม', children: <ApprovalExtraApproverTab /> },
+        ]}
+      />
+    </div>
+  </div>
+)
 
 export default ApprovalMatrix

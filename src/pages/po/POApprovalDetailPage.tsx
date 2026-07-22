@@ -8,12 +8,19 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   StopOutlined,
+  PrinterOutlined,
+  EditOutlined,
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import type { PODetail, PODetailResponse, POLine, POStatus } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
+import PermissionButton from '@/components/common/PermissionButton'
+import EditApprovedButton from './components/EditApprovedButton'
+import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
+
+const MENU_CODE = 'MENU_PO_STATUS'
 
 // TODO: enable when permission system is ready
 // const canAct = isManager && po.status === 'PENDING_APPROVAL'
@@ -25,6 +32,10 @@ const statusTag = (status: POStatus) => {
     PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
     APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
     REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
+    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
+    SENT: { color: 'blue', label: 'ส่งแล้ว' },
+    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
+    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
     CANCELLED: { color: 'warning', label: 'ยกเลิก' },
   }
   const s = map[status] ?? { color: 'default', label: status }
@@ -52,6 +63,8 @@ const POApprovalDetailPage: React.FC = () => {
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejecting, setRejecting] = useState(false)
   const [rejectForm] = Form.useForm()
+  const [printData, setPrintData] = useState<POData | null>(null)
+  const [printing, setPrinting] = useState(false)
 
   const fetchDetail = async () => {
     if (!id) return
@@ -140,6 +153,24 @@ const POApprovalDetailPage: React.FC = () => {
       )
     } finally {
       setCancelling(false)
+    }
+  }
+
+  const handlePrint = async () => {
+    if (!id) return
+    setPrinting(true)
+    try {
+      const res = await poApprovalService.getPrintData(accessToken, id)
+      setPrintData(res.data.data)
+    } catch (err: any) {
+      message.error(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'โหลดข้อมูลสำหรับพิมพ์ไม่สำเร็จ',
+      )
+    } finally {
+      setPrinting(false)
     }
   }
 
@@ -270,6 +301,22 @@ const POApprovalDetailPage: React.FC = () => {
         </Space>
 
         <Space>
+          <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>
+            พิมพ์
+          </Button>
+          {po.status === 'DRAFT' && (
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
+              icon={<EditOutlined />}
+              onClick={() => navigate(`/po/${po.id}/edit`)}
+            >
+              แก้ไข
+            </PermissionButton>
+          )}
+          {po.can_edit_approved && (
+            <EditApprovedButton poId={po.id} poNo={po.po_no} menuCode={MENU_CODE} />
+          )}
           {canAct && (
             <>
               <Popconfirm
@@ -280,22 +327,30 @@ const POApprovalDetailPage: React.FC = () => {
                 cancelText="ยกเลิก"
                 okButtonProps={{ style: { background: '#22c55e', borderColor: '#22c55e' } }}
               >
-                <Button
+                <PermissionButton
+                  action="approval"
+                  docType="PO"
+                  docId={po.id}
+                  approvalAction="approve"
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   loading={approving}
                   style={{ background: '#22c55e', borderColor: '#22c55e' }}
                 >
                   อนุมัติ
-                </Button>
+                </PermissionButton>
               </Popconfirm>
-              <Button
+              <PermissionButton
+                action="approval"
+                docType="PO"
+                docId={po.id}
+                approvalAction="reject"
                 danger
                 icon={<CloseCircleOutlined />}
                 onClick={() => setRejectOpen(true)}
               >
                 ไม่อนุมัติ
-              </Button>
+              </PermissionButton>
             </>
           )}
 
@@ -308,13 +363,15 @@ const POApprovalDetailPage: React.FC = () => {
               cancelText="ปิด"
               okButtonProps={{ danger: true }}
             >
-              <Button
+              <PermissionButton
+                menuCode={MENU_CODE}
+                action="edit"
                 icon={<StopOutlined />}
                 loading={cancelling}
                 style={{ borderColor: '#d97706', color: '#d97706' }}
               >
                 ยกเลิก PO
-              </Button>
+              </PermissionButton>
             </Popconfirm>
           )}
         </Space>
@@ -427,6 +484,16 @@ const POApprovalDetailPage: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {printData && (
+        <PurchaseOrderPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
+      )}
     </div>
   )
 }

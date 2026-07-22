@@ -38,6 +38,33 @@ body {
   background: #ffe0de !important;
 }
 
+/* Saved-attachment filename links (PO/PR/Memo) — click opens/downloads the file */
+.attachment-filename-link {
+  text-decoration: none;
+}
+
+.attachment-filename-link:hover {
+  text-decoration: underline;
+  color: #1d4ed8 !important;
+}
+
+.stock-list-table .ant-table-thead > tr > th {
+  background: #eff6ff !important;
+}
+
+.stock-preview-row-error > td {
+  background: #fff1f0 !important;
+}
+
+@keyframes import-row-flash {
+  0%, 100% { background: #fff1f0 !important; }
+  50% { background: #ffb4ae !important; }
+}
+
+.import-row-flash > td {
+  animation: import-row-flash 0.6s ease-in-out 2;
+}
+
 .ant-btn-primary {
   background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
 }
@@ -50,3 +77,11 @@ body {
 .perm-checkbox-write .ant-checkbox-checked .ant-checkbox-inner { background-color: #22c55e; border-color: #22c55e; }
 .perm-checkbox-update .ant-checkbox-checked .ant-checkbox-inner { background-color: #d97706; border-color: #d97706; }
 .perm-checkbox-delete .ant-checkbox-checked .ant-checkbox-inner { background-color: #dc2626; border-color: #dc2626; }
+
+.perm-checkbox-locked .ant-checkbox-inner {
+  background-color: #93c5fd !important;
+  border-color: #60a5fa !important;
+}
+.perm-checkbox-locked.ant-checkbox-disabled .ant-checkbox-inner::after {
+  border-color: #ffffff !important;
+}

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
+import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 
@@ -21,7 +22,6 @@ interface MemoItem {
   requestedBy: string
   department?: string
   projectCode?: string
-  totalAmount: number
   createdAt: string
   status: string
 }
@@ -29,6 +29,7 @@ interface MemoItem {
 const MemoApprovalPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const user = useAppSelector((s) => s.auth.user)
   const [data, setData] = useState<MemoItem[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -41,19 +42,19 @@ const MemoApprovalPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/memo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { status: 'PENDING_APPROVAL', page_size: 100 },
+        params: { status: 'PENDING_APPROVAL', my_approvals: 'true', page_size: 100 },
       })
       const raw = Array.isArray(res.data)
         ? res.data
         : res.data?.data?.data ?? res.data?.data ?? []
-      setData(raw.map((m: any) => ({
+      const list = Array.isArray(raw) ? raw : []
+      setData(list.map((m: any) => ({
         id:          String(m.id),
         memoNo:      m.memo_no           ?? m.memoNo        ?? '',
         title:       m.title             ?? '',
         requestedBy: m.requested_by_name ?? m.requestedBy   ?? '',
         department:  m.department,
         projectCode: m.project_code       ?? m.projectCode,
-        totalAmount: m.total_amount      ?? m.totalAmount   ?? 0,
         createdAt:   m.created_at        ?? m.createdAt     ?? '',
         status:      m.status,
       })))
@@ -64,7 +65,7 @@ const MemoApprovalPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [user?.id])
 
   const handleApprove = async (id: string) => {
     setActionLoading(id)
@@ -149,14 +150,6 @@ const MemoApprovalPage: React.FC = () => {
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
-      title: 'มูลค่ารวม',
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
-      align: 'right' as const,
-      render: (val: number) =>
-        (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-    },
-    {
       title: 'Submitted',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -176,7 +169,11 @@ const MemoApprovalPage: React.FC = () => {
             />
           </Tooltip>
           <Tooltip title="Reject">
-            <Button
+            <PermissionButton
+              action="approval"
+              docType="MEMO"
+              docId={record.id}
+              approvalAction="reject"
               size="small"
               danger
               icon={<CloseOutlined />}
@@ -185,7 +182,11 @@ const MemoApprovalPage: React.FC = () => {
             />
           </Tooltip>
           <Tooltip title="Approve">
-            <Button
+            <PermissionButton
+              action="approval"
+              docType="MEMO"
+              docId={record.id}
+              approvalAction="approve"
               size="small"
               type="primary"
               icon={<CheckOutlined />}

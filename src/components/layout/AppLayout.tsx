@@ -79,18 +79,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
         <SidebarMenu collapsed={collapsed} />
 
-        {/* Collapse Button */}
-        <div style={{
-          position: 'absolute', bottom: 20, left: 0, right: 0,
-          display: 'flex', justifyContent: 'center',
-        }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ color: '#60a5fa', fontSize: 16 }}
-          />
-        </div>
       </Sider>
 
       {/* ── Main ── */}
@@ -104,14 +92,27 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           height: 64,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              height: 6, width: 32, borderRadius: 3,
-              background: 'linear-gradient(90deg, #2563eb, #60a5fa)',
-            }} />
-            <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15 }}>
-              ระบบบริหารองค์กร
-            </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              style={{
+                width: 38, height: 38,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 8, color: '#1d4ed8', fontSize: 18,
+                border: '0.5px solid #dbeafe', background: '#eff6ff',
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                height: 6, width: 32, borderRadius: 3,
+                background: 'linear-gradient(90deg, #2563eb, #60a5fa)',
+              }} />
+              <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15 }}>
+                ระบบบริหารองค์กร
+              </Text>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -135,7 +136,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 </Avatar>
                 <div style={{ lineHeight: 1.2 }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a8a' }}>{user?.fullName || 'Admin'}</div>
-                  <div style={{ fontSize: 11, color: '#60a5fa' }}>{user?.role || 'Administrator'}</div>
+                  <div style={{ fontSize: 11, color: '#60a5fa' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
                 </div>
               </div>
             </Dropdown>

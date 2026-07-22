@@ -1,383 +1,168 @@
-# CLAUDE.md — ERP Frontend Project Memory
+# ERP Frontend — Claude Code Context (FRONTEND: erp-web)
 
-> ไฟล์นี้เขียนขึ้นเพื่อให้ Claude อ่านก่อนทำงานกับโปรเจกต์นี้ทุกครั้ง
-> อัปเดตล่าสุด: 2024-09
+> ⚠️ ไฟล์นี้เป็นไฟล์ใหม่ — เดิมมีแค่ `DESIGN.md` (design system) ไม่มี `CLAUDE.md` แยกสำหรับ frontend
+> อ่าน `DESIGN.md` ควบคู่เสมอก่อนแก้ UI ทุกครั้ง — ไฟล์นี้เน้น "โครงสร้าง/วิธีทำงาน" ส่วน DESIGN.md เน้น "หน้าตา"
+> 🔴 สมมติฐานที่ยังไม่ยืนยัน: React + Vite + Ant Design + Tailwind (ไม่ preflight) — อนุมานจาก DESIGN.md
+> ยังไม่มีไฟล์ `package.json` / source code frontend ให้ตรวจสอบจริง กรุณายืนยัน/แก้ไขส่วน Tech stack ด้านล่างให้ตรงกับโปรเจกต์จริง
 
----
-
-## 🗂️ โปรเจกต์คืออะไร
-
-ระบบ **ERP Frontend** สำหรับจัดการ PR (Purchase Request) และ PO (Purchase Order)
-เป็น Single Page Application ที่มี Dynamic Menu System และ Permission ต่อ User ต่อเมนู
-
-**Stack หลัก:**
-- React 18 + Vite + TypeScript
-- Ant Design 5 (UI components)
-- Tailwind CSS (utility styling)
-- Redux Toolkit (state management)
-- React Router 6 (routing)
-- Axios + JWT + Refresh Token (API layer)
-- Docker + Nginx (deployment)
+## Project overview
+Frontend ของระบบ ERP (PR / PO / RFQ / GRN / Stock / Borrow-Return / Memo / Approval) เชื่อมกับ
+`erp-api` (Go Fiber backend, ดู `CLAUDE.md` ฝั่ง backend) ผ่าน REST API + JWT Bearer token
 
 ---
 
-## 📁 โครงสร้างไฟล์สำคัญ
-
-```
-src/
-├── App.tsx                          ← Routes ทั้งหมดอยู่ที่นี่ — เพิ่ม Route ใหม่ตรงนี้
-├── main.tsx                         ← Entry point
-├── index.css                        ← Global styles + Tailwind + override Ant Design
-│
-├── types/index.ts                   ← TypeScript interfaces ทั้งหมด — แก้ type ตรงนี้ที่เดียว
-│
-├── config/
-│   ├── antd.theme.ts                ← สีและ theme ของ Ant Design — แก้ theme ตรงนี้
-│   └── routes.ts                    ← Route constants (ROUTES.PR.CREATE ฯลฯ)
-│
-├── store/
-│   ├── index.ts                     ← Redux store setup + typed hooks
-│   └── slices/
-│       ├── authSlice.ts             ← Auth state, JWT tokens, login/logout actions
-│       └── menuSlice.ts             ← Menu config + permissions + defaultMenus
-│
-├── services/
-│   └── api.ts                       ← Axios instance + JWT interceptor + Auto Refresh Token
-│
-├── hooks/
-│   └── usePermission.ts             ← Hook สำหรับเช็คสิทธิ์ต่อ menuId
-│
-├── components/
-│   ├── auth/
-│   │   ├── LoginPage.tsx            ← หน้า Login
-│   │   └── ProtectedRoute.tsx       ← Guard สำหรับ route ที่ต้อง login
-│   ├── common/
-│   │   ├── PageHeader.tsx           ← Header บนทุกหน้า (title + breadcrumb + extra)
-│   │   ├── StatCard.tsx             ← การ์ดสถิติใน Dashboard
-│   │   └── StatusBadge.tsx          ← แสดงสถานะ PR/PO เป็น Tag สี
-│   └── layout/
-│       ├── AppLayout.tsx            ← Layout หลัก (Sidebar + Header + Content)
-│       └── SidebarMenu.tsx          ← Dynamic menu จาก Redux store
-│
-├── pages/
-│   ├── dashboard/DashboardPage.tsx  ← หน้าแรก สถิติ + ตารางล่าสุด
-│   ├── pr/
-│   │   ├── PRCreatePage.tsx         ← สร้าง PR + inline item table
-│   │   ├── PRStatusPage.tsx         ← ตรวจสอบสถานะ + ค้นหา/filter
-│   │   └── PRHistoryPage.tsx        ← ประวัติ PR
-│   ├── po/
-│   │   ├── POCreatePage.tsx         ← สร้าง PO + vendor + VAT calculation
-│   │   ├── POStatusPage.tsx         ← ตรวจสอบสถานะ PO
-│   │   └── POHistoryPage.tsx        ← ประวัติ PO
-│   └── system/
-│       ├── SystemConfigPage.tsx     ← Config ทั้งหมด (General / JWT / Notification)
-│       ├── UsersPage.tsx            ← CRUD ผู้ใช้
-│       ├── RolesPage.tsx            ← CRUD บทบาท
-│       ├── MenusPage.tsx            ← เพิ่ม/แก้/ลบเมนูแบบ Dynamic
-│       └── PermissionsPage.tsx      ← กำหนดสิทธิ์ per user per menu
-│
-└── utils/
-    └── mockData.ts                  ← ข้อมูลจำลองสำหรับ PR, PO
-```
+## Tech stack (สมมติฐาน — ยืนยันกับโปรเจกต์จริงอีกครั้ง)
+| Layer | Library |
+|---|---|
+| Framework | React (Vite) |
+| UI Library | Ant Design (theme token ปรับสีตาม DESIGN.md) |
+| Utility CSS | Tailwind CSS (ปิด `preflight`) |
+| Icons | `@ant-design/icons` เท่านั้น — **ห้าม** import `lucide-react` |
+| Fonts | IBM Plex Sans Thai + IBM Plex Sans (body), Sarabun (title/display) — โหลดจาก Google Fonts ใน `index.html` |
+| Auth | JWT Bearer token จาก `erp-api` เก็บใน state/memory (ตรวจสอบ storage strategy จริงในโค้ด) |
 
 ---
 
-## 🌐 API Calling Convention
+## Design System
+**ทุกครั้งที่แก้ UI ต้องอ่าน `DESIGN.md` ก่อนเสมอ** — เป็น source of truth เรื่อง:
+- Color palette (ธีมน้ำเงิน-กรมท่า: `navy #0f2d5e`, `primary-700 #1d4ed8`, ฯลฯ)
+- Semantic colors (success/warning/error/info/purple สำหรับ StatCard)
+- Typography scale, spacing, border-radius, box-shadow
+- Component pattern: `PageHeader`, `StatCard`, `StatusBadge`, `Card`, `Button`, `Table`
+- Layout pattern: List Page / Create Page / Dashboard
+- Sidebar & Login page design spec
 
-### ใช้ Axios เสมอ — ห้ามใช้ `fetch` หรือ `api.*`
-
-โปรเจกต์นี้ใช้ **Axios** ในการเรียก API ทุกจุด ห้ามใช้ `fetch()` native หรือ wrapper `api.get/api.post` อื่นๆ
-
-### Pattern มาตรฐานสำหรับ `useEffect` + Axios
-
-```ts
-useEffect(() => {
-  const fetchData = async () => {
-    setLoading(true)
-    try {
-      const res = await axios.get(`${BASE_URL}/endpoint`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setData(list)
-    } catch (err: any) {
-      const errMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        'โหลดข้อมูลไม่สำเร็จ'
-      message.error(errMsg)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  fetchData()
-}, [])
-```
-
-### กฎของ useEffect + async
-
-- **ห้าม** ใส่ `async` ตรงๆ ใน `useEffect(() => async () => {...})` 
-- ให้สร้าง `async function` ข้างในแล้วเรียกใช้แทน
-- **ห้าม** ต่อ `.catch().finally()` ท้าย `setData(...)` เพราะ `setData` ไม่ใช่ Promise
-- ใช้ `try/catch/finally` เสมอ
-
-### ดึง Token ก่อนใช้
-
-```ts
-const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
-// หรือ fallback
-const accessToken = sessionStorage.getItem('accessToken')
-```
-
-### BASE_URL
-
-```ts
-const BASE_URL = (import.meta as any).env?.VITE_API_URL
-```
+**กฎสำคัญจาก DESIGN.md ที่ต้องถือปฏิบัติเสมอ:**
+- ใช้ `style` prop กับ Ant Design components, ไม่ใช้ `className="bg-blue-500"` บน component หลัก
+- Card ทุกใบ: `borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)'`
+- Shadow ใช้โทน navy (`rgba(15,45,94,x)`) เท่านั้น ห้ามใช้ shadow ดำ `rgba(0,0,0,x)`
+- ห้ามเปลี่ยน Sidebar background ออกจาก `#0f2d5e`
+- ห้ามใช้ font อื่นนอกจาก IBM Plex Sans Thai / Sarabun
+- ห้าม import `lucide-react` — ใช้ `@ant-design/icons` เท่านั้น
 
 ---
 
-## ⚠️ กฎสำคัญที่ต้องจำ
+## Backend contract ที่ frontend ต้องรู้ (sync กับ `erp-api` CLAUDE.md)
 
-### API / Axios Rules
-- **ใช้ `axios` เสมอ** — ห้ามใช้ `fetch()` หรือ `api.get/api.post` wrapper อื่น
-- **ห้าม** ใช้ `async` ตรงๆ ใน `useEffect` callback — ให้สร้าง inner async function แล้วเรียกใช้
-- **ห้าม** ต่อ `.catch()/.finally()` หลัง `setState()` เพราะ setState ไม่ใช่ Promise
-- ใช้ `try/catch/finally` แทนเสมอ
-- **Error message** ให้ดึงจาก API response ก่อนเสมอ: `err?.response?.data?.message || err?.response?.data?.error || err?.message || 'ข้อความ fallback'`
+### 🔴 จุดที่ต้องระวังเป็นพิเศษเวลาต่อ API (เพิ่งอัปเดตจาก DB dump ล่าสุด — ERP_V12)
 
-### Type Rules
-- **ห้ามเพิ่ม field ใน mockData.ts** โดยไม่เพิ่มใน `src/types/index.ts` ก่อน
-- `PRItem` มี field: `id, description, quantity, unit, estimatedPrice` เท่านั้น (ไม่มี `productCode`)
-- `PurchaseRequest.requester` เป็น `string` (ไม่ใช่ `requesterId`)
-- `Role` ไม่มี `menuPermissions` — permission อยู่ใน `MenuPermission` interface แยกต่างหาก
+1. **PR ไม่มี field status ที่บอกสถานะอนุมัติโดยตรง**
+   `purchase_request.status` มีค่าได้แค่ `DRAFT, COMPLETED, STOCK_CHECK, PARTIALLY_FILLED, FULFILLED, CANCELLED`
+   → หน้า PR list/detail ต้องดึงสถานะอนุมัติจาก endpoint ที่ query `approval_request`/`approval_log` แยกต่างหาก
+   ไม่ใช่ derive จาก `pr.status` เฉยๆ — **`StatusBadge` ของ PR กับ PO อาจต้องมี logic ต่างกัน**
 
-### Import Rules
-- ใช้ `@/` alias เสมอ (ห้ามใช้ relative path ยาวๆ)
-- ห้าม import `lucide-react` — โปรเจกต์นี้ใช้ `@ant-design/icons` เท่านั้น
-- ห้าม import จาก `@/stores/authStore` หรือ `@/stores/menuStore` — ใช้ `@/store` (Redux)
+2. **PO มี field การเงินเพิ่มเติม** ที่ต้องรองรับในฟอร์มสร้าง/แก้ PO:
+   `use_discount`, `discount_type (pct/amt)`, `discount_amount`, `use_vat`, `vat_amount`,
+   `use_wht`, `wht_amount`, `net_amount`, `currency`
+   PO status เพิ่ม `PENDING_REAPPROVAL` (กรณี PO ถูกตีกลับแล้วแก้ใหม่) → ต้องมี badge/สี เพิ่มใน `StatusBadge`
 
-### Redux Rules
-- `useAppSelector` และ `useAppDispatch` import จาก `@/store` เสมอ (ไม่ใช่ react-redux โดยตรง)
-- Auth state: `state.auth` | Menu state: `state.menu`
+3. **โมดูลใหม่ที่ยังไม่มีหน้าจอ (backend มี table แล้ว รอ handler + UI):**
+   - RFQ (`SENT, RECEIVED, SELECTED, REJECTED`)
+   - Borrow/Return (`DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, BORROWED, RETURNED, PARTIALLY_RETURNED, CANCELLED`)
+   - Stock Count (`DRAFT, IN_PROGRESS, COMPLETED`)
+   - Memo (`DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, CANCELLED`) — ผูกกับ PR ผ่าน `memo_id`
 
-### Docker Rules
-- Dockerfile ใช้ `npm install --legacy-peer-deps` (ไม่ใช่ `npm ci` เพราะไม่มี package-lock.json ใน repo)
-- ถ้าอยากเปลี่ยนเป็น `npm ci` ต้อง commit `package-lock.json` ขึ้น repo ก่อน
+4. **ระบบสิทธิ์ (RBAC) ละเอียดกว่าที่เคยรู้** — มี 4 ชั้น: role / user override / department / menu
+   → เมนู sidebar และปุ่ม action ต่างๆ **ไม่ควร hardcode ตาม role อย่างเดียว** ควรเช็คสิทธิ์จาก
+   `user_menu_permissions` / `role_menu_permissions` / `dept_menu_permissions` ที่ backend ส่งมาหลัง login
+   (ต้องคุยกับทีม backend ว่า `/auth/me` จะรวม permission tree มาด้วยหรือ endpoint แยก)
 
----
-
-## 🔑 Auth & JWT Flow
-
-### Login Flow
-
-```ts
-// LoginPage.tsx — handleLogin
-const handleLogin = async (values: { username: string; password: string }) => {
-  setLoading(true)
-  dispatch(loginStart())
-  try {
-    // 1. ยิง POST /auth/login
-    const res = await axios.post(
-      `${BASE_URL}/auth/login`,
-      { username: values.username, password: values.password },
-      { withCredentials: false }
-    )
-    const { access_token, refresh_token } = res.data.data
-
-    // 2. ยิง GET /auth/me เพื่อดึงข้อมูล user
-    const meRes = await axios.get(`${BASE_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${access_token}` }
-    })
-    const userData = meRes.data.data ?? meRes.data
-
-    // 3. เก็บลง sessionStorage
-    sessionStorage.setItem('accessToken', access_token)
-    sessionStorage.setItem('refreshToken', refresh_token)
-    sessionStorage.setItem('user', JSON.stringify(userData))
-
-    // 4. dispatch ให้ Redux รู้
-    dispatch(loginSuccess({
-      user: userData,
-      tokens: { accessToken: access_token, refreshToken: refresh_token }
-    }))
-
-    navigate('/')
-  } catch {
-    dispatch(loginFailure())
-    message.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
-  } finally {
-    setLoading(false)
-  }
-}
-```
-
-### Rehydrate หลัง Refresh หน้า
-
-```ts
-// App.tsx — ดึงจาก sessionStorage กลับมาใส่ Redux ตอน mount
-useEffect(() => {
-  const token = sessionStorage.getItem('accessToken')
-  const user = JSON.parse(sessionStorage.getItem('user') ?? 'null')
-
-  if (token && user) {
-    dispatch(loginSuccess({
-      user,
-      tokens: {
-        accessToken: token,
-        refreshToken: sessionStorage.getItem('refreshToken') ?? ''
-      }
-    }))
-  }
-}, [])
-```
-
-### ดึง Token / User ในหน้าอื่น
-
-```ts
-// ดึงจาก Redux (แนะนำ)
-const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
-const user = useAppSelector((s) => s.auth.user)
-
-// ดึงจาก sessionStorage (fallback)
-const token = sessionStorage.getItem('accessToken')
-const user = JSON.parse(sessionStorage.getItem('user') ?? '{}')
-```
-
-### Logout
-
-```ts
-const handleLogout = () => {
-  sessionStorage.removeItem('accessToken')
-  sessionStorage.removeItem('refreshToken')
-  sessionStorage.removeItem('user')
-  dispatch(logout())
-  navigate('/login')
-}
-```
-
-### เมื่อ API ตอบ 401
-
-```
-Axios response interceptor ดัก
-  → POST /auth/refresh ด้วย refreshToken
-  → dispatch(setTokens({ accessToken, refreshToken }))
-  → อัปเดต sessionStorage ด้วย token ใหม่
-  → Retry request เดิม
-  → ถ้า refresh fail → logout() + ล้าง sessionStorage → redirect /login
-```
-
-### Storage ที่ใช้
-
-| Key | Storage | หมายเหตุ |
-|-----|---------|---------|
-| `accessToken` | sessionStorage | หายตอนปิด tab |
-| `refreshToken` | sessionStorage | หายตอนปิด tab |
-| `user` | sessionStorage | ข้อมูล user จาก /auth/me |
-
-**ไฟล์ที่เกี่ยวข้อง:** `src/services/api.ts`, `src/store/slices/authSlice.ts`, `src/components/auth/LoginPage.tsx`
+5. **View ที่ backend เคยพึ่งพา (`v_pr_full`, `v_po_full` ฯลฯ) หายไปจาก DB dump ล่าสุด**
+   → ถ้าหน้า list เคยได้ field เสริม (เช่น requested_by name, warehouse name) จาก view เหล่านี้
+   ต้องเช็คกับทีม backend ว่า response shape เปลี่ยนไปหรือยัง ก่อนแก้ TypeScript interface/type ฝั่ง frontend
 
 ---
 
-## 🎯 Permission System
-
-```ts
-// กำหนดสิทธิ์ที่ System → จัดการสิทธิ์
-// ข้อมูลเก็บใน store.menu.permissions[]
-
-interface MenuPermission {
-  userId: string
-  menuId: string
-  actions: ('read' | 'write' | 'edit' | 'delete')[]
-}
-
-// ใช้งานในหน้าต่างๆ
-const { canRead, canWrite, canEdit, canDelete } = usePermission('pr-create')
+## StatusBadge — สถานะที่ต้อง map สี (สรุปจาก DB CHECK constraint จริง)
 ```
-
-**ข้อจำกัดปัจจุบัน:** Permissions เก็บใน Redux (memory) — หาย reload
-**สิ่งที่ต้องทำถัดไป:** เชื่อม API จริงและโหลดหลัง login
+PR:          DRAFT / COMPLETED / STOCK_CHECK / PARTIALLY_FILLED / FULFILLED / CANCELLED
+PO:          DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / PENDING_REAPPROVAL / SENT / PARTIALLY_RECEIVED / RECEIVED / CANCELLED
+GRN:         DRAFT / CONFIRMED / POSTED   (+ quality_status: PENDING / PASSED / FAILED / PARTIAL)
+RFQ:         SENT / RECEIVED / SELECTED / REJECTED
+Borrow:      DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / BORROWED / RETURNED / PARTIALLY_RETURNED / CANCELLED
+Stock Count: DRAFT / IN_PROGRESS / COMPLETED
+Memo:        DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / CANCELLED
+```
+ใช้สีจาก DESIGN.md (Success `#16a34a`, Warning `#d97706`, Error `#dc2626`, Info `#0ea5e9`) —
+สถานะใหม่ที่ยังไม่มี mapping (เช่น `PENDING_REAPPROVAL`, `PARTIALLY_RETURNED`, `IN_PROGRESS`) ต้องเพิ่มสีเอง
+แนะนำ: `PENDING_REAPPROVAL` → warning (เหมือน pending), `IN_PROGRESS` → info/cyan
 
 ---
 
-## 🍔 Dynamic Menu System
+## 🔴 Document approval flow — confirmed business rules (2026-07 session, do not re-litigate)
 
-```
-defaultMenus (hardcode ใน menuSlice.ts)
-  ↕ อาจถูก override ด้วย API ในอนาคต
+**PR does NOT require approval at all.** Flow is `DRAFT → COMPLETED` directly. There are
+**no approve/reject endpoints for PR** — they were removed entirely
+(`src/pages/pr/PRApprovalDetailPage.tsx`, `PRApprovalListPage.tsx`, `src/services/prApprovalService.ts`
+deleted). **Never re-add PR approval UI, routes, or menu items.** If backend docs or old
+memory mention PR approval, they are stale — trust this instead.
 
-store.menu.menus[]
-  ↓ SidebarMenu.tsx อ่านและ render
-  ↓ filter: isActive === true + parentId === null (เมนูหลัก)
-  ↓ map children: isActive === true (submenu)
-  ↓ Ant Design <Menu>
+**Memo REQUIRES approval.** Role-based via `approval_config`, plus extra approvers via
+`approval_delegation` (see below). A specific approver is chosen from the eligible pool at
+creation/submit time and stored as `memo.approver_id`.
 
-เพิ่มเมนูใหม่ runtime:
-  dispatch(addMenu({...}))  ← จาก MenusPage.tsx
-```
+**PO REQUIRES approval** — same "pick a specific approver from the eligible pool" model as
+Memo, i.e. `purchase_order.approver_id`, **NOT purely role-based**. Flow:
+`DRAFT → PENDING_APPROVAL → APPROVED / REJECTED`. Approved POs can be edited within 1 year via
+`PUT /po/:id/edit-approved` (reason is mandatory) — this transitions the PO to
+`PENDING_REAPPROVAL` and routes it back to the **same** original approver, not a newly picked one.
 
-**Icon ที่ใช้ได้ (ใน SidebarMenu.tsx):**
-`DashboardOutlined, FileTextOutlined, ShoppingCartOutlined, SettingOutlined,
-PlusOutlined, SearchOutlined, HistoryOutlined, TeamOutlined,
-ApartmentOutlined, AppstoreOutlined, SafetyOutlined`
+**`approval_delegation` table** — columns: `id, doc_type (nullable, NULL = applies to all doc
+types), user_id, reason, created_at, created_by`. This is the "extra approver" mechanism,
+**additive** to role-based `approval_config`, not a replacement. No from/to date range fields —
+inserting a row makes it active immediately; deleting removes it immediately.
 
-ถ้าต้องการ icon ใหม่ → เพิ่มใน `iconMap` และ `subIconMap` ใน `SidebarMenu.tsx`
+## 🔴 Schema-drift bug class — check proactively, this session found ~20 instances
+
+Backend Go handlers repeatedly referenced a column name that didn't match the real DB schema
+(e.g. `po_id` / `pr_id` / `approval_id` / `grn_id` / `line_id` / `log_id` used in SQL when the
+actual column is almost always just `id`). Root cause: SQL copy-pasted between similar handlers
+without verifying real column names against the live schema.
+
+**Rule:** before writing/reviewing SQL for a table not touched recently, verify column names via
+`information_schema.columns` — never assume based on the table's "logical" name.
+
+**Also:** a field being correctly present in a request struct AND correctly present in the
+handler's save payload does **not** guarantee it's actually in the INSERT/UPDATE SQL's column
+list. This session repeatedly found fields silently dropped at exactly that step
+(`approver_id`, `warehouse_code`, `ref`, supplier contact fields all had this exact bug
+independently, found separately). **When a field "isn't saving," check the SQL column list
+directly — don't assume the struct/payload layer is at fault.**
+
+**Nullable FK joins:** any optional/nullable foreign key (`requested_by → users`,
+`location_code → location`, `warehouse_code → warehouse`, `project_code → project`,
+`supplier_code → supplier` for contact fields) must use `LEFT JOIN`, never `INNER JOIN`. An
+INNER JOIN silently drops entire rows where the FK is NULL — this caused a confusing "PO not
+found" bug for older records created before newer nullable columns existed.
+
+**Route registration order:** static routes (e.g. `/search`) must be registered **before**
+dynamic param routes (e.g. `/:id`) in the same route group, or the router matches the dynamic
+route first (`GET /po/search` gets captured as `/po/:id` with `id="search"`).
+
+## Supplier contact data — live-joined, not stored on PO
+
+`purchase_order` does **not** store its own copy of supplier contact fields (`office_phone`,
+`fax`, `sales_person`, `contact_email`, `contact_phone`). These are always live-joined from
+`supplier` via `supplier_code` at read time (`GET /po/:id` uses `LEFT JOIN supplier`). Do not
+add these as `purchase_order` columns or as frontend form fields to persist — this was
+explicitly decided against (reversed from an earlier snapshot-based design). Frontend should
+just render whatever the join returns; never try to save these back through the PO update form.
+
+## Debugging protocol for "field silently isn't saving" reports
+
+This session had multiple false "fixed" reports from backend that weren't actually tested.
+The protocol that actually worked:
+1. Capture the real network payload via browser DevTools (Network tab) when the frontend form
+   submits.
+2. Confirm the payload is correct (field present, right value, right key name).
+3. If backend claims a fix, **demand a pasted ACTUAL verified `SELECT` query result** against
+   the real row after a real save — never accept "should be fixed now" without that evidence.
 
 ---
 
-## ➕ วิธีเพิ่มโมดูลใหม่ (checklist)
-
-1. **เพิ่ม Type** ใน `src/types/index.ts`
-2. **เพิ่ม Route constant** ใน `src/config/routes.ts`
-3. **เพิ่ม Route** ใน `src/App.tsx` (Lazy import + `<Route>`)
-4. **สร้าง Page** ใน `src/pages/<module>/`
-5. **เพิ่ม Menu** ใน `src/store/slices/menuSlice.ts` → `defaultMenus[]`
-   หรือเพิ่มผ่าน UI ที่ System → จัดการเมนู
-6. **กำหนดสิทธิ์** ที่ System → จัดการสิทธิ์
-7. **เพิ่ม mock data** ใน `src/utils/mockData.ts` (ต้องตรง type เป๊ะ)
-
----
-
-## 🌐 Environment Variables
-
-```bash
-# .env (copy จาก .env.example)
-VITE_API_URL=http://localhost:8000/api/v1
-VITE_APP_NAME=ERP System
-VITE_APP_VERSION=1.0.0
-```
-
-ใช้ใน code: `(import.meta as any).env?.VITE_API_URL`
-(ต้องใช้ `as any` เพราะ tsconfig อาจยังไม่ resolve vite/client ครบ)
-
----
-
-## 🐳 Docker Commands
-
-```bash
-# Production
-docker compose up erp-frontend -d
-
-# Development (hot reload)
-docker compose --profile dev up erp-frontend-dev
-
-# Rebuild
-docker compose build --no-cache erp-frontend
-```
-
----
-
-## 📌 สิ่งที่ยังไม่ได้ทำ (TODO)
-
-- [x] เชื่อม API จริงสำหรับ Login (`POST /auth/login`) + ดึง user จาก (`GET /auth/me`)
-- [ ] โหลด menus และ permissions จาก API หลัง login
-- [ ] เชื่อม API สำหรับ PR CRUD (`GET/POST/PUT/DELETE /pr`)
-- [ ] เชื่อม API สำหรับ PO CRUD (`GET/POST/PUT/DELETE /po`)
-- [ ] หน้า PR Detail / PR Approve workflow
-- [ ] หน้า PO Detail / รับสินค้า (Goods Receipt)
-- [ ] Persist menu และ permissions ผ่าน API (`/system/menus`, `/system/permissions`)
-- [ ] ระบบ Notification (Bell icon ยังเป็น mock)
-- [ ] Export PDF / Excel สำหรับ PR, PO
-- [ ] Unit tests
+## Known issues / TODO
+- [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
+- [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)
+- [ ] คุยกับทีม backend เรื่อง permission tree structure (`/auth/me` response) ก่อนทำ dynamic sidebar menu
+- [ ] เช็ค field การเงินใหม่ของ PO (discount/vat/wht) ในฟอร์มสร้าง/แก้ PO ว่ามีอยู่แล้วหรือยัง
+- [ ] เช็คว่า field ที่เคยได้จาก DB view (`v_pr_full` ฯลฯ) ยังมาจาก API เหมือนเดิมไหม หลัง view หายจาก DB

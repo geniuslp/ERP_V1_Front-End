@@ -5,7 +5,7 @@ export interface User {
   fullName: string
   full_name?: string
   email: string
-  role: string
+  roles: string[]
   avatar?: string
   department?: string
 }
@@ -103,7 +103,6 @@ export interface MemoItem {
   description: string
   unit: string
   quantity: number
-  estimatedPrice: number
   remark?: string
 }
 
@@ -126,10 +125,10 @@ export interface Memo {
   projectCode?: string
   requestedBy: string
   requestedById: string
+  approverName?: string
   department?: string
   note?: string
   items: MemoItem[]
-  totalAmount: number
   status: MemoStatus
   linkedPoIds?: string[]
   createdAt: string
@@ -171,6 +170,165 @@ export interface Material {
   [key: string]: any
 }
 
+// ─── Master Data: Stock ───────────────────────────────────────
+export type StockItemType = 'RETURNABLE' | 'CONSUMABLE'
+export type StockTrackingType = 'sku' | 'serial'
+
+export interface StockCategory {
+  id: string
+  code: string
+  name: string
+  description?: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface StockItem {
+  id: string
+  matCode: string
+  itemName: string
+  description?: string
+  categoryId: string
+  categoryName?: string
+  itemType: StockItemType
+  trackingType: StockTrackingType
+  unit: string
+  unitCost: number
+  qty: number
+  qrCode?: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StockImportRowError {
+  row: number
+  message: string
+}
+
+export interface StockImportResult {
+  successCount: number
+  failedCount: number
+  errors: StockImportRowError[]
+}
+
+export interface StockLookupResult {
+  matCode: string
+  itemName?: string
+  qtyOnHand: number
+  unit?: string
+  found: boolean
+}
+
+// ─── Goods Receipt (รับเข้า) ────────────────────────────────────
+// NOTE: these mirror the real API response shapes exactly (snake_case),
+// verified directly against the Go handlers — not assumed/mocked shapes.
+
+// GRN prefix keeps these distinct from the unrelated same-named
+// POListItem/PODetail/POLine in `@/types/po` (different field shape —
+// this is the /po/search + /po/:id shape used only by the GRN receiving flow).
+export interface GRNPoListItem {
+  po_id: number
+  po_no: string
+  po_date?: string
+  expected_date?: string | null
+  supplier_code: string
+  warehouse_code?: string
+  status: string
+  currency: string
+  net_amount?: number
+}
+
+export interface GRNPoLine {
+  po_line_id: number
+  line_no: number
+  mat_code: string
+  item_name: string
+  qty_ordered: number
+  qty_received: number
+  current_stock_qty: number | null
+}
+
+export interface GRNPoDetail extends Omit<GRNPoListItem, 'net_amount'> {
+  net_amount?: number
+  lines: GRNPoLine[]
+}
+
+export interface GRNHistoryItem {
+  grn_id: number
+  grn_no: string
+  grn_date: string
+  po_no: string
+  supplier_code: string
+  warehouse_code?: string
+  status: string
+  score_quality?: number
+  score_quantity?: number
+  score_ontime?: number
+  score_notes?: string
+  received_by_name?: string
+  line_count: number
+  total_qty_received: number
+}
+
+export interface GRNCreateLine {
+  po_line_id: number
+  mat_code: string
+  add_qty: number
+}
+
+export interface GRNCreatePayload {
+  po_id: number
+  warehouse_code: string
+  supplier_code: string
+  delivery_note?: string
+  lines: GRNCreateLine[]
+}
+
+export interface GRNCreateResult {
+  grn_id: number
+  grn_no: string
+  po_status: string
+}
+
+export interface GRNScorePayload {
+  score_quality: number
+  score_quantity: number
+  score_ontime: number
+  score_notes?: string
+}
+
+export interface GRNScoreResult {
+  grn_id: number
+  status: string
+}
+
+export interface StockTransactionLog {
+  id: number
+  txn_no: string
+  txn_type: string
+  item_id: number
+  mat_code: string
+  item_name: string
+  from_location: string | null
+  to_location: string | null
+  qty: number
+  qty_before: number | null
+  qty_after: number | null
+  ref_doc_type: string | null
+  ref_doc_id: number | null
+  remarks: string | null
+  txn_date: string
+  created_by_name: string
+  created_at: string
+  po_id?: number | null
+  po_no?: string | null
+  score_quality?: number | null
+  score_quantity?: number | null
+  score_ontime?: number | null
+  score_notes?: string | null
+}
+
 // ─── System Config ─────────────────────────────────────────────
 export interface SystemConfig {
   key: string
@@ -197,4 +355,15 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   limit: number
+}
+
+// ─── Approval Extra Approver ───────────────────────────────────
+export interface ApprovalExtraApprover {
+  id: number
+  docType: string | null      // null = applies to all doc types
+  userId: number
+  userName: string
+  reason: string | null
+  createdAt: string
+  createdBy: number | null
 }

@@ -5,6 +5,7 @@ import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@a
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch } from '@/store'
 import { loginStart, loginSuccess, loginFailure } from '@/store/slices/authSlice'
+import type { User } from '@/types'
 
 const { Title, Text } = Typography
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
@@ -30,13 +31,26 @@ const LoginPage: React.FC = () => {
       })
       const userData = meRes.data.data ?? meRes.data
 
+      const mappedUser: User = {
+        id: String(userData.id),
+        username: userData.username,
+        fullName: userData.full_name ?? userData.fullName ?? userData.username,
+        email: userData.email,
+        roles: Array.isArray(userData.roles)
+          ? userData.roles
+          : userData.role
+            ? [userData.role]
+            : [],
+        department: userData.department,
+      }
+
       // ✅ เก็บลง sessionStorage
       sessionStorage.setItem('accessToken', access_token)
       sessionStorage.setItem('refreshToken', refresh_token)
-      sessionStorage.setItem('user', JSON.stringify(userData))
-      dispatch(loginSuccess({ 
-        user: null,
-        tokens: { accessToken: access_token, refreshToken: refresh_token } 
+      sessionStorage.setItem('user', JSON.stringify(mappedUser))
+      dispatch(loginSuccess({
+        user: mappedUser,
+        tokens: { accessToken: access_token, refreshToken: refresh_token }
       }))
       
       message.success('เข้าสู่ระบบสำเร็จ')

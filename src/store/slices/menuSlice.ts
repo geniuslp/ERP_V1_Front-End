@@ -13,7 +13,6 @@ const defaultMenus: MenuConfig[] = [
     { id: 'pr-create', key: 'pr-create', label: 'สร้างใบขอซื้อ', path: '/pr/create', parentId: 'pr', order: 0, isActive: true },
     { id: 'pr-status', key: 'pr-status', label: 'ตรวจสอบสถานะ', path: '/pr/status', parentId: 'pr', order: 1, isActive: true },
     { id: 'pr-history', key: 'pr-history', label: 'ประวัติใบขอซื้อ', path: '/pr/history', parentId: 'pr', order: 2, isActive: true },
-    { id: 'pr-approval', key: 'pr-approval', label: 'อนุมัติ PR', path: '/pr/approval', parentId: 'pr', order: 3, isActive: true },
   ]},
   { id: 'memo', key: 'memo', label: 'ใบบันทึก (Memo)', icon: 'FileTextOutlined', parentId: null, order: 1, isActive: true, children: [
     { id: 'memo-list', key: 'memo-list', label: 'รายการใบบันทึก', path: '/memo', parentId: 'memo', order: 0, isActive: true },
@@ -29,12 +28,24 @@ const defaultMenus: MenuConfig[] = [
   { id: 'master', key: 'master', label: 'ข้อมูลหลัก (Master)', icon: 'AppstoreOutlined', parentId: null, order: 3, isActive: true, children: [
     { id: 'master-groups', key: 'master-groups', label: 'กลุ่ม', path: '/master/groups', parentId: 'master', order: 0, isActive: true },
     { id: 'master-materials', key: 'master-materials', label: 'วัสดุ (Material)', path: '/master/materials', parentId: 'master', order: 1, isActive: true },
-    { id: 'master-location', key: 'master-location', label: 'สถานที่ (Location)', path: '/master/location', parentId: 'master', order: 2, isActive: true },
-    { id: 'master-supplier', key: 'master-supplier', label: 'ผู้ขาย (Supplier)', path: '/master/supplier', parentId: 'master', order: 3, isActive: true },
+    { id: 'master-cost-code', key: 'master-cost-code', label: 'Group Cost Code', path: '/master/cost-code', parentId: 'master', order: 2, isActive: true },
+    { id: 'master-location', key: 'master-location', label: 'สถานที่ (Location)', path: '/master/location', parentId: 'master', order: 3, isActive: true },
+    { id: 'master-supplier', key: 'master-supplier', label: 'ผู้ขาย (Supplier)', path: '/master/supplier', parentId: 'master', order: 4, isActive: true },
+    { id: 'master-stock', key: 'master-stock', label: 'พัสดุ (Stock)', path: '/master/stock', parentId: 'master', order: 5, isActive: true },
+    { id: 'master-projects', key: 'master-projects', label: 'โครงการ (Project)', path: '/master/projects', parentId: 'master', order: 6, isActive: true },
   ]},
   { id: 'admin', key: 'admin', label: 'Admin', icon: 'SafetyOutlined', parentId: null, order: 98, isActive: true, children: [
     { id: 'admin-approval-matrix', key: 'admin-approval-matrix', label: 'Approval Matrix', path: '/admin/approval-matrix', parentId: 'admin', order: 0, isActive: true },
     { id: 'admin-permission-matrix', key: 'admin-permission-matrix', label: 'Permission Matrix', path: '/admin/permission-matrix', parentId: 'admin', order: 1, isActive: true },
+  ]},
+  { id: 'stock', key: 'stock', label: 'คลังพัสดุ (Stock)', icon: 'AppstoreOutlined', parentId: null, order: 30, isActive: true, children: [
+    { id: 'stock-items',        key: 'stock-items',        label: 'ข้อมูลพัสดุ',         icon: 'AppstoreOutlined',  path: '/stock/items',           parentId: 'stock', order: 1, isActive: true },
+    { id: 'stock-inventory',    key: 'stock-inventory',    label: 'ยอดคงเหลือ',          icon: 'DatabaseOutlined',  path: '/stock/inventory',       parentId: 'stock', order: 2, isActive: true },
+    { id: 'stock-transactions', key: 'stock-transactions', label: 'รับ-จ่ายพัสดุ',       icon: 'SwapOutlined',      path: '/stock/transactions',    parentId: 'stock', order: 3, isActive: true },
+    { id: 'stock-borrow',       key: 'stock-borrow',       label: 'ยืม-คืนพัสดุ',        icon: 'ExportOutlined',    path: '/stock/borrow',          parentId: 'stock', order: 4, isActive: true },
+    { id: 'stock-approval',     key: 'stock-approval',     label: 'อนุมัติการยืม',       icon: 'CheckOutlined',     path: '/stock/borrow/approval', parentId: 'stock', order: 5, isActive: true },
+    { id: 'stock-reservation',  key: 'stock-reservation',  label: 'จองพัสดุ',            icon: 'CalendarOutlined',  path: '/stock/reservations',    parentId: 'stock', order: 6, isActive: true },
+    { id: 'stock-qrcode',       key: 'stock-qrcode',       label: 'QR Code พัสดุ',       icon: 'QrcodeOutlined',    path: '/stock/qrcode',          parentId: 'stock', order: 7, isActive: true },
   ]},
   { id: 'system', key: 'system', label: 'System', icon: 'SettingOutlined', parentId: null, order: 99, isActive: true, children: [
     { id: 'system-config', key: 'system-config', label: 'Config', path: '/system/config', parentId: 'system', order: 0, isActive: true },

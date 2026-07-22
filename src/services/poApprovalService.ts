@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { POListResponse, PODetailResponse } from '@/types/po'
+import type { POData } from '@/pages/po/PurchaseOrderPrint'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -14,7 +15,15 @@ export const poApprovalService = {
   
   getList: (
     token: string,
-    params: { status?: string; page?: number; limit?: number } = {},
+    params: {
+      status?: string
+      page?: number
+      limit?: number
+      my?: boolean
+      po_no?: string
+      supplier?: string
+      created_by_name?: string
+    } = {},
   ) =>
     axios.get<POListResponse>(`${BASE_URL}/po`, {
       headers: authHeader(token),
@@ -38,6 +47,11 @@ export const poApprovalService = {
 
   cancel: (token: string, id: number | string) =>
     axios.put(`${BASE_URL}/po/${id}/cancel`, {}, {
+      headers: authHeader(token),
+    }),
+
+  getPrintData: (token: string, id: number | string) =>
+    axios.get<{ data: POData }>(`${BASE_URL}/po/${id}/print-data`, {
       headers: authHeader(token),
     }),
 }

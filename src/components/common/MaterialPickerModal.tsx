@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Modal, Table, Input, Select, Button, Space, Tag, Row, Col, message } from 'antd'
+import { Modal, Table, Input, Select, Button, Space, Tag, Row, Col, Typography, message } from 'antd'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
-import type { Material } from '@/types'
+import { stockService } from '@/services/stock.service'
+import type { Material, StockLookupResult } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+
+const { Text } = Typography
 
 interface SelectOption {
   value: number
@@ -15,9 +18,10 @@ interface Props {
   open: boolean
   onClose: () => void
   onConfirm: (items: Material[]) => void
+  showStockLookup?: boolean
 }
 
-const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm }) => {
+const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   /* ── main table state ─────────────────────────────────────────── */
@@ -39,7 +43,27 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm }) => {
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([])
   const [selectedRows, setSelectedRows] = useState<Material[]>([])
 
+  /* ── stock lookup cache, keyed by mat_code — 'loading' while in flight ── */
+  const [stockLookups, setStockLookups] = useState<Record<string, StockLookupResult | 'loading'>>({})
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const ensureStockLookup = (matCode: string) => {
+    if (!showStockLookup) return
+    setStockLookups((prev) => {
+      if (prev[matCode]) return prev // already cached or in flight
+      const run = async () => {
+        try {
+          const result = await stockService.lookupByMatCode(accessToken ?? '', matCode)
+          setStockLookups((p) => ({ ...p, [matCode]: result }))
+        } catch {
+          setStockLookups((p) => ({ ...p, [matCode]: { matCode, qtyOnHand: 0, found: false } }))
+        }
+      }
+      run()
+      return { ...prev, [matCode]: 'loading' }
+    })
+  }
 
   /* reset + fetch subgroups when modal opens */
   useEffect(() => {
@@ -170,14 +194,32 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm }) => {
       title: 'ชื่อวัสดุ',
       dataIndex: 'mat_name_th',
       ellipsis: true,
-      render: (v: string, r: Material) => (
-        <div>
-          <div style={{ fontWeight: 500, fontSize: 13 }}>{v}</div>
-          {r.spec_description && (
-            <div style={{ fontSize: 11, color: '#6b7280' }}>{r.spec_description}</div>
-          )}
-        </div>
-      ),
+      render: (v: string, r: Material) => {
+        const lookup = stockLookups[r.mat_code]
+        return (
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>{v}</div>
+            {r.spec_description && (
+              <div style={{ fontSize: 11, color: '#6b7280' }}>{r.spec_description}</div>
+            )}
+            {showStockLookup && selectedKeys.includes(r.mat_code) && (
+              <div style={{ marginTop: 2 }}>
+                {lookup === 'loading' && (
+                  <Tag style={{ fontSize: 11 }}>กำลังตรวจสอบ Stock...</Tag>
+                )}
+                {lookup && lookup !== 'loading' && lookup.found && (
+                  <Tag color={lookup.qtyOnHand > 0 ? 'success' : 'warning'} style={{ fontSize: 11 }}>
+                    คงเหลือใน Stock: {lookup.qtyOnHand.toLocaleString('th-TH')} {lookup.unit ?? r.unit_name}
+                  </Tag>
+                )}
+                {lookup && lookup !== 'loading' && !lookup.found && (
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>ไม่มีในระบบ Stock</span>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      },
     },
     { title: 'ยี่ห้อ', dataIndex: 'brand_name', width: 120, ellipsis: true },
     { title: 'หน่วย', dataIndex: 'unit_name', width: 70, align: 'center' as const },
@@ -202,6 +244,7 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm }) => {
       const keptRows = selectedRows.filter((r) => !currentCodes.has(r.mat_code))
       setSelectedKeys([...keptKeys, ...keys])
       setSelectedRows([...keptRows, ...rows])
+      rows.forEach((r) => ensureStockLookup(r.mat_code))
     },
   }
 

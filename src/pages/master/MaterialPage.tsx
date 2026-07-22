@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Modal, Form, Input, Select, Space, Tag,
   Row, Col, Typography, Statistic, Divider, Upload, message,
@@ -6,7 +6,7 @@ import {
 import type { UploadProps } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
-  CloseOutlined, AppstoreOutlined, CheckCircleOutlined, TagsOutlined,
+  CloseOutlined, AppstoreOutlined, CheckCircleOutlined,
   UploadOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
   FileExcelOutlined,
 } from '@ant-design/icons'
@@ -221,17 +221,17 @@ type GroupRaw = { id: string; group_code: string; group_name: string }
 const parseRows = (rows: Record<string, string>[], groups: GroupRaw[]): ParsedRow[] =>
   rows.map((cols, i) => {
     const get = (f: string) => String(cols[f] ?? '').trim()
-    const groupCode      = get('groupCode')
-    const subGroupCode   = get('subGroupCode')
-    const subGroupName   = get('subGroupName')
-    const materialCode   = get('materialCode')
-    const materialName   = get('materialName')
-    const specCode       = get('specCode')
+    const groupCode       = get('groupCode')
+    const subGroupCode    = get('subGroupCode')
+    const subGroupName    = get('subGroupName')
+    const materialCode    = get('materialCode')
+    const materialName    = get('materialName')
+    const specCode        = get('specCode')
     const specDescription = get('specDescription')
-    const brandCode      = get('brandCode')
-    const brandName      = get('brandName')
-    const unitCode       = get('unitCode')
-    const unitName       = get('unitName')
+    const brandCode       = get('brandCode')
+    const brandName       = get('brandName')
+    const unitCode        = get('unitCode')
+    const unitName        = get('unitName')
 
     const grp = groups.find((g) => g.group_code === groupCode)
 
@@ -299,11 +299,24 @@ const MaterialPage: React.FC = () => {
 
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
+  const [duplicateCount, setDuplicateCount] = useState(0)
+
   // load groups once
   useEffect(() => {
     if (!accessToken) return
     axios.get(`${BASE_URL}/groups`, { headers: authHeader })
       .then((res) => setGroups(res.data?.data ?? []))
+      .catch(() => {})
+  }, [accessToken])
+
+  // load material stats once
+  useEffect(() => {
+    if (!accessToken) return
+    axios.get(`${BASE_URL}/master/materials/stats`, { headers: authHeader })
+      .then((res) => {
+        const stats = res.data?.data ?? res.data ?? {}
+        setDuplicateCount(stats.duplicates ?? 0)
+      })
       .catch(() => {})
   }, [accessToken])
 
@@ -315,7 +328,8 @@ const MaterialPage: React.FC = () => {
         params: { page, limit: 10 },
         headers: authHeader,
       })
-      const list = res.data?.data ?? []
+      const rawList = Array.isArray(res.data) ? res.data : res.data?.data
+      const list = Array.isArray(rawList) ? rawList : []
       setTotal(res.data?.total ?? 0)
       setData(list.map((m: any) => ({
         key:             m.mat_code,
@@ -349,6 +363,30 @@ const MaterialPage: React.FC = () => {
 
   const [uploadFileName, setUploadFileName] = useState<string>('')
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([])
+  const IMPORT_PAGE_SIZE = 10
+  const [importPage, setImportPage] = useState(1)
+  const [flashRowKey, setFlashRowKey] = useState<number | null>(null)
+  const importRowRefs = useRef<Record<number, HTMLElement | null>>({})
+
+  // ✅ แก้ไข: รอ render page ก่อนแล้วค่อย scroll
+  const jumpToFirstError = () => {
+    const firstErrorIndex = parsedRows.findIndex((r) => !r.valid)
+    if (firstErrorIndex === -1) return
+    const targetPage = Math.floor(firstErrorIndex / IMPORT_PAGE_SIZE) + 1
+    setImportPage(targetPage)
+    setTimeout(() => {
+      setFlashRowKey(firstErrorIndex)
+      const el = importRowRefs.current[firstErrorIndex]
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+  }
+
+  // ✅ แก้ไข: เอา scroll ออก เหลือแค่ clear flash
+  useEffect(() => {
+    if (flashRowKey === null) return
+    const timer = setTimeout(() => setFlashRowKey(null), 1300)
+    return () => clearTimeout(timer)
+  }, [flashRowKey])
 
   const filteredData = data.filter((d) => {
     if (filterGroup && d.groupId !== filterGroup) return false
@@ -462,7 +500,7 @@ const MaterialPage: React.FC = () => {
 
     setSubmitting(true)
     try {
-      await axios.post(`${BASE_URL}/master/materials`, 
+      await axios.post(`${BASE_URL}/master/materials`,
         pendingRows.map((r) => ({
           group_code:       r.groupId,
           subgroup_code:    r.subGroupCode,
@@ -480,7 +518,6 @@ const MaterialPage: React.FC = () => {
       )
       setPendingRows([newRow()])
       message.success(`บันทึก ${pendingRows.length} รายการเรียบร้อย`)
-      // reload table to reflect new data
       setPage(1)
     } catch {
       message.error('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
@@ -500,6 +537,8 @@ const MaterialPage: React.FC = () => {
         if (rows.length === 0) { message.error('ไม่พบข้อมูลในไฟล์ หรือไฟล์ไม่ถูกต้อง'); return }
         setParsedRows(rows)
         setUploadFileName(file.name)
+        setImportPage(1)
+        setFlashRowKey(null)
       })
       .catch((err: Error) => {
         if (err.name === MISSING_COLS_ERROR) {
@@ -549,9 +588,6 @@ const MaterialPage: React.FC = () => {
     }
   }
 
-  const activeCount = data.filter((d) => d.isActive).length
-  const groupCount = groups.length
-
   const panelStyle: React.CSSProperties = {
     background: '#fff', borderRadius: 14,
     boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0', overflow: 'hidden',
@@ -574,9 +610,9 @@ const MaterialPage: React.FC = () => {
         {/* stats */}
         <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
           {[
-            { label: 'รายการทั้งหมด', value: data.length, icon: <AppstoreOutlined />, color: '#3b82f6', bg: '#eff6ff' },
-            { label: 'ใช้งานอยู่', value: activeCount, icon: <CheckCircleOutlined />, color: '#10b981', bg: '#f0fdf4' },
-            { label: 'กลุ่มที่มีวัสดุ', value: groupCount, icon: <TagsOutlined />, color: '#8b5cf6', bg: '#f5f3ff' },
+            { label: 'รายการทั้งหมด', value: total, icon: <AppstoreOutlined />, color: '#3b82f6', bg: '#eff6ff' },
+            { label: 'ใช้งานอยู่', value: total, icon: <CheckCircleOutlined />, color: '#10b981', bg: '#f0fdf4' },
+            { label: 'Matcode ซ้ำ', value: duplicateCount, icon: <WarningOutlined />, color: '#ef4444', bg: '#fef2f2' },
           ].map((s) => (
             <Col xs={24} sm={8} key={s.label}>
               <div style={{ background: '#fff', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
@@ -626,7 +662,6 @@ const MaterialPage: React.FC = () => {
             </div>
             <Space>
               <Button icon={<PlusOutlined />} onClick={() => setPendingRows((p) => [...p, newRow()])}>เพิ่มแถว</Button>
-             
             </Space>
           </div>
 
@@ -654,6 +689,7 @@ const MaterialPage: React.FC = () => {
             </Row>
           </div>
         </div>
+
         {/* upload panel */}
         <div style={{ ...panelStyle, marginTop: 20 }}>
           <div style={panelHead}>
@@ -665,7 +701,6 @@ const MaterialPage: React.FC = () => {
           </div>
 
           <div style={{ padding: '20px 24px' }}>
-            {/* dragger — shrinks once data is loaded */}
             <Upload.Dragger
               name="file" accept=".csv,.xlsx,.xls" showUploadList={false}
               beforeUpload={handleUpload}
@@ -684,7 +719,6 @@ const MaterialPage: React.FC = () => {
               </div>
             </Upload.Dragger>
 
-            {/* inline preview — shown after file is parsed */}
             {parsedRows.length > 0 && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '16px 0 10px' }}>
@@ -695,20 +729,33 @@ const MaterialPage: React.FC = () => {
                       <CheckOutlined /> ถูกต้อง {parsedRows.filter((r) => r.valid).length} รายการ
                     </Tag>
                     {parsedRows.some((r) => !r.valid) && (
-                      <Tag color="error" style={{ fontSize: 11 }}>
+                      <Tag
+                        color="error"
+                        style={{ fontSize: 11, cursor: 'pointer' }}
+                        onClick={jumpToFirstError}
+                      >
                         <WarningOutlined /> มีข้อผิดพลาด {parsedRows.filter((r) => !r.valid).length} รายการ
                       </Tag>
                     )}
                   </Space>
-                 
                 </div>
 
                 <Table
                   size="small"
                   dataSource={parsedRows.map((r, i) => ({ ...r, key: i }))}
-                  pagination={parsedRows.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
+                  pagination={parsedRows.length > IMPORT_PAGE_SIZE ? {
+                    pageSize: IMPORT_PAGE_SIZE,
+                    showSizeChanger: false,
+                    current: importPage,
+                    onChange: (page) => setImportPage(page),
+                  } : false}
                   scroll={{ x: 800 }}
-                  rowClassName={(r: ParsedRow) => r.valid ? '' : 'import-row-error'}
+                  onRow={(r: ParsedRow & { key: number }) => ({
+                    ref: (el: HTMLElement | null) => { importRowRefs.current[r.key] = el },
+                  } as React.HTMLAttributes<HTMLElement>)}
+                  rowClassName={(r: ParsedRow & { key: number }) =>
+                    r.key === flashRowKey ? 'import-row-flash' : (r.valid ? '' : 'import-row-error')
+                  }
                   columns={[
                     {
                       title: '#', key: 'no', width: 48, align: 'center' as const,
@@ -770,7 +817,7 @@ const MaterialPage: React.FC = () => {
 
                 <Row justify="end" style={{ marginTop: 12 }}>
                   <Space>
-                    <Button onClick={() => { setParsedRows([]); setUploadFileName('') }}>ล้างข้อมูล</Button>
+                    <Button onClick={() => { setParsedRows([]); setUploadFileName(''); setImportPage(1); setFlashRowKey(null) }}>ล้างข้อมูล</Button>
                     <Button
                       type="primary" icon={<CheckOutlined />}
                       loading={importSubmitting}

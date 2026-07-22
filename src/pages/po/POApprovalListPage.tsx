@@ -27,6 +27,10 @@ const statusTag = (status: POStatus) => {
     PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
     APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
     REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
+    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
+    SENT: { color: 'blue', label: 'ส่งแล้ว' },
+    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
+    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
     CANCELLED: { color: 'warning', label: 'ยกเลิก' },
   }
   const s = map[status] ?? { color: 'default', label: status }

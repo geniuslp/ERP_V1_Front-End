@@ -11,6 +11,7 @@ import PageHeader from '@/components/common/PageHeader'
 import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
+import PermissionGate from '@/components/permission/PermissionGate'
 import type { Memo, MemoStatus } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -27,9 +28,9 @@ const mapMemo = (m: any): Memo => ({
   memoNo:       m.memo_no         ?? m.memoNo        ?? '',
   title:        m.title           ?? '',
   requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
+  approverName: m.approver_name     ?? m.approverName ?? undefined,
   projectName:  m.project_code    ?? m.project_name  ?? m.projectName   ?? undefined,
   supplierName: m.supplier_code   ?? m.supplier_name ?? m.supplierName  ?? undefined,
-  totalAmount:  m.total_amount    ?? m.totalAmount   ?? 0,
   status:       m.status          ?? 'DRAFT',
   createdAt:    m.created_at      ?? m.createdAt     ?? '',
   updatedAt:    m.updated_at      ?? m.updatedAt     ?? '',
@@ -60,7 +61,8 @@ const MemoListPage: React.FC = () => {
       const raw = Array.isArray(res.data)
         ? res.data
         : res.data?.data?.data ?? res.data?.data ?? []
-      setData(raw.map(mapMemo))
+      const list = Array.isArray(raw) ? raw : []
+      setData(list.map(mapMemo))
     } catch (err: any) {
       message.error(
         err?.response?.data?.message ||
@@ -133,11 +135,10 @@ const MemoListPage: React.FC = () => {
       key: 'requestedBy',
     },
     {
-      title: 'มูลค่ารวม',
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
-      align: 'right' as const,
-      render: (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      title: 'ผู้อนุมัติ',
+      dataIndex: 'approverName',
+      key: 'approverName',
+      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'สถานะ',
@@ -215,18 +216,20 @@ const MemoListPage: React.FC = () => {
         subtitle="รายการใบบันทึกความต้องการจัดซื้อ"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึก' }]}
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(ROUTES.MEMO.CREATE)}
-            style={{
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              border: 'none',
-              boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
-            }}
-          >
-            สร้างใบบันทึก
-          </Button>
+          <PermissionGate menuCode="MENU_MEMO_CREATE" action="write" mode="hide">
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => navigate(ROUTES.MEMO.CREATE)}
+              style={{
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                border: 'none',
+                boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
+              }}
+            >
+              สร้างใบบันทึก
+            </Button>
+          </PermissionGate>
         }
       />
 

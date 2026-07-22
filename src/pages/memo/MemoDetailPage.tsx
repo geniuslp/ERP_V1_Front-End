@@ -4,7 +4,7 @@ import {
   Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input,
 } from 'antd'
 import {
-  ArrowLeftOutlined, PrinterOutlined, EditOutlined, FileAddOutlined, StopOutlined,
+  ArrowLeftOutlined, PrinterOutlined, EditOutlined, StopOutlined,
   CheckOutlined, CloseOutlined,
 } from '@ant-design/icons'
 import axios from 'axios'
@@ -36,8 +36,6 @@ interface MemoLineItem {
   description: string
   unit: string
   quantity: number
-  estimatedPrice: number
-  lineAmount: number
   remark?: string
 }
 
@@ -48,28 +46,23 @@ interface MemoDetail {
   status: string
   requestedBy: string
   requestedById: number
+  approverName?: string
   department?: string
   projectName?: string
   note?: string
-  totalAmount: number
   createdAt: string
   lines: MemoLineItem[]
 }
 
 const mapMemo = (raw: any): MemoDetail => {
   const lines = (raw.lines ?? raw.items ?? []).map((l: any) => ({
-    id:             l.id,
-    lineNo:         l.line_no         ?? 0,
-    description:    l.description     ?? '',
-    unit:           l.unit            ?? '',
-    quantity:       l.quantity        ?? 0,
-    estimatedPrice: l.estimated_price ?? 0,
-    lineAmount:     l.line_amount     ?? (l.quantity ?? 0) * (l.estimated_price ?? 0),
-    remark:         l.remark,
+    id:          l.id,
+    lineNo:      l.line_no     ?? 0,
+    description: l.description ?? '',
+    unit:        l.unit        ?? '',
+    quantity:    l.quantity    ?? 0,
+    remark:      l.remark,
   }))
-
-  const totalAmount = raw.total_amount
-    ?? lines.reduce((sum: number, l: any) => sum + (l.lineAmount ?? 0), 0)
 
   return {
     id:            String(raw.id),
@@ -78,10 +71,10 @@ const mapMemo = (raw: any): MemoDetail => {
     status:        raw.status         ?? 'DRAFT',
     requestedBy:   raw.requested_by_name ?? '',
     requestedById: raw.requested_by   ?? 0,
+    approverName:  raw.approver_name ?? raw.approverName,
     department:    raw.department,
     projectName:   raw.project_code,
     note:          raw.note,
-    totalAmount,
     createdAt:     raw.created_at     ?? '',
     lines,
   }
@@ -101,6 +94,10 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const [approving, setApproving] = useState(false)
   const [rejectModal, setRejectModal] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [canApprove, setCanApprove] = useState(false)
+  const [approvalStatusLoading, setApprovalStatusLoading] = useState(false)
+  const [cancelModal, setCancelModal] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
 
   const fetchMemo = async () => {
     setLoading(true)
@@ -119,7 +116,30 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     }
   }
 
-  useEffect(() => { fetchMemo() }, [id])
+  const fetchApprovalStatus = async () => {
+    if (!showApproveActions || !id) return
+    setApprovalStatusLoading(true)
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/approval-request/MEMO/${id}/my-status`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+      const data = res.data?.data ?? res.data
+      setCanApprove(Boolean(data?.is_assigned_approver))
+    } catch {
+      setCanApprove(false)
+    } finally {
+      setApprovalStatusLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchMemo()
+  }, [id])
+
+  useEffect(() => {
+    fetchApprovalStatus()
+  }, [id, showApproveActions])
 
   const handleCancel = () => {
     if (!memo) return
@@ -162,41 +182,49 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     }
   }
 
+  const handleCancelApproval = async () => {
+    setApproving(true)
+    try {
+      await axios.patch(
+        `${BASE_URL}/memo/${id}/cancel`,
+        { comments: cancelReason || 'Cancelled by approver' },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+      message.success('ยกเลิกใบบันทึกสำเร็จ')
+      setCancelModal(false)
+      setCancelReason('')
+      fetchMemo()
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'ยกเลิกไม่สำเร็จ')
+    } finally {
+      setApproving(false)
+    }
+  }
+
   const isOwner   = memo && user && String(memo.requestedById) === String(user.id)
   const canEdit   = memo && (memo.status === 'DRAFT' || memo.status === 'draft') && isOwner
-  const canCreatePO = memo && (memo.status === 'APPROVED' || memo.status === 'pending_po')
 
   const columns = [
-    { title: '#', key: 'no', render: (_: any, __: any, idx: number) => idx + 1, width: 50 },
+    { title: '#', key: 'no', align: 'center' as const, render: (_: any, __: any, idx: number) => idx + 1, width: 50 },
     {
       title: 'รายการ',
       dataIndex: 'description',
       key: 'description',
-      render: (desc: string, record: MemoLineItem) => (
-        <div>
-          <div>{desc}</div>
-          {record.remark && <div style={{ fontSize: 12, color: '#9ca3af' }}>{record.remark}</div>}
+      align: 'center' as const,
+      render: (desc: string) => <div style={{ textAlign: 'left' }}>{desc}</div>,
+    },
+    { title: 'จำนวน', dataIndex: 'quantity', key: 'quantity', align: 'right' as const, width: 90 },
+    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', align: 'center' as const, width: 80 },
+    {
+      title: 'หมายเหตุ',
+      dataIndex: 'remark',
+      key: 'remark',
+      align: 'center' as const,
+      render: (remark?: string) => (
+        <div style={{ textAlign: 'left' }}>
+          {remark || <span style={{ color: '#9ca3af' }}>—</span>}
         </div>
       ),
-    },
-    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80 },
-    { title: 'จำนวน', dataIndex: 'quantity', key: 'quantity', align: 'right' as const, width: 90 },
-    {
-      title: 'ราคา/หน่วย',
-      dataIndex: 'estimatedPrice',
-      key: 'estimatedPrice',
-      align: 'right' as const,
-      width: 110,
-      render: (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-    },
-    {
-      title: 'รวม',
-      dataIndex: 'lineAmount',
-      key: 'lineAmount',
-      align: 'right' as const,
-      width: 120,
-      render: (val: number, record: MemoLineItem) =>
-        (val ?? record.quantity * record.estimatedPrice ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
     },
   ]
 
@@ -230,20 +258,6 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
                 แก้ไข
               </Button>
             )}
-            {canCreatePO && (
-              <Button
-                type="primary"
-                icon={<FileAddOutlined />}
-                onClick={() => navigate(ROUTES.PO.CREATE, { state: { fromMemoId: memo!.id, memo } })}
-                style={{
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                  border: 'none',
-                  boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
-                }}
-              >
-                สร้างใบ PO จาก Memo นี้
-              </Button>
-            )}
           </Space>
         }
       />
@@ -273,17 +287,13 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             {memo?.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
           </Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{memo?.requestedBy || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ผู้อนุมัติ">{memo?.approverName || '—'}</Descriptions.Item>
           <Descriptions.Item label="หน่วยงาน">{memo?.department || '—'}</Descriptions.Item>
           <Descriptions.Item label="โครงการ">{memo?.projectName || '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {memo && <MemoStatusBadge status={memo.status} />}
           </Descriptions.Item>
         </Descriptions>
-        {memo?.note && (
-          <div style={{ background: '#f0f5ff', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13 }}>
-            {memo.note}
-          </div>
-        )}
       </Card>
 
       <Card title={<span style={cardTitleStyle}>รายการวัสดุ/บริการ</span>} style={{ ...cardStyle, marginBottom: 16 }} loading={loading}>
@@ -293,21 +303,25 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           dataSource={memo?.lines ?? []}
           pagination={false}
           scroll={{ x: 700 }}
-          summary={() => (
-            <Table.Summary fixed>
-              <Table.Summary.Row>
-                <Table.Summary.Cell index={0} colSpan={5} align="right">
-                  <strong style={{ color: '#64748b', fontSize: 12 }}>มูลค่ารวม</strong>
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={1} align="right">
-                  <strong style={{ color: '#1e40af' }}>
-                    {(memo?.totalAmount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                  </strong>
-                </Table.Summary.Cell>
-              </Table.Summary.Row>
-            </Table.Summary>
-          )}
         />
+
+        {memo?.note && (
+          <div style={{
+            background: '#f0f5ff',
+            borderRadius: 8,
+            padding: 12,
+            marginTop: 16,
+            fontSize: 13,
+            color: '#374151',
+            lineHeight: 1.6,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>
+              หมายเหตุ
+            </div>
+            {memo.note}
+          </div>
+        )}
+
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
           <Space>
             {(memo?.status === 'DRAFT' || memo?.status === 'draft' || memo?.status === 'pending_po') && isOwner && (
@@ -315,22 +329,16 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
                 ยกเลิกใบบันทึก
               </Button>
             )}
-            {canCreatePO && (
-              <Button
-                type="primary"
-                icon={<FileAddOutlined />}
-                onClick={() => navigate(ROUTES.PO.CREATE, { state: { fromMemoId: memo!.id, memo } })}
-                style={{
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                  border: 'none',
-                  boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
-                }}
-              >
-                สร้างใบ PO จาก Memo นี้
-              </Button>
-            )}
-            {memo?.status === 'PENDING_APPROVAL' && showApproveActions && (
+            {memo?.status === 'PENDING_APPROVAL' && showApproveActions && canApprove && (
               <>
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  loading={approving}
+                  onClick={() => setCancelModal(true)}
+                >
+                  Cancel
+                </Button>
                 <Button
                   danger
                   icon={<CloseOutlined />}
@@ -349,6 +357,11 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
                   Approve
                 </Button>
               </>
+            )}
+            {memo?.status === 'PENDING_APPROVAL' && showApproveActions && !canApprove && !approvalStatusLoading && (
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                คุณไม่มีสิทธิ์อนุมัติเอกสารนี้
+              </span>
             )}
           </Space>
         </div>
@@ -377,6 +390,33 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           />
         </Modal>
       )}
+
+      {showApproveActions && (
+        <Modal
+          title="Cancel Memo"
+          open={cancelModal}
+          onOk={handleCancelApproval}
+          onCancel={() => { setCancelModal(false); setCancelReason('') }}
+          okText="Confirm Cancel"
+          cancelText="Close"
+          okButtonProps={{ danger: true, loading: approving }}
+        >
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#374151' }}>
+            Reason (optional)
+          </div>
+          <Input.TextArea
+            rows={4}
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="Enter reason for cancelling..."
+            maxLength={500}
+            showCount
+          />
+        </Modal>
+      )}
+
+
+
     </div>
   )
 }

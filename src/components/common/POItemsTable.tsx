@@ -1,12 +1,16 @@
-import React, { useState } from 'react'
-import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select } from 'antd'
+import React, { useEffect, useState } from 'react'
+import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin } from 'antd'
 import {
   SearchOutlined, DeleteOutlined, LinkOutlined, FileTextOutlined,
   CalculatorOutlined, LeftOutlined, RightOutlined,
 } from '@ant-design/icons'
+import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
+import { useAppSelector } from '@/store'
+
+const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
 function calcDisc(lineAmt: number, disc: number, discType: 'pct' | 'amt'): number {
   const d = discType === 'pct' ? lineAmt * (disc / 100) : disc
@@ -33,6 +37,40 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
+  const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const [stockMap, setStockMap] = useState<Record<string, number>>({})
+  const [stockLoading, setStockLoading] = useState(false)
+
+  useEffect(() => {
+    const codes = Array.from(new Set(items.map((i) => i.mat_code).filter(Boolean)))
+    if (codes.length === 0) {
+      setStockMap({})
+      return
+    }
+    const fetchStock = async () => {
+      setStockLoading(true)
+      try {
+        const res = await axios.post(
+          `${BASE_URL}/stock/inventory/batch-lookup`,
+          { codes },
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        )
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        const map: Record<string, number> = {}
+        list.forEach((r: any) => {
+          map[r.mat_code] = r.qty ?? 0
+        })
+        setStockMap(map)
+      } catch {
+        setStockMap({})
+      } finally {
+        setStockLoading(false)
+      }
+    }
+    fetchStock()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.map((i) => i.mat_code).join(',')])
 
   const toggleExpand = (key: string) => {
     setExpandedKeys((prev) =>
@@ -64,6 +102,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       qty: 1,
       unit_price: 0,
       is_from_pr: false,
+      disc_type: discType, // default จาก global setting
     }))
     onChange(renumber([...items, ...newRows]))
   }
@@ -72,21 +111,38 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
 
   if (useDisc) {
     taxColumns.push({
-      title: `ส่วนลด (${discType === 'pct' ? '%' : '฿'})`,
+      title: 'ส่วนลด',
       key: 'disc',
-      width: 90,
-      align: 'right' as const,
+      width: 140,
+      align: 'center' as const,
       onHeaderCell: () => ({ style: { background: '#f0fdf4', color: '#166534' } }),
       onCell: () => ({ style: { background: '#f0fdf4' } }),
-      render: (_: unknown, r: POLineItem) => (
-        <InputNumber
-          size="small"
-          min={0}
-          value={r.disc ?? 0}
-          style={{ width: '100%' }}
-          onChange={(v) => updateItem(r.key, 'disc', v ?? 0)}
-        />
-      ),
+      render: (_: unknown, r: POLineItem) => {
+        // ใช้ disc_type ของ row นั้นๆ ถ้าไม่มีใช้ global discType
+        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+        return (
+          <Space.Compact style={{ width: '100%' }}>
+            <InputNumber
+              size="small"
+              min={0}
+              max={rowDiscType === 'pct' ? 100 : undefined}
+              value={r.disc ?? 0}
+              style={{ width: '60%' }}
+              onChange={(v) => updateItem(r.key, 'disc', v ?? 0)}
+            />
+            <Select
+              size="small"
+              value={rowDiscType}
+              style={{ width: '40%' }}
+              options={[
+                { label: '%', value: 'pct' },
+                { label: '฿', value: 'amt' },
+              ]}
+              onChange={(v) => updateItem(r.key, 'disc_type' as any, v)}
+            />
+          </Space.Compact>
+        )
+      },
     })
   }
 
@@ -98,8 +154,9 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       align: 'right' as const,
       onHeaderCell: () => ({ style: { background: '#fefce8', color: '#854d0e' } }),
       render: (_: unknown, r: POLineItem) => {
+        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
-        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, discType) : 0
+        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const vat = (lineAmt - discAmt) * 0.07
         return (
           <span style={{ color: '#ca8a04', fontSize: 12 }}>
@@ -139,8 +196,9 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       align: 'right' as const,
       onHeaderCell: () => ({ style: { background: '#fef2f2', color: '#991b1b' } }),
       render: (_: unknown, r: POLineItem) => {
+        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
-        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, discType) : 0
+        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const rate = (r.wht_rate ?? 3) / 100
         const wht = (lineAmt - discAmt) * rate
         return (
@@ -159,8 +217,9 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       width: 96,
       align: 'right' as const,
       render: (_: unknown, r: POLineItem) => {
+        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
-        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, discType) : 0
+        const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const afterDisc = lineAmt - discAmt
         const vat = useVat ? afterDisc * 0.07 : 0
         const wht = useWht ? afterDisc * ((r.wht_rate ?? 3) / 100) : 0
@@ -189,6 +248,23 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       render: (v: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{v}</span>
       ),
+    },
+    {
+      title: 'คงเหลือ',
+      key: 'stock_qty',
+      width: 90,
+      align: 'right' as const,
+      render: (_: any, record: any) => {
+        if (!record.mat_code) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+        const qty = stockMap[record.mat_code]
+        if (qty === undefined) {
+          return stockLoading
+            ? <Spin size="small" />
+            : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
+        }
+        const color = qty <= 0 ? '#dc2626' : qty < record.qty ? '#d97706' : '#16a34a'
+        return <span style={{ color, fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
+      },
     },
     {
       title: 'รายการ',
@@ -305,7 +381,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     </div>
   )
 
-  const baseColCount = columns.length - taxColumns.length - 1 // excludes action column
+  const baseColCount = columns.length - taxColumns.length - 1
 
   return (
     <div>
@@ -337,9 +413,10 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
 
           items.forEach((r) => {
+            const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
             const lineAmt = r.qty * r.unit_price
             subtotal += lineAmt
-            const d = useDisc ? calcDisc(lineAmt, r.disc ?? 0, discType) : 0
+            const d = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
             const af = lineAmt - d
             totalDisc += d
             totalVat += useVat ? af * 0.07 : 0
@@ -425,6 +502,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
+        showStockLookup
       />
     </div>
   )

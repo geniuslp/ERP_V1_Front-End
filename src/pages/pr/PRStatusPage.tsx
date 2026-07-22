@@ -5,17 +5,18 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
+import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
+
+// Edit uses the create page's own menu code (same convention as
+// POStatusPage.tsx gating its edit button with MENU_PO_CREATE).
+const MENU_CODE = 'MENU_PR_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-const LOCKED_STATUSES = ['APPROVED', 'FULFILLED', 'CANCELLED']
-
 const statusConfig: Record<string, { color: string; label: string }> = {
   DRAFT:            { color: 'default', label: 'ร่าง' },
-  PENDING_APPROVAL: { color: 'orange',  label: 'รออนุมัติ' },
-  APPROVED:         { color: 'green',   label: 'อนุมัติแล้ว' },
-  REJECTED:         { color: 'red',     label: 'ปฏิเสธ' },
+  COMPLETED:        { color: 'green',   label: 'เสร็จสมบูรณ์' },
   STOCK_CHECK:      { color: 'blue',    label: 'ตรวจสต็อก' },
   PARTIALLY_FILLED: { color: 'gold',    label: 'สั่งซื้อบางส่วน' },
   FULFILLED:        { color: 'green',   label: 'เสร็จสิ้น' },
@@ -86,7 +87,7 @@ const PRStatusPage: React.FC = () => {
       render: (v: string, record: PRItem) => (
         <a
           style={{ color: '#2563eb', fontWeight: 600 }}
-          onClick={() => navigate(`/purchase-request/${record.id}/view`)}
+          onClick={() => navigate(`/pr/${record.id}`)}
         >
           {v}
         </a>
@@ -140,15 +141,19 @@ const PRStatusPage: React.FC = () => {
             type="link"
             size="small"
             icon={<EyeOutlined />}
-            onClick={() => navigate(`/purchase-request/${record.id}/view`)}
+            onClick={() => navigate(`/pr/${record.id}`)}
           />
-          {!LOCKED_STATUSES.includes(record.status) && (
-            <Button
+          {record.status === 'DRAFT' && (
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
               type="link"
               size="small"
               icon={<EditOutlined />}
-              onClick={() => navigate(`/purchase-request/${record.id}/edit`)}
-            />
+              onClick={() => navigate(`/pr/${record.id}/edit`)}
+            >
+              แก้ไข
+            </PermissionButton>
           )}
         </Space>
       ),
@@ -188,9 +193,7 @@ const PRStatusPage: React.FC = () => {
               disabled
               options={[
                 { value: 'DRAFT',            label: 'ร่าง' },
-                { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
-                { value: 'APPROVED',         label: 'อนุมัติแล้ว' },
-                { value: 'REJECTED',         label: 'ปฏิเสธ' },
+                { value: 'COMPLETED',        label: 'เสร็จสมบูรณ์' },
                 { value: 'STOCK_CHECK',      label: 'ตรวจสต็อก' },
                 { value: 'PARTIALLY_FILLED', label: 'สั่งซื้อบางส่วน' },
                 { value: 'FULFILLED',        label: 'เสร็จสิ้น' },

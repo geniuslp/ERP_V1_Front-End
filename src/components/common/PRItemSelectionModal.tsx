@@ -3,6 +3,7 @@ import { Modal, Table, Checkbox, Tag, Tooltip, Button, Space, Popover, message }
 import { DownOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
+import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '@/store'
 import type { PRLineWithPOStatus, PRPriceHistoryEntry } from '@/types/pr'
 
@@ -39,8 +40,12 @@ const formatShortDate = (d?: string | null) => (d ? dayjs(d).format('DD MMM YYYY
 
 const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s)
 
+const formatPoNos = (referencedPos: PRLineWithPOStatus['referenced_pos']) =>
+  referencedPos?.map((p) => p.po_no).join(', ') || '-'
+
 const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, onClose, onConfirm }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const navigate = useNavigate()
 
   const [loading, setLoading] = useState(false)
   const [prNo, setPrNo] = useState('')
@@ -59,6 +64,7 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       return
     }
 
+    let cancelled = false
     const fetchLines = async () => {
       setLoading(true)
       try {
@@ -66,6 +72,7 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         const data = res.data?.data ?? res.data
+        if (cancelled) return
         setPrNo(data?.pr_no ?? '')
         const rawLines = Array.isArray(data?.lines) ? data.lines : []
         // API keys each line as `pr_line_id`; ensure a stable unique `id`
@@ -84,12 +91,13 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
         message.error(errMsg)
         setLines([])
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     setSelectedIds(new Set())
     fetchLines()
+    return () => { cancelled = true }
   }, [open, prId, accessToken])
 
   const toggleSelect = (id: number, checked: boolean) => {
@@ -193,7 +201,7 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
         if (!disabled) return checkbox
         const tooltipMsg = alreadyInPo
           ? 'รายการนี้ถูกเลือกไว้ใน PO นี้แล้ว'
-          : `This item has already been fully ordered by ${r.referenced_pos?.join(', ') || '-'}`
+          : `This item has already been fully ordered by ${formatPoNos(r.referenced_pos)}`
         return (
           <Tooltip title={tooltipMsg}>
             <span style={{ cursor: 'not-allowed' }}>{checkbox}</span>
@@ -314,10 +322,26 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       width: 220,
       render: (_: unknown, r: PRLineWithPOStatus) => {
         const state = getRowState(r)
-        const pos = r.referenced_pos?.join(', ') || '-'
+        const pos = r.referenced_pos ?? []
+        const posText = formatPoNos(pos)
         return (
           <Space direction="vertical" size={2}>
-            <span style={{ fontSize: 13 }}>{pos}</span>
+            {pos.length > 0 ? (
+              <Space size={[4, 4]} wrap>
+                {pos.map((p) => (
+                  <Tag
+                    key={p.po_id}
+                    color="blue"
+                    style={{ margin: 0, cursor: 'pointer' }}
+                    onClick={() => navigate(`/po/approval/${p.po_id}`)}
+                  >
+                    {p.po_no}
+                  </Tag>
+                ))}
+              </Space>
+            ) : (
+              <span style={{ fontSize: 13 }}>-</span>
+            )}
             {state === 'taken' && (
               <Tag color="red" style={{ margin: 0 }}>Taken</Tag>
             )}
@@ -325,7 +349,7 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
               <>
                 <Tag color="orange" style={{ margin: 0 }}>Partial</Tag>
                 <span style={{ fontSize: 11, color: '#b45309' }}>
-                  Note: {r.qty_ordered} units already ordered by {pos}
+                  Note: {r.qty_ordered} units already ordered by {posText}
                 </span>
               </>
             )}

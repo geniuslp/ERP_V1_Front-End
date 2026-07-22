@@ -2,24 +2,32 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert,
 } from 'antd'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { Memo } from '@/types'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, CloseCircleFilled, FileOutlined,
-  PrinterOutlined, ArrowLeftOutlined, EditOutlined, CloseOutlined, StopOutlined,
+  PrinterOutlined, ArrowLeftOutlined, PaperClipOutlined,
 } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
+import PermissionButton from '@/components/common/PermissionButton'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import { useAppSelector } from '@/store'
-import PurchaseOrderPrint from './PurchaseOrderPrint'
+import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
+import { poApprovalService } from '@/services/poApprovalService'
 import POItemsTable from '@/components/common/POItemsTable'
 import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
 
+const MENU_CODE = 'MENU_PO_CREATE'
+
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+// Uploaded files are served as static assets off the API server root, not under
+// /api/v1 — strip the versioned API suffix to get the file host (same convention
+// PRDetailPage.tsx uses for its attachment download links).
+const FILE_BASE_URL = BASE_URL.replace(/\/api\/v1\/?$/, '')
 
 interface AttachedFile {
   uid: string
@@ -28,32 +36,78 @@ interface AttachedFile {
   file: File
 }
 
+interface SavedAttachment {
+  id: string | number
+  fileName: string
+  filePath: string
+  fileSize: number
+}
+
 interface SupplierOption {
   supplier_code: string
   supplier_name: string
 }
 
+const LOCKED_STATUSES = [
+  'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'PENDING_REAPPROVAL',
+  'SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED',
+]
+
 const POCreatePage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const location = useLocation()
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const isEdit = Boolean(id)
   const fromMemo: Memo | undefined = (location.state as any)?.memo
+  // Set only when arriving from EditApprovedButton's reason modal (detail page
+  // or My POs list) — an APPROVED PO is otherwise locked (see LOCKED_STATUSES).
+  // A direct nav to /po/:id/edit for an APPROVED PO with no reason stays locked.
+  const editApprovedReason: string | undefined = (location.state as any)?.editApprovedReason
   const [form] = Form.useForm()
+  const [poLoading, setPoLoading] = useState(false)
+  const [poStatus, setPoStatus] = useState('')
+  const [canEdit, setCanEdit] = useState(true)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Distinguishes a genuine user-initiated PR switch (handlePrChange) from
+  // selectedPrId being set programmatically by the edit-mode load effect
+  // (because the PO already has a pr_id). Both set selectedPrId and both
+  // trigger fetchPrDetail below, but only the former should be allowed to
+  // override requestedBy/warehouse_code/project_code/deliveryLocation —
+  // otherwise opening an existing PO for edit clobbers its own saved values
+  // with its linked PR's current data.
+  const isUserPrSwitch = useRef(false)
 
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
+  const [supplierDetailLoading, setSupplierDetailLoading] = useState(false)
   const [users, setUsers] = useState<{ value: number; label: string; dept?: string }[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
-  const [locations, setLocations] = useState<{ value: string; label: string }[]>([])
-  const [locationsLoading, setLocationsLoading] = useState(false)
   const [prOptions, setPrOptions] = useState<PRListItem[]>([])
   const [prOptionsLoading, setPrOptionsLoading] = useState(false)
+  const [prFromEditMode, setPrFromEditMode] = useState<PRListItem | null>(null)
+  const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
+  const [warehousesLoading, setWarehousesLoading] = useState(false)
+  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
   const [items, setItems] = useState<POLineItem[]>([])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
+  const [prDetailLoading, setPrDetailLoading] = useState(false)
+  // Fields use `null` (never `undefined`) to mean "no value" — Ant Design's
+  // form.setFieldsValue silently ignores `undefined` keys (treats them as
+  // "leave unchanged"), so an undefined here would leave the previous PR's
+  // stale value on screen instead of clearing it. Only `null` actually clears.
+  const [prAutoFill, setPrAutoFill] = useState<{
+    requestedBy: number | null
+    warehouseCode: string | null
+    projectCode: string | null
+    approverId: number | null
+  } | null>(null)
+  const [savedAttachments, setSavedAttachments] = useState<SavedAttachment[]>([])
   const [prModalOpen, setPrModalOpen] = useState(false)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -63,6 +117,13 @@ const POCreatePage: React.FC = () => {
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
   const [useVat, setUseVat] = useState(false)
   const [useWht, setUseWht] = useState(false)
+
+  const [savedPoId, setSavedPoId] = useState<number | string | null>(id ?? null)
+  const [printData, setPrintData] = useState<POData | null>(null)
+  const [printing, setPrinting] = useState(false)
+  // Read-only preview of the next PO number (not reserved) — create mode only.
+  // Empty string means "no hint" (either not fetched yet, or the fetch failed).
+  const [nextPoNumber, setNextPoNumber] = useState('')
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -111,18 +172,31 @@ const POCreatePage: React.FC = () => {
     const fetchApprovers = async () => {
       setApproversLoading(true)
       try {
-        const res = await axios.get(`${BASE_URL}/users/allUser`, {
+        // Role-eligible + extra approvers for PO — same endpoint/pattern as
+        // MemoCreateEditPage.tsx's fetchApprovers, just doc_type: 'PO'.
+        const res = await axios.get(`${BASE_URL}/master/eligible-approvers`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          params: { role: 'approver' },
+          params: { doc_type: 'PO' },
         })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        const raw = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        // Endpoint is expected to already return { value, label, dept } — pass
+        // through as-is, with a fallback in case a raw user shape slips through
+        // (e.g. { id, full_name, department }) until the real response is confirmed.
+        // Always coerce to Number — form.setFieldsValue sets `approver` as a
+        // Number (Number(raw.approver_id)), and AntD Select matches option
+        // `value` against the form value with ===, so a string `u.value` from
+        // the API would make the Select render empty even though the
+        // underlying form value is technically set.
         setApprovers(list.map((u: any) => ({
-          value: Number(u.id),
-          label: u.full_name ?? u.fullName ?? u.username,
-          dept: u.department,
+          value: Number(u.value ?? u.id),
+          label: u.label ?? u.full_name ?? u.fullName ?? u.username,
+          dept: u.dept ?? u.department,
         })))
-      } catch {
-        message.error('โหลดรายชื่อผู้อนุมัติไม่สำเร็จ')
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดรายชื่อผู้อนุมัติไม่สำเร็จ')
       } finally {
         setApproversLoading(false)
       }
@@ -131,38 +205,38 @@ const POCreatePage: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    const fetchLocations = async () => {
-      setLocationsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/locations`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        setLocations(list.map((l: any) => ({
-          value: l.location_code,
-          label: l.location_name ?? l.name,
-        })))
-      } catch (err: any) {
-        message.error(
-          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดสถานที่ไม่สำเร็จ'
-        )
-      } finally {
-        setLocationsLoading(false)
-      }
-    }
-    fetchLocations()
-  }, [])
-
-  useEffect(() => {
     const fetchPRs = async () => {
       setPrOptionsLoading(true)
       try {
         const res = await axios.get(`${BASE_URL}/pr`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          params: { page: 1, limit: 1000, status: 'APPROVED' },
+          params: { page: 1, limit: 1000, status: 'COMPLETED' },
         })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data?.items ?? []
-        setPrOptions(list)
+        const list: PRListItem[] = Array.isArray(res.data) ? res.data : res.data?.data?.items ?? []
+
+        // A PR is fully referenced (and must be excluded) only when EVERY line's
+        // qty_remaining is used up — computed live from lines-with-po-status,
+        // the same join the PR-item picker itself uses, not any cached PR status.
+        const withRemaining = await Promise.all(
+          list.map(async (pr) => {
+            try {
+              const linesRes = await axios.get(`${BASE_URL}/pr/${pr.id}/lines-with-po-status`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              })
+              const data = linesRes.data?.data ?? linesRes.data
+              const lines: PRLineWithPOStatus[] = Array.isArray(data?.lines) ? data.lines : []
+              // An empty/unreadable lines array means "nothing with remaining qty" —
+              // that must exclude the PR, not fail open. Only a failed *request*
+              // (network/auth error, caught below) should fail open.
+              const hasRemaining = lines.some((l) => l.qty_remaining > 0)
+              return hasRemaining ? pr : null
+            } catch {
+              // If we can't confirm remaining qty, don't silently hide the PR.
+              return pr
+            }
+          }),
+        )
+        setPrOptions(withRemaining.filter((pr): pr is PRListItem => pr !== null))
       } catch (err: any) {
         message.error(
           err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรายการ PR ไม่สำเร็จ'
@@ -173,6 +247,317 @@ const POCreatePage: React.FC = () => {
     }
     fetchPRs()
   }, [])
+
+  useEffect(() => {
+    const fetchWarehouses = async () => {
+      setWarehousesLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setWarehouses(list.map((w: any) => ({
+          value: w.warehouse_code ?? w.code,
+          label: w.warehouse_name ?? w.name ?? w.warehouse_code ?? w.code,
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลคลังสินค้าไม่สำเร็จ')
+      } finally {
+        setWarehousesLoading(false)
+      }
+    }
+    fetchWarehouses()
+  }, [])
+
+  // Read-only preview of the next PO number — create mode only. An existing
+  // PO already has its real saved po_no (populated from GET /po/:id below),
+  // so this preview would be irrelevant/misleading there.
+  useEffect(() => {
+    if (isEdit) return
+    const fetchNextNumber = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/po/next-number`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        setNextPoNumber(res.data.data.next_number)
+      } catch (err: any) {
+        // Non-fatal — hide the hint rather than show an error or fall back to
+        // stale mock text; the field itself isn't required to show a number.
+        setNextPoNumber('')
+      }
+    }
+    fetchNextNumber()
+  }, [isEdit])
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      setProjectsLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/projects`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setProjects(list.map((p: any) => ({
+          value: p.project_code,
+          label: p.project_code
+            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
+            : (p.project_name ?? p.name ?? String(p.id)),
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดรหัสงานไม่สำเร็จ')
+      } finally {
+        setProjectsLoading(false)
+      }
+    }
+    fetchProjects()
+  }, [])
+
+  // Edit mode: load the existing PO and populate the form/items with it.
+  useEffect(() => {
+    if (!isEdit || !id) return
+    const fetchPo = async () => {
+      setPoLoading(true)
+      try {
+        const res = await poApprovalService.getDetail(accessToken ?? '', id)
+        const raw: any = res.data?.data ?? res.data
+
+        // TEMP DIAGNOSTIC — remove after Issue 1 / Issue 2 investigation
+        console.log('[POCreatePage] GET /po/:id raw response:', raw)
+        console.log('[POCreatePage] raw.approver_id:', raw.approver_id, 'typeof:', typeof raw.approver_id)
+        console.log('[POCreatePage] approvers options at this moment:', approvers.length, approvers)
+        console.log('[POCreatePage] raw contact fields:', {
+          office_phone: raw.office_phone,
+          fax: raw.fax,
+          sales_person: raw.sales_person,
+          contact_email: raw.contact_email,
+          contact_phone: raw.contact_phone,
+        })
+
+        const status = raw.status ?? ''
+        const statusUpper = status.toUpperCase()
+        // APPROVED is normally locked (LOCKED_STATUSES) — the one exception is
+        // arriving here via EditApprovedButton's mandatory-reason modal, which
+        // is the only path that can set editApprovedReason.
+        const isApprovedEditFlow = statusUpper === 'APPROVED' && Boolean(editApprovedReason)
+        setPoStatus(status)
+        setCanEdit(!LOCKED_STATUSES.includes(statusUpper) || isApprovedEditFlow)
+        setSavedPoId(raw.id ?? id)
+
+        form.setFieldsValue({
+          poNumber: raw.po_no,
+          supplier_code: raw.supplier_code,
+          vendorCode: raw.supplier_code,
+          requestedBy: raw.requested_by != null ? Number(raw.requested_by) : (raw.requester_id != null ? Number(raw.requester_id) : undefined),
+          deliveryLocation: raw.location_text ?? raw.delivery_address ?? undefined,
+          warehouse_code: raw.warehouse_code ?? undefined,
+          project_code: raw.project_code ?? undefined,
+          approver: raw.approver_id != null ? Number(raw.approver_id) : null,
+          ref: raw.ref ?? null,
+          paymentTerm: raw.payment_terms ?? undefined,
+          deliveryDate: raw.expected_date ? dayjs(raw.expected_date) : undefined,
+          // Supplier contact fields — populated from the saved PO's own joined
+          // supplier data (GET /po/:id), not re-fetched from the supplier list,
+          // since the PO may have been saved when the supplier's info differed.
+          // `?? null`, not `?? undefined`, per the same Ant Design stale-value
+          // fix used for the PR-autofill fields earlier this session.
+          phone: raw.office_phone ?? null,
+          fax: raw.fax ?? null,
+          salesperson: raw.sales_person ?? null,
+          email: raw.contact_email ?? null,
+          contactPhone: raw.contact_phone ?? null,
+        })
+
+        // GET /po/:id doesn't yet join office_phone/fax/sales_person/contact_email/
+        // contact_phone from the supplier master (pending backend work), so the
+        // fields above are set to null/undefined on load. Trigger the same live
+        // supplier lookup used when the user manually picks a supplier from the
+        // dropdown — it fetches GET /master/suppliers/{code} and overwrites those
+        // 5 fields with the supplier's current contact info. Nothing else resets
+        // these fields afterward (unlike requestedBy/warehouse_code/project_code/
+        // approver, which have dedicated re-apply effects further down), so this
+        // fires once and stays.
+        if (raw.supplier_code) {
+          handleSupplierChange(raw.supplier_code)
+        }
+
+        // TEMP DIAGNOSTIC — remove after Issue 1 / Issue 2 investigation
+        console.log('[POCreatePage] approver field set to:', raw.approver_id != null ? Number(raw.approver_id) : null)
+        console.log('[POCreatePage] form.getFieldsValue().approver immediately after:', form.getFieldsValue().approver)
+
+        setPrAutoFill({
+          requestedBy: raw.requested_by != null ? Number(raw.requested_by) : (raw.requester_id != null ? Number(raw.requester_id) : null),
+          warehouseCode: raw.warehouse_code ?? null,
+          projectCode: raw.project_code ?? null,
+          approverId: raw.approver_id != null ? Number(raw.approver_id) : null,
+        })
+
+        // pr_id links this PO back to the PR it was created from — select it in
+        // the PR Order dropdown. That dropdown's options are filtered to
+        // status=COMPLETED PRs only, so a PR this PO already consumed may no
+        // longer qualify and would be missing from prOptions. Keep it as separate
+        // state (not merged into prOptions) — the real prOptions fetch runs as its
+        // own effect and overwrites the array wholesale when it resolves, which
+        // would silently wipe a synthetic entry injected directly into it.
+        if (raw.pr_id != null) {
+          const prId = Number(raw.pr_id)
+          setSelectedPrId(prId)
+          form.setFieldValue('prOrder', prId)
+          setPrFromEditMode({
+            id: prId,
+            pr_no: raw.pr_no ?? `PR #${prId}`,
+            pr_date: raw.pr_date ?? '',
+            status: 'COMPLETED',
+          } as PRListItem)
+        }
+
+        // PO attachments are not embedded in GET /po/:id (unlike PR/Memo) — the
+        // backend only exposes them via the dedicated GET /po/:id/attachments
+        // endpoint, so fetch that separately.
+        try {
+          const attRes = await axios.get(`${BASE_URL}/po/${id}/attachments`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+          const attList = Array.isArray(attRes.data) ? attRes.data : attRes.data?.data ?? []
+          setSavedAttachments(
+            (Array.isArray(attList) ? attList : []).map((a: any) => ({
+              id: a.id ?? `${a.file_path}-${a.file_name}`,
+              fileName: a.file_name ?? a.fileName ?? 'file',
+              filePath: a.file_path ?? a.filePath ?? '',
+              fileSize: a.file_size ?? a.fileSize ?? 0,
+            }))
+          )
+        } catch {
+          // Non-fatal — the PO itself still loaded; just leave the saved-attachments list empty.
+          setSavedAttachments([])
+        }
+
+        setRemark(raw.remarks ?? '')
+        setUseDisc(Boolean(raw.use_discount))
+        setDiscType(raw.discount_type === 'amt' ? 'amt' : 'pct')
+        setUseVat(Boolean(raw.use_vat))
+        setUseWht(Boolean(raw.use_wht))
+
+        const lines = raw.lines ?? []
+        setItems(
+          lines.map((l: any, idx: number) => ({
+            key: `po-line-${l.id ?? idx}`,
+            no: idx + 1,
+            pr_line_id: l.pr_line_id ?? null,
+            mat_code: l.mat_code ?? '',
+            mat_name: l.mat_name ?? '',
+            unit_name: l.unit_name ?? '',
+            qty: l.qty_ordered ?? 0,
+            unit_price: l.unit_price ?? 0,
+            is_from_pr: l.pr_line_id != null,
+            description: l.remarks ?? undefined,
+            disc: l.discount ?? undefined,
+            wht_rate: l.wht_rate ?? undefined,
+          }))
+        )
+      } catch (err: any) {
+        message.error(
+          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูล PO ไม่สำเร็จ'
+        )
+      } finally {
+        setPoLoading(false)
+      }
+    }
+    fetchPo()
+  }, [isEdit, id])
+
+  // Live prefill: when a PR is selected, pull requested_by / warehouse_code /
+  // project_code / location straight from that PR so the on-screen form reflects
+  // it immediately — not just after the PO is saved (server-side auto-fill only
+  // affects the persisted record, not what the user sees while still editing).
+  useEffect(() => {
+    if (!selectedPrId) return
+    let cancelled = false
+    const fetchPrDetail = async () => {
+      setPrDetailLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/pr/${selectedPrId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = res.data?.data ?? res.data
+        if (cancelled || !raw) return
+
+        // Only a genuine user-initiated PR switch (handlePrChange) should
+        // override the form's requestedBy/warehouse_code/project_code/
+        // deliveryLocation with this PR's data. selectedPrId is also set
+        // programmatically by the edit-mode load effect when the PO already
+        // has a pr_id — in that case the PO's own saved values (already
+        // populated by that same effect) must NOT be clobbered by whatever
+        // the linked PR currently has.
+        if (!isUserPrSwitch.current) {
+          return
+        }
+
+        // `requested_by` on the PR detail response is the display name (string);
+        // the numeric FK is `requester_id` — Number()'ing the name string is what
+        // produced "NaN" in the ผู้ขอซื้อ field.
+        const requestedById = raw.requester_id != null ? Number(raw.requester_id) : null
+        // `?? null`, not `?? undefined` — Ant Design's setFieldsValue silently
+        // ignores an undefined value (treated as "leave unchanged"), so a
+        // missing field on the new PR would leave the OLD PR's value on
+        // screen instead of clearing it. Only null actually clears a field.
+        const warehouseCode = raw.warehouse_code ?? null
+        const projectCode = raw.project_code ?? null
+        const deliveryLocation = raw.location_text ?? null
+        form.setFieldsValue({
+          requestedBy: requestedById,
+          warehouse_code: warehouseCode,
+          project_code: projectCode,
+          deliveryLocation: deliveryLocation,
+        })
+        // Options for these three Selects load asynchronously and may not be
+        // populated yet when this fires — re-apply once each options list arrives
+        // so the value doesn't render blank waiting on a race with its own fetch.
+        setPrAutoFill((prev) => ({
+          requestedBy: requestedById,
+          warehouseCode,
+          projectCode,
+          approverId: prev?.approverId ?? null,
+        }))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูล PR สำหรับ auto-fill ไม่สำเร็จ')
+      } finally {
+        if (!cancelled) setPrDetailLoading(false)
+        // Consume the flag once this effect run has finished handling (or
+        // deliberately skipping) the override, regardless of which branch —
+        // so the next fetchPrDetail run defaults back to "not a user switch"
+        // unless handlePrChange sets it again.
+        isUserPrSwitch.current = false
+      }
+    }
+    fetchPrDetail()
+    return () => { cancelled = true }
+  }, [selectedPrId])
+
+  useEffect(() => {
+    if (!prAutoFill || warehouses.length === 0) return
+    form.setFieldValue('warehouse_code', prAutoFill.warehouseCode)
+  }, [warehouses, prAutoFill])
+
+  useEffect(() => {
+    if (!prAutoFill || users.length === 0) return
+    form.setFieldValue('requestedBy', prAutoFill.requestedBy)
+  }, [users, prAutoFill])
+
+  useEffect(() => {
+    if (!prAutoFill || approvers.length === 0) return
+    // TEMP DIAGNOSTIC — remove after Issue 1 investigation
+    console.log('[POCreatePage] reapplying approver — prAutoFill.approverId:', prAutoFill.approverId, typeof prAutoFill.approverId)
+    console.log('[POCreatePage] approvers options value types:', approvers.map((a) => ({ value: a.value, type: typeof a.value })))
+    form.setFieldValue('approver', prAutoFill.approverId)
+    console.log('[POCreatePage] form.getFieldsValue().approver after reapply:', form.getFieldsValue().approver)
+  }, [approvers, prAutoFill])
+
+  useEffect(() => {
+    if (!prAutoFill || projects.length === 0) return
+    form.setFieldValue('project_code', prAutoFill.projectCode)
+  }, [projects, prAutoFill])
 
   useEffect(() => {
     if (!fromMemo) return
@@ -207,20 +592,86 @@ const POCreatePage: React.FC = () => {
     .map((i) => i.pr_line_id as number)
 
   const handlePrChange = (newPrId: number | undefined) => {
-    setSelectedPrId(newPrId ?? null)
-    if (newPrId) {
+    const prevPrId = selectedPrId
+    // The confirm dialog below promises to clear ALL selected items
+    // ("ล้างรายการวัสดุที่เลือกไว้ทั้งหมด"), not just PR-linked ones — so the
+    // gate for showing it, and the clear itself, must cover every row,
+    // including manually-added ones (is_from_pr: false) from POItemsTable's
+    // "เลือกจากรายการวัสดุ" picker. A selective is_from_pr-only clear left
+    // manually-added rows behind while new PR-linked rows were appended on
+    // top, producing old+new rows coexisting in the table.
+    const hasItems = items.length > 0
+
+    const applyChange = (id: number | null) => {
+      isUserPrSwitch.current = true
+      setSelectedPrId(id)
+      setItems([])
+      if (id) setPrModalOpen(true)
+    }
+
+    // Switching to a genuinely different PR while any items are already in
+    // the table is destructive — confirm before wiping them.
+    if (prevPrId && newPrId && newPrId !== prevPrId && hasItems) {
+      Modal.confirm({
+        title: 'เปลี่ยน PR',
+        content: 'เปลี่ยน PR จะล้างรายการวัสดุที่เลือกไว้ทั้งหมด ต้องการดำเนินการต่อหรือไม่?',
+        okText: 'ดำเนินการต่อ',
+        cancelText: 'ยกเลิก',
+        onOk: () => applyChange(newPrId),
+        onCancel: () => {
+          // revert the Select's displayed value back to the previous PR
+          form.setFieldsValue({ prOrder: prevPrId })
+        },
+      })
+      return
+    }
+
+    applyChange(newPrId ?? null)
+  }
+
+  // Fires on every option click, even re-selecting the same PR. Only reopens the
+  // modal for that same-PR reselect case — switching to a different PR is handled
+  // entirely by handlePrChange above (confirmation + clearing items).
+  const handlePrSelect = (prId: number) => {
+    if (prId === selectedPrId) {
       setPrModalOpen(true)
-    } else {
-      // cleared the dropdown — drop PR-sourced lines
-      setItems((prev) => prev.filter((i) => !i.is_from_pr))
     }
   }
 
-  // Fires on every option click (even re-selecting the same PR), so the
-  // modal always reopens. onChange handles only the clear case above.
-  const handlePrSelect = (prId: number) => {
-    setSelectedPrId(prId)
-    setPrModalOpen(true)
+  // Auto-fill contact fields when a supplier is selected — fields stay fully
+  // editable afterward (plain <Input>, never disabled); the user can type
+  // over any auto-filled value. The list endpoint (/master/suppliers) isn't
+  // guaranteed to carry these contact fields, so fetch the single-supplier
+  // detail endpoint (typed as SupplierFull, confirmed to include them) rather
+  // than assume the already-loaded list has them.
+  const handleSupplierChange = async (code: string) => {
+    form.setFieldsValue({ vendorCode: code })
+    if (!code) return
+    setSupplierDetailLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/master/suppliers/${code}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const raw = res.data?.data ?? res.data
+      console.log('[supplier-debug] raw response:', raw)
+      // `?? null`, not `?? undefined` — Ant Design's setFieldsValue silently
+      // ignores undefined (treated as "leave unchanged"), which would leave a
+      // previously-selected supplier's stale contact info on screen instead
+      // of clearing it for a supplier that has no value for that field.
+      form.setFieldsValue({
+        phone: raw?.office_phone ?? null,
+        fax: raw?.fax ?? null,
+        salesperson: raw?.sales_person ?? null,
+        email: raw?.contact_email ?? null,
+        contactPhone: raw?.contact_phone ?? null,
+      })
+    } catch (err: any) {
+      message.error(
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลผู้ขายไม่สำเร็จ'
+      )
+    } finally {
+      setSupplierDetailLoading(false)
+    }
   }
 
   const handlePrItemsConfirm = (lines: PRLineWithPOStatus[]) => {
@@ -263,11 +714,20 @@ const POCreatePage: React.FC = () => {
   }
 
   const handleSubmit = async (status: 'DRAFT' | 'PENDING_APPROVAL') => {
+    if (isEdit && !canEdit) {
+      message.warning('ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้')
+      return
+    }
     if (!validateItems()) return
 
     try {
       await form.validateFields()
-    } catch {
+    } catch (err: any) {
+      const firstField = err?.errorFields?.[0]
+      message.error(firstField?.errors?.[0] || 'กรุณากรอกข้อมูลให้ครบถ้วนก่อนบันทึก')
+      if (firstField?.name) {
+        form.scrollToField(firstField.name, { behavior: 'smooth', block: 'center' })
+      }
       return
     }
 
@@ -280,11 +740,39 @@ const POCreatePage: React.FC = () => {
     const doSubmit = async () => {
       setSubmitting(true)
       try {
+        // Upload newly-added files first (POST /upload/po just stores the file
+        // and hands back its path/size/type — it does not attach it to a PO).
+        // Already-saved attachments (edit mode) are left alone entirely; they
+        // were persisted via their own POST /po/:id/attachments call already.
+        const uploadedFiles: { file_path: string; file_name: string; file_size: number; file_type: string }[] = []
+        for (const f of attachedFiles) {
+          const formData = new FormData()
+          formData.append('file', f.file)
+          const uploadRes = await axios.post(`${BASE_URL}/upload/po`, formData, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'multipart/form-data',
+            },
+          })
+          const d = uploadRes.data?.data ?? uploadRes.data
+          uploadedFiles.push({
+            file_path: d.file_path,
+            file_name: d.file_name,
+            file_size: d.file_size,
+            file_type: d.file_type,
+          })
+        }
+
         const payload = {
           // ── Header ──
           supplier_code: values.supplier_code,
-          warehouse_code: values.deliveryLocation,
-          id: selectedPrId ?? null,
+          location_text: values.deliveryLocation,
+          warehouse_code: values.warehouse_code || undefined,
+          project_code: values.project_code || undefined,
+          requested_by: values.requestedBy ?? undefined,
+          approver_id: values.approver ?? undefined,
+          ref: values.ref || undefined,
+          pr_id: selectedPrId ?? null,
           rfq_id: null,
           currency: 'THB',
           expected_date: values.deliveryDate
@@ -293,6 +781,13 @@ const POCreatePage: React.FC = () => {
           payment_terms: values.paymentTerm ?? undefined,
           remarks: remark || undefined,
           status,
+
+          // NOTE: office_phone/fax/sales_person/contact_email/contact_phone are
+          // deliberately NOT sent — purchase_order no longer stores these.
+          // GET /po/:id now live-joins them from the supplier master via
+          // supplier_code, so the form fields (phone/fax/salesperson/email/
+          // contactPhone) are still shown for display/auto-fill (handleSupplierChange,
+          // edit-mode population) but are never part of the save payload.
 
           // ── Tax (flat — not nested) ──
           use_discount: useDisc,
@@ -311,14 +806,86 @@ const POCreatePage: React.FC = () => {
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
           })),
+
+          // NOTE: CreatePORequest (the same struct both POST /po and PUT /po/:id
+          // take) has no `attachments` field — unlike PR/Memo, PO attachments
+          // are not part of this payload at all. Sending one here would be
+          // silently ignored by the backend, which is exactly the bug this
+          // fixes. Attachments are saved via their own POST /po/:id/attachments
+          // call below, once the PO id is known.
         }
 
-        await axios.post(
-          `${BASE_URL}/po`,
-          payload,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        )
-        message.success(status === 'DRAFT' ? 'บันทึกร่าง PO สำเร็จ' : 'ส่งใบสั่งซื้อเรียบร้อยแล้ว')
+        // Editing an APPROVED PO (arrived via EditApprovedButton's reason modal)
+        // goes through the dedicated edit-approved endpoint with the mandatory
+        // reason, not the normal DRAFT-edit PUT /po/:id.
+        const isApprovedEditFlow = poStatus.toUpperCase() === 'APPROVED' && Boolean(editApprovedReason)
+
+        const res = isApprovedEditFlow
+          ? await axios.put(
+              `${BASE_URL}/po/${id}/edit-approved`,
+              { ...payload, reason: editApprovedReason },
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            )
+          : isEdit
+          ? await axios.put(
+              `${BASE_URL}/po/${id}`,
+              payload,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            )
+          : await axios.post(
+              `${BASE_URL}/po`,
+              payload,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            )
+
+        let poId: number | string | null = null
+        if (isEdit) {
+          poId = id ?? null
+          setSavedPoId(poId)
+          message.success(status === 'DRAFT' ? 'บันทึกการแก้ไข PO สำเร็จ' : 'แก้ไขและส่งใบสั่งซื้อเรียบร้อยแล้ว')
+        } else {
+          poId = res.data?.data?.id ?? res.data?.data?.po?.id ?? res.data?.id ?? res.data?.po?.id ?? null
+          if (poId) {
+            setSavedPoId(poId)
+          } else {
+            // Save succeeded (2xx) but the response didn't carry a usable id —
+            // don't leave savedPoId silently unset with no trace of why.
+            console.warn('POST /po succeeded but no id found in response:', res.data)
+          }
+          message.success(status === 'DRAFT' ? 'บันทึกร่าง PO สำเร็จ' : 'ส่งใบสั่งซื้อเรียบร้อยแล้ว')
+        }
+
+        // Attach each newly-uploaded file to the PO now that it has an id —
+        // POST /upload/po only stores the file; it takes a separate
+        // POST /po/:id/attachments call to link it to this PO.
+        if (uploadedFiles.length > 0 && poId) {
+          const newlyAttached: SavedAttachment[] = []
+          for (const f of uploadedFiles) {
+            try {
+              const attachRes = await axios.post(
+                `${BASE_URL}/po/${poId}/attachments`,
+                { file_name: f.file_name, file_path: f.file_path, file_size: f.file_size, file_type: f.file_type },
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+              )
+              const saved = attachRes.data?.data ?? attachRes.data
+              newlyAttached.push({
+                id: saved?.id ?? `${f.file_path}-${f.file_name}`,
+                fileName: f.file_name,
+                filePath: f.file_path,
+                fileSize: f.file_size,
+              })
+            } catch (attachErr: any) {
+              message.warning(
+                `แนบไฟล์ ${f.file_name} ไม่สำเร็จ: ` +
+                (attachErr?.response?.data?.message || attachErr?.message || 'unknown error')
+              )
+            }
+          }
+          if (newlyAttached.length > 0) {
+            setSavedAttachments((prev) => [...prev, ...newlyAttached])
+            setAttachedFiles((prev) => prev.filter((f) => !uploadedFiles.some((u) => u.file_name === f.name)))
+          }
+        }
       } catch (err: any) {
         message.error(
           err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึก PO ไม่สำเร็จ'
@@ -348,8 +915,24 @@ const POCreatePage: React.FC = () => {
     }
   }
 
-  const poNumber = '6906-012'
-  const poLatest = '6906-011'
+
+  const handlePrint = async () => {
+    if (!savedPoId) {
+      message.warning('กรุณาบันทึกร่าง PO ก่อนพิมพ์')
+      return
+    }
+    setPrinting(true)
+    try {
+      const res = await poApprovalService.getPrintData(accessToken ?? '', savedPoId)
+      setPrintData(res.data.data)
+    } catch (err: any) {
+      message.error(
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลสำหรับพิมพ์ไม่สำเร็จ'
+      )
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   const addFiles = (files: FileList | null) => {
     if (!files) return
@@ -404,14 +987,33 @@ const POCreatePage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="ออกใบสั่งซื้อ (PO)"
+        title={isEdit ? 'แก้ไขใบสั่งซื้อ (PO)' : 'ออกใบสั่งซื้อ (PO)'}
         subtitle="สร้างใบสั่งซื้อสินค้า/บริการเพื่อส่งอนุมัติ"
         breadcrumbs={[
           { title: 'หน้าหลัก' },
           { title: 'ใบสั่งซื้อ' },
-          { title: 'สร้างใบสั่งซื้อ' },
+          { title: isEdit ? 'แก้ไขใบสั่งซื้อ' : 'สร้างใบสั่งซื้อ' },
         ]}
       />
+
+      {isEdit && !canEdit && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          message={`ใบสั่งซื้อนี้อยู่ในสถานะ ${poStatus} — ไม่สามารถแก้ไขได้ (แก้ไขได้เฉพาะสถานะแบบร่าง หรือ PO ที่อนุมัติแล้วผ่านปุ่ม "แก้ไข" ในหน้ารายละเอียดเท่านั้น)`}
+        />
+      )}
+
+      {isEdit && canEdit && poStatus.toUpperCase() === 'APPROVED' && editApprovedReason && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          message="กำลังแก้ไขใบสั่งซื้อที่อนุมัติแล้ว"
+          description={`เหตุผลในการแก้ไข: ${editApprovedReason}`}
+        />
+      )}
 
       {fromMemo && (
         <Alert
@@ -430,8 +1032,9 @@ const POCreatePage: React.FC = () => {
           <Card
             title={<span style={cardTitleStyle}>ข้อมูลใบสั่งซื้อ</span>}
             style={cardStyle}
+            loading={poLoading}
           >
-            <Form form={form} layout="vertical">
+            <Form form={form} layout="vertical" disabled={isEdit && !canEdit}>
               <Row gutter={16}>
 
                 {/* PO Number */}
@@ -443,14 +1046,16 @@ const POCreatePage: React.FC = () => {
                       </span>
                     }
                     name="poNumber"
-                    initialValue={poNumber}
                   >
                     <Input
+                      disabled={isEdit}
                       style={{ color: '#cc0000', fontWeight: 600 }}
                       prefix={
-                        <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>
-                          ล่าสุด: <span style={{ color: '#cc0000' }}>{poLatest}</span>
-                        </span>
+                        !isEdit && nextPoNumber ? (
+                          <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>
+                            ล่าสุด: <span style={{ color: '#cc0000' }}>{nextPoNumber}</span>
+                          </span>
+                        ) : undefined
                       }
                     />
                   </Form.Item>
@@ -494,12 +1099,12 @@ const POCreatePage: React.FC = () => {
                     <Select
                       showSearch
                       placeholder="- เลือกผู้ขาย -"
-                      loading={suppliersLoading}
+                      loading={suppliersLoading || supplierDetailLoading}
                       filterOption={(input, option) =>
                         String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                       }
                       options={suppliers.map((s) => ({ value: s.supplier_code, label: s.supplier_name }))}
-                      onChange={(code) => form.setFieldsValue({ vendorCode: code })}
+                      onChange={handleSupplierChange}
                     />
                   </Form.Item>
                 </Col>
@@ -549,13 +1154,17 @@ const POCreatePage: React.FC = () => {
                 {/* ผู้ขอซื้อ */}
                 <Col xs={24} md={6}>
                   <Form.Item
-                    label={<span style={labelStyle}>ผู้ขอซื้อ</span>}
+                    label={
+                      <span style={labelStyle}>
+                        ผู้ขอซื้อ {prDetailLoading && <span style={{ color: '#60a5fa', fontSize: 11 }}>(กำลังดึงจาก PR...)</span>}
+                      </span>
+                    }
                     name="requestedBy"
                     rules={[{ required: true, message: 'กรุณาเลือกผู้ขอซื้อ' }]}
                   >
                     <Select
                       placeholder="- เลือกรายการ -"
-                      loading={usersLoading}
+                      loading={usersLoading || prDetailLoading}
                       showSearch
                       filterOption={(input, option) =>
                         String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -576,18 +1185,48 @@ const POCreatePage: React.FC = () => {
                 {/* สถานที่ส่งของ */}
                 <Col xs={24} md={6}>
                   <Form.Item
-                    label={<span style={labelStyle}>สถานที่ส่งของ</span>}
+                    label={<span style={labelStyle}>คลัง</span>}
                     name="deliveryLocation"
-                    rules={[{ required: true, message: 'กรุณาเลือกสถานที่ส่งของ' }]}
+                    rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}
+                  >
+                    <Input placeholder="ระบุสถานที่ส่งของ" disabled={prDetailLoading} />
+                  </Form.Item>
+                </Col>
+
+                {/* คลังสินค้า */}
+                <Col xs={24} md={6}>
+                  <Form.Item
+                    label={<span style={labelStyle}>คลังสินค้า</span>}
+                    name="warehouse_code"
                   >
                     <Select
-                      placeholder="- เลือกรายการ -"
-                      loading={locationsLoading}
+                      placeholder="- ไม่ระบุ -"
+                      loading={warehousesLoading || prDetailLoading}
                       showSearch
+                      allowClear
                       filterOption={(input, option) =>
                         String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                       }
-                      options={locations}
+                      options={warehouses}
+                    />
+                  </Form.Item>
+                </Col>
+
+                {/* รหัสงาน */}
+                <Col xs={24} md={6}>
+                  <Form.Item
+                    label={<span style={labelStyle}>รหัสงาน</span>}
+                    name="project_code"
+                  >
+                    <Select
+                      placeholder="- เลือกรายการ -"
+                      loading={projectsLoading || prDetailLoading}
+                      showSearch
+                      allowClear
+                      filterOption={(input, option) =>
+                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={projects}
                     />
                   </Form.Item>
                 </Col>
@@ -646,7 +1285,6 @@ const POCreatePage: React.FC = () => {
                     <Select
                       showSearch
                       allowClear
-                      disabled={prLocked}
                       placeholder="- เลือก PR Order (เฉพาะที่อนุมัติแล้ว) -"
                       loading={prOptionsLoading}
                       onChange={handlePrChange}
@@ -664,7 +1302,12 @@ const POCreatePage: React.FC = () => {
                           </span>
                         </div>
                       )}
-                      options={prOptions.map((pr) => ({
+                      options={[
+                        ...prOptions,
+                        ...(prFromEditMode && !prOptions.some((p) => p.id === prFromEditMode.id)
+                          ? [prFromEditMode]
+                          : []),
+                      ].map((pr) => ({
                         value: pr.id,
                         label: pr.pr_no,
                         pr_no: pr.pr_no,
@@ -734,6 +1377,42 @@ const POCreatePage: React.FC = () => {
             />
           </Card>
         </Col>
+
+        {/* ── Saved Attachments Card (files already uploaded to this PO) ── */}
+        {savedAttachments.length > 0 && (
+          <Col span={24}>
+            <Card title={<span style={cardTitleStyle}>ไฟล์แนบที่บันทึกไว้</span>} style={cardStyle}>
+              <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                {savedAttachments.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      border: '0.5px solid #e5e7eb',
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Space>
+                      <PaperClipOutlined style={{ color: '#2563eb' }} />
+                      <a
+                        href={`${FILE_BASE_URL}/${a.filePath}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: 13, color: '#1e40af' }}
+                        className="attachment-filename-link"
+                      >
+                        {a.fileName}
+                      </a>
+                      <span style={{ fontSize: 12, color: '#9ca3af' }}>{formatSize(a.fileSize)}</span>
+                    </Space>
+                  </div>
+                ))}
+              </Space>
+            </Card>
+          </Col>
+        )}
 
         {/* ── File Attachment Card ── */}
         <Col span={24}>
@@ -839,42 +1518,33 @@ const POCreatePage: React.FC = () => {
 
               {/* Left: พิมพ์ + กลับ */}
               <Space>
-                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>พิมพ์</Button>
-                <Button icon={<ArrowLeftOutlined />}>กลับหน้าหลัก</Button>
+                <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>พิมพ์</Button>
+                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/po/status')}>กลับหน้าหลัก</Button>
               </Space>
 
               {/* Right: action buttons */}
               <Space>
-                <Button icon={<EditOutlined />}>Update</Button>
-                <Button
-                  icon={<CloseOutlined />}
-                  style={{ borderColor: '#ef4444', color: '#ef4444' }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  icon={<StopOutlined />}
-                  style={{ borderColor: '#f59e0b', color: '#f59e0b' }}
-                >
-                  Reject
-                </Button>
-                <Button
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action={isEdit ? 'edit' : 'write'}
                   icon={<SaveOutlined />}
                   loading={submitting}
-                  disabled={submitting}
+                  disabled={submitting || (isEdit && !canEdit)}
                   onClick={() => handleSubmit('DRAFT')}
                 >
                   บันทึกร่าง
-                </Button>
-                <Button
+                </PermissionButton>
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action={isEdit ? 'edit' : 'write'}
                   type="primary"
                   icon={<SendOutlined />}
                   loading={submitting}
-                  disabled={submitting}
+                  disabled={submitting || (isEdit && !canEdit)}
                   onClick={() => handleSubmit('PENDING_APPROVAL')}
                 >
                   ส่งใบสั่งซื้อ
-                </Button>
+                </PermissionButton>
               </Space>
 
             </div>
@@ -883,8 +1553,16 @@ const POCreatePage: React.FC = () => {
 
       </Row>
 
-      {/* Mounted but hidden on screen — takes over on window.print() */}
-      <PurchaseOrderPrint />
+      {/* Only mounted once real print-data has been fetched for a saved PO */}
+      {printData && (
+        <PurchaseOrderPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
+      )}
 
       <PRItemSelectionModal
         open={prModalOpen}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Input, Table, Button, Descriptions, Empty, Spin, Space, Tag, Tooltip } from 'antd'
+import { Input, Table, Button, Descriptions, Empty, Spin, Space, Tag, Tooltip, message } from 'antd'
 import {
   CloseOutlined, ArrowLeftOutlined, CheckOutlined, SearchOutlined,
   ExpandOutlined, ShrinkOutlined,
@@ -7,9 +7,8 @@ import {
 import axios from 'axios'
 import dayjs from 'dayjs'
 import MemoStatusBadge from '@/pages/memo/components/MemoStatusBadge'
-import { mockMemos } from '@/utils/mockData'
 import { useAppSelector } from '@/store'
-import type { Memo, MemoItem } from '@/types'
+import type { Memo } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -52,6 +51,21 @@ const SizeControls: React.FC<{ size: SidebarSize; onShrink: () => void; onExpand
   </Space>
 )
 
+// Map raw API response (snake_case) → typed Memo object
+const mapMemo = (raw: any): Memo => ({
+  ...raw,
+  id:          String(raw.id),
+  memoNo:      raw.memo_no           ?? raw.memoNo        ?? '',
+  title:       raw.title             ?? '',
+  status:      raw.status            ?? 'DRAFT',
+  requestedBy: raw.requested_by_name ?? raw.requestedBy   ?? '',
+  department:  raw.department,
+  projectName: raw.project_name      ?? raw.projectName,
+  projectCode: raw.project_code      ?? raw.projectCode,
+  note:        raw.note,
+  createdAt:   raw.created_at        ?? raw.createdAt     ?? '',
+})
+
 const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSelect, selectedMemoId }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [view, setView] = useState<'list' | 'detail'>('list')
@@ -69,12 +83,22 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
       try {
         const res = await axios.get(`${BASE_URL}/memo`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          params: { search: search || undefined, status: 'APPROVED', page_size: 50 },
+          params: {
+            search: search || undefined,
+            status: 'APPROVED',
+            exclude_used_by_pr: 'true',
+            all_users: 'true',
+            page_size: 50,
+          },
         })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        setMemos(list.length ? list : mockMemos)
-      } catch {
-        setMemos(mockMemos)
+        const raw = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setMemos(list.map(mapMemo))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูล Memo ไม่สำเร็จ')
+        setMemos([])
       } finally {
         setLoading(false)
       }
@@ -89,8 +113,10 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
       const res = await axios.get(`${BASE_URL}/memo/${memo.id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-      setDetailMemo(res.data?.data ?? res.data ?? memo)
-    } catch {
+      const raw = res.data?.data ?? res.data ?? memo
+      setDetailMemo(mapMemo(raw))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดรายละเอียด Memo ไม่สำเร็จ')
       setDetailMemo(memo)
     } finally {
       setDetailLoading(false)
@@ -106,28 +132,9 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
       key: 'quantity',
       width: 52,
       align: 'right' as const,
-      render: (v: number) => v.toLocaleString('th-TH'),
+      render: (v: number) => (v ?? 0).toLocaleString('th-TH'),
     },
     { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 52 },
-    {
-      title: 'Est. Price',
-      dataIndex: 'estimatedPrice',
-      key: 'estimatedPrice',
-      width: 80,
-      align: 'right' as const,
-      render: (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-    },
-    {
-      title: 'Amount',
-      key: 'amount',
-      width: 84,
-      align: 'right' as const,
-      render: (_: any, record: MemoItem) => (
-        <span style={{ fontWeight: 500 }}>
-          {(record.quantity * record.estimatedPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-        </span>
-      ),
-    },
   ]
 
   return (
@@ -174,7 +181,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                 <Spin />
               </div>
             ) : memos.length === 0 ? (
-              <Empty description="ไม่พบใบบันทึก" />
+              <Empty description="ไม่พบใบบันทึกที่อนุมัติแล้ว" />
             ) : (
               memos.map((memo) => (
                 <div
@@ -196,7 +203,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                   </div>
                   <div style={{ fontSize: 13, marginBottom: 2 }}>{memo.title}</div>
                   <div style={{ fontSize: 11, color: '#60a5fa' }}>
-                    {memo.requestedBy} · {dayjs(memo.createdAt).format('DD/MM/YYYY')}
+                    {memo.requestedBy} · {memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
                   </div>
                 </div>
               ))
@@ -233,9 +240,9 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
             <Descriptions column={1} size="small" style={{ marginBottom: 12 }}>
               <Descriptions.Item label="Requester">{detailMemo?.requestedBy}</Descriptions.Item>
               <Descriptions.Item label="Department">{detailMemo?.department || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Project">{detailMemo?.projectName || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Project Code">{detailMemo?.projectCode || '—'}</Descriptions.Item>
               <Descriptions.Item label="Date">
-                {detailMemo ? dayjs(detailMemo.createdAt).format('DD/MM/YYYY') : '—'}
+                {detailMemo?.createdAt ? dayjs(detailMemo.createdAt).format('DD/MM/YYYY') : '—'}
               </Descriptions.Item>
             </Descriptions>
 
@@ -249,30 +256,13 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
             <div style={{ ...sectionTitleStyle, marginBottom: 8 }}>Line Items</div>
 
             <Table
-              dataSource={detailMemo?.items ?? []}
+              dataSource={(detailMemo as any)?.lines ?? (detailMemo as any)?.items ?? []}
               rowKey="id"
               size="small"
               pagination={false}
               loading={detailLoading}
               scroll={{ x: 400 }}
               columns={columns}
-              summary={() => {
-                const total = (detailMemo?.items ?? []).reduce(
-                  (s, it) => s + it.quantity * it.estimatedPrice, 0
-                )
-                return (
-                  <Table.Summary.Row>
-                    <Table.Summary.Cell index={0} colSpan={5} align="right">
-                      <span style={{ fontSize: 12, color: '#64748b' }}>Total Est. Amount</span>
-                    </Table.Summary.Cell>
-                    <Table.Summary.Cell index={1} align="right">
-                      <span style={{ fontWeight: 500, color: '#1e40af' }}>
-                        {total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                      </span>
-                    </Table.Summary.Cell>
-                  </Table.Summary.Row>
-                )
-              }}
             />
           </div>
 

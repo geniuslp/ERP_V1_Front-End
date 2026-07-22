@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Space, Tag, Popconfirm, message, Tabs, Upload, Typography } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch } from 'antd'
 import type { UploadProps } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -11,13 +11,22 @@ interface Supplier {
   id: string
   supplier_code: string
   supplier_name: string
-  contact_name?: string
-  phone?: string
-  email?: string
+  supplier_short_name?: string
+  tax_id?: string
   address?: string
+  contact_name?: string
+  contact_phone?: string
+  contact_email?: string
+  payment_terms?: string
   is_active: boolean
+  office_phone?: string
+  fax?: string
+  currency?: string
+  sales_person?: string
 }
 
+// Backend identifies/edits suppliers by supplier_code (PUT/DELETE /master/suppliers/:code),
+// not by id — key the table row on supplier_code to match.
 type SupplierRecord = Supplier & { key: string }
 
 interface ExcelRow {
@@ -122,7 +131,7 @@ const SupplierPage: React.FC = () => {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       const list: Supplier[] = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setData(list.map((r) => ({ ...r, key: String(r.id) })))
+      setData(list.map((r) => ({ ...r, key: r.supplier_code })))
     } catch (err: any) {
       message.error(
         err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลไม่สำเร็จ'
@@ -155,6 +164,7 @@ const SupplierPage: React.FC = () => {
 
   const openEdit = (record: SupplierRecord) => {
     setEditing(record)
+    form.resetFields()
     form.setFieldsValue(record)
     setActiveTab('form')
     setOpen(true)
@@ -167,10 +177,11 @@ const SupplierPage: React.FC = () => {
 
   const handleSave = async () => {
     const values = await form.validateFields()
+    console.log('[SupplierPage] handleSave payload:', values) // TEMP DIAGNOSTIC — remove after Issue investigation
     setSaving(true)
     try {
       if (editing) {
-        await axios.put(`${BASE_URL}/master/suppliers/${editing.id}`, values, {
+        await axios.put(`${BASE_URL}/master/suppliers/${editing.supplier_code}`, values, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         message.success('แก้ไขข้อมูลผู้ขายสำเร็จ')
@@ -191,9 +202,9 @@ const SupplierPage: React.FC = () => {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (supplierCode: string) => {
     try {
-      await axios.delete(`${BASE_URL}/master/suppliers/${id}`, {
+      await axios.delete(`${BASE_URL}/master/suppliers/${supplierCode}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       message.success('ลบผู้ขายสำเร็จ')
@@ -381,17 +392,41 @@ const SupplierPage: React.FC = () => {
       <Form.Item name="supplier_name" label="ชื่อผู้ขาย" rules={[{ required: true, message: 'กรุณากรอกชื่อผู้ขาย' }]}>
         <Input placeholder="ชื่อบริษัท / ร้านค้า" />
       </Form.Item>
-      <Form.Item name="contact_name" label="ชื่อผู้ติดต่อ">
-        <Input placeholder="ชื่อผู้ติดต่อ" />
+      <Form.Item name="supplier_short_name" label="ชื่อย่อ">
+        <Input placeholder="ชื่อย่อผู้ขาย" />
       </Form.Item>
-      <Form.Item name="phone" label="เบอร์โทรศัพท์">
-        <Input placeholder="0XX-XXX-XXXX" />
-      </Form.Item>
-      <Form.Item name="email" label="อีเมล">
-        <Input placeholder="email@example.com" />
+      <Form.Item name="tax_id" label="เลขประจำตัวผู้เสียภาษี">
+        <Input placeholder="0123456789012" />
       </Form.Item>
       <Form.Item name="address" label="ที่อยู่">
         <Input.TextArea rows={3} placeholder="ที่อยู่" />
+      </Form.Item>
+      <Form.Item name="contact_name" label="ชื่อผู้ติดต่อ">
+        <Input placeholder="ชื่อผู้ติดต่อ" />
+      </Form.Item>
+      <Form.Item name="contact_phone" label="เบอร์โทรผู้ติดต่อ">
+        <Input placeholder="0XX-XXX-XXXX" />
+      </Form.Item>
+      <Form.Item name="contact_email" label="อีเมลผู้ติดต่อ">
+        <Input placeholder="email@example.com" />
+      </Form.Item>
+      <Form.Item name="office_phone" label="เบอร์โทรสำนักงาน">
+        <Input placeholder="0X-XXX-XXXX" />
+      </Form.Item>
+      <Form.Item name="fax" label="แฟกซ์">
+        <Input placeholder="0X-XXX-XXXX" />
+      </Form.Item>
+      <Form.Item name="sales_person" label="พนักงานขาย">
+        <Input placeholder="ชื่อพนักงานขาย" />
+      </Form.Item>
+      <Form.Item name="currency" label="สกุลเงิน">
+        <Input placeholder="เช่น THB, USD" />
+      </Form.Item>
+      <Form.Item name="payment_terms" label="เงื่อนไขการชำระเงิน">
+        <Input placeholder="เช่น 30 วัน" />
+      </Form.Item>
+      <Form.Item name="is_active" label="สถานะการใช้งาน" valuePropName="checked" initialValue={true}>
+        <Switch checkedChildren="ใช้งาน" unCheckedChildren="ปิดใช้งาน" />
       </Form.Item>
     </Form>
   )
@@ -555,8 +590,8 @@ const SupplierPage: React.FC = () => {
     { title: 'รหัสผู้ขาย', dataIndex: 'supplier_code', width: 130 },
     { title: 'ชื่อผู้ขาย', dataIndex: 'supplier_name' },
     { title: 'ผู้ติดต่อ', dataIndex: 'contact_name', width: 140 },
-    { title: 'เบอร์โทร', dataIndex: 'phone', width: 120 },
-    { title: 'อีเมล', dataIndex: 'email', width: 180, ellipsis: true },
+    { title: 'เบอร์โทร', dataIndex: 'contact_phone', width: 120 },
+    { title: 'อีเมล', dataIndex: 'contact_email', width: 180, ellipsis: true },
     {
       title: 'สถานะ',
       dataIndex: 'is_active',
@@ -573,7 +608,7 @@ const SupplierPage: React.FC = () => {
       render: (_: unknown, r: SupplierRecord) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Popconfirm title="ยืนยันการลบ?" onConfirm={() => handleDelete(r.id)}>
+          <Popconfirm title="ยืนยันการลบ?" onConfirm={() => handleDelete(r.supplier_code)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>

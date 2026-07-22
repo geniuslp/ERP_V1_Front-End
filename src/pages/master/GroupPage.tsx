@@ -61,7 +61,8 @@ const GroupPage: React.FC = () => {
       const res = await axios.get(`${BASE_URL}/groups`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-      const list: Group[] = res.data?.data ?? []
+      const raw = Array.isArray(res.data) ? res.data : res.data?.data
+      const list: Group[] = Array.isArray(raw) ? raw : []
       setData(list.map((g: any) => ({ ...g, key: g.group_code })))
     } catch {
       message.error('โหลดข้อมูลกลุ่มไม่สำเร็จ')

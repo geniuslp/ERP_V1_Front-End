@@ -1,4 +1,4 @@
-export type PRStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type PRStatus = 'DRAFT' | 'COMPLETED' | 'STOCK_CHECK' | 'PARTIALLY_FILLED' | 'FULFILLED' | 'CANCELLED'
 
 export interface PRListItem {
   id: number
@@ -40,6 +40,12 @@ export interface PRPriceHistoryEntry {
   project_name?: string | null
 }
 
+export interface PRReferencedPO {
+  po_id: number
+  po_no: string
+  qty: number
+}
+
 export interface PRLineWithPOStatus {
   id: number
   line_no: number
@@ -50,7 +56,7 @@ export interface PRLineWithPOStatus {
   qty_reserved: number
   qty_ordered: number
   qty_remaining: number
-  referenced_pos: string[]
+  referenced_pos: PRReferencedPO[]
   last_price?: number | null
   last_price_date?: string | null
   price_history?: PRPriceHistoryEntry[]

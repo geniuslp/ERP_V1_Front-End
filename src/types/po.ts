@@ -1,4 +1,13 @@
-export type POStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type POStatus =
+  | 'DRAFT'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PENDING_REAPPROVAL'
+  | 'SENT'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CANCELLED'
 
 export interface POListItem {
   id: number
@@ -11,6 +20,9 @@ export interface POListItem {
   currency: string
   created_by_name: string
   expected_date: string | null
+  // Only confirmed present on GET /po/:id this session — optional here since
+  // the list endpoint's coverage of this field hasn't been verified.
+  can_edit_approved?: boolean
 }
 
 export interface POLine {
@@ -49,6 +61,9 @@ export interface PODetail {
   remarks: string | null
   created_by_name: string
   lines: POLine[]
+  // true when status=APPROVED and the PO is under 1 year old — confirmed
+  // present on GET /po/:id this session.
+  can_edit_approved?: boolean
 }
 
 export interface POLineItem {
