@@ -39,6 +39,8 @@ Frontend ของระบบ ERP (PR / PO / RFQ / GRN / Stock / Borrow-Return 
 - ห้ามเปลี่ยน Sidebar background ออกจาก `#0f2d5e`
 - ห้ามใช้ font อื่นนอกจาก IBM Plex Sans Thai / Sarabun
 - ห้าม import `lucide-react` — ใช้ `@ant-design/icons` เท่านั้น
+- **StatusBadge color mapping ยึดตาม `CLAUDE.md` นี้เป็นหลัก** (enum ค่าจริงจาก DB) ไม่ใช่ list
+  ตัวอย่างสั้น ๆ ที่อยู่ใน DESIGN.md — DESIGN.md มีแค่โทนสี/กฎทั่วไป ไม่ครบทุก status จริง
 
 ---
 
@@ -160,9 +162,41 @@ The protocol that actually worked:
 
 ---
 
+## 🔴 หน้า "รับเข้า" (GRN receiving) — logic การหา PO ที่ยังรับไม่ครบ (2026-07-27 session)
+
+**PO ↔ GRN เป็น relationship 2 ระดับ ต้องดูคู่กันเสมอ ห้าม derive จาก `po.status` อย่างเดียว:**
+- `purchase_order.status` = ภาพรวมทั้งใบ (ใช้แสดง badge หน้า list ทั่วไปพอ)
+- `purchase_order_line.status` (`OPEN|PARTIAL|RECEIVED|CANCELLED`) + `qty_ordered` vs
+  `qty_received` = ความจริงระดับบรรทัด — **ต้องใช้ตัวนี้คำนวณ "เหลืออะไรให้รับอีก"** เพราะ PO ใบ
+  เดียวรับของเป็นงวด ๆ ได้ (หลาย GRN ต่อ 1 PO, แต่ละบรรทัดรับไม่พร้อมกัน)
+
+**หน้าค้นหา PO สำหรับสร้าง GRN** ควรเรียก endpoint ที่ backend filter ให้แล้ว (ดูฝั่ง backend
+`CLAUDE.md` หัวข้อ session 2026-07-27) — ผลลัพธ์คือ PO ที่ status อยู่ใน
+`APPROVED / SENT / PARTIALLY_RECEIVED` และยังมีอย่างน้อย 1 บรรทัดที่ `OPEN`/`PARTIAL`
+**⚠️ endpoint นี้ยังไม่มีจริงฝั่ง backend ณ session นี้ — ต้องรอ backend ทำก่อนถึงจะต่อ UI ได้**
+
+**ฟอร์มกรอก GRN**: บรรทัดที่โหลดมาต้องมี field "จำนวนคงเหลือที่รับได้"
+(`qty_ordered - qty_received`) ไว้กัน user กรอกเกิน (over-receive) ฝั่ง UI ก่อนส่ง ไม่ใช่พึ่ง backend
+validate อย่างเดียว
+
+## Inventory vs Stock — คนละระบบ อย่าสับสนตอนต่อ UI (2026-07-27 session)
+
+DB มี stock tracking 2 ระบบแยกกัน ไม่มี FK เชื่อมกัน:
+- **`inventory` / `inventory_transaction`** (ผูกกับ `mat_code`) — **❌ ไม่ได้ใช้งานจริง** ห้ามสร้าง
+  หน้า/component ที่เรียก endpoint กลุ่มนี้ (เช่น inventory balance, transaction ledger) เว้นแต่มีคน
+  สั่งเปลี่ยนนโยบายนี้ชัดเจน
+- **`stock_item` / `stock_inventory` / `stock_reservation` / `stock_count`** (ผูกกับ `item_id`) —
+  **✅ ระบบที่ใช้จริง** คู่กับหน้า Borrow/Return และ Stock Count ที่ยังต้องสร้าง UI (ดู TODO ด้านล่าง)
+
+ถ้าเจองาน "หน้าจอ stock" หรือ "หน้าจอ inventory" ใหม่ ให้เช็คกับทีมก่อนว่าหมายถึงระบบไหน — ชื่อ
+คล้ายกันมากจนสับสนได้ง่าย
+
+---
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)
 - [ ] คุยกับทีม backend เรื่อง permission tree structure (`/auth/me` response) ก่อนทำ dynamic sidebar menu
 - [ ] เช็ค field การเงินใหม่ของ PO (discount/vat/wht) ในฟอร์มสร้าง/แก้ PO ว่ามีอยู่แล้วหรือยัง
 - [ ] เช็คว่า field ที่เคยได้จาก DB view (`v_pr_full` ฯลฯ) ยังมาจาก API เหมือนเดิมไหม หลัง view หายจาก DB
+- [ ] **หน้า "รับเข้า" (GRN)**: รอ backend ทำ endpoint search PO ก่อน แล้วค่อยต่อ UI ตาม logic ด้านบน

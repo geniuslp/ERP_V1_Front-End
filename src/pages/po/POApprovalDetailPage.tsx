@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Button, Descriptions, Table, Tag, Alert, Spin,
+  Button, Descriptions, Table, Alert, Spin,
   Modal, Form, Input, Popconfirm, message, Space,
 } from 'antd'
 import {
@@ -14,33 +14,18 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
-import type { PODetail, PODetailResponse, POLine, POStatus } from '@/types/po'
+import type { PODetail, PODetailResponse, POLine } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
+import POStatusBadges from '@/components/po/POStatusBadge'
 
 const MENU_CODE = 'MENU_PO_STATUS'
 
 // TODO: enable when permission system is ready
 // const canAct = isManager && po.status === 'PENDING_APPROVAL'
 // const canCancel = isManager && po.status === 'APPROVED'
-
-const statusTag = (status: POStatus) => {
-  const map: Record<POStatus, { color: string; label: string }> = {
-    DRAFT: { color: 'default', label: 'แบบร่าง' },
-    PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
-    APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
-    REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
-    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
-    SENT: { color: 'blue', label: 'ส่งแล้ว' },
-    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
-    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
-    CANCELLED: { color: 'warning', label: 'ยกเลิก' },
-  }
-  const s = map[status] ?? { color: 'default', label: status }
-  return <Tag color={s.color}>{s.label}</Tag>
-}
 
 const cardStyle: React.CSSProperties = {
   background: '#fff',
@@ -183,7 +168,6 @@ const POApprovalDetailPage: React.FC = () => {
       dataIndex: 'line_no',
       key: 'line_no',
       width: 70,
-      align: 'center',
     },
     {
       title: 'รหัสวัสดุ',
@@ -209,8 +193,8 @@ const POApprovalDetailPage: React.FC = () => {
       key: 'spec_brand',
       render: (_: unknown, r: POLine) => (
         <div>
-          <div>{r.spec_description ?? '—'}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{r.brand_name ?? ''}</div>
+          <div>{r.spec ?? '—'}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{r.brand ?? ''}</div>
         </div>
       ),
     },
@@ -218,7 +202,6 @@ const POApprovalDetailPage: React.FC = () => {
       title: 'จำนวนสั่ง',
       key: 'qty_ordered',
       width: 120,
-      align: 'right',
       render: (_: unknown, r: POLine) =>
         `${r.qty_ordered.toLocaleString()} ${r.unit_name ?? ''}`,
     },
@@ -227,7 +210,6 @@ const POApprovalDetailPage: React.FC = () => {
       dataIndex: 'unit_price',
       key: 'unit_price',
       width: 120,
-      align: 'right',
       render: (v: number) => v.toLocaleString('th-TH'),
     },
     {
@@ -235,7 +217,6 @@ const POApprovalDetailPage: React.FC = () => {
       dataIndex: 'amount',
       key: 'amount',
       width: 130,
-      align: 'right',
       render: (v: number) => v.toLocaleString('th-TH'),
     },
     {
@@ -297,7 +278,7 @@ const POApprovalDetailPage: React.FC = () => {
             กลับ
           </Button>
           <span style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>{po.po_no}</span>
-          {statusTag(po.status)}
+          <POStatusBadges status={po.status} statusReceive={po.status_receive} />
         </Space>
 
         <Space>
@@ -309,13 +290,13 @@ const POApprovalDetailPage: React.FC = () => {
               menuCode={MENU_CODE}
               action="edit"
               icon={<EditOutlined />}
-              onClick={() => navigate(`/po/${po.id}/edit`)}
+              onClick={() => navigate(`/po/${po.po_id}/edit`)}
             >
               แก้ไข
             </PermissionButton>
           )}
           {po.can_edit_approved && (
-            <EditApprovedButton poId={po.id} poNo={po.po_no} menuCode={MENU_CODE} />
+            <EditApprovedButton poId={po.po_id} poNo={po.po_no} menuCode={MENU_CODE} />
           )}
           {canAct && (
             <>
@@ -330,7 +311,7 @@ const POApprovalDetailPage: React.FC = () => {
                 <PermissionButton
                   action="approval"
                   docType="PO"
-                  docId={po.id}
+                  docId={po.po_id}
                   approvalAction="approve"
                   type="primary"
                   icon={<CheckCircleOutlined />}
@@ -343,7 +324,7 @@ const POApprovalDetailPage: React.FC = () => {
               <PermissionButton
                 action="approval"
                 docType="PO"
-                docId={po.id}
+                docId={po.po_id}
                 approvalAction="reject"
                 danger
                 icon={<CloseCircleOutlined />}
@@ -386,25 +367,45 @@ const POApprovalDetailPage: React.FC = () => {
           labelStyle={{ fontWeight: 600, width: 140 }}
         >
           <Descriptions.Item label="เลข PO">{po.po_no}</Descriptions.Item>
+          <Descriptions.Item label="เลข PR อ้างอิง">
+            {po.pr_id ? (
+              <a onClick={() => navigate(`/pr/${po.pr_id}`)}>{po.pr_no ?? `PR #${po.pr_id}`}</a>
+            ) : (
+              '-'
+            )}
+          </Descriptions.Item>
           <Descriptions.Item label="วันที่">{po.po_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="สถานะ">{statusTag(po.status)}</Descriptions.Item>
+          <Descriptions.Item label="สถานะ">
+            <POStatusBadges status={po.status} statusReceive={po.status_receive} />
+          </Descriptions.Item>
           <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
           <Descriptions.Item label="รหัส Supplier">{po.supplier_code}</Descriptions.Item>
           <Descriptions.Item label="เงื่อนไขการชำระ">{po.payment_terms ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.delivery_address ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="คลัง">{po.warehouse_code ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="สกุลเงิน">{po.currency}</Descriptions.Item>
-          <Descriptions.Item label="มูลค่ารวม" contentStyle={{ textAlign: 'right' }}>
+          <Descriptions.Item label="มูลค่ารวม" contentStyle={{ textAlign: 'left' }}>
             {po.total_amount.toLocaleString('th-TH')}
           </Descriptions.Item>
-          <Descriptions.Item label="ภาษี VAT" contentStyle={{ textAlign: 'right' }}>
+          <Descriptions.Item label="ภาษี VAT" contentStyle={{ textAlign: 'left' }}>
             {po.vat_amount.toLocaleString('th-TH')}
           </Descriptions.Item>
-          <Descriptions.Item label="มูลค่าสุทธิ" contentStyle={{ textAlign: 'right', fontWeight: 700 }}>
+          <Descriptions.Item label="มูลค่าสุทธิ" contentStyle={{ textAlign: 'left', fontWeight: 700 }}>
             {po.net_amount.toLocaleString('th-TH')}
+          </Descriptions.Item>
+          <Descriptions.Item label="ส่วนลด">
+            {po.use_discount ? `${po.discount_amount} (${po.discount_type})` : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="ภาษีหัก ณ ที่จ่าย">
+            {po.use_wht ? po.wht_amount : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="วันที่ต้องการ">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{po.created_by_name}</Descriptions.Item>
+          <Descriptions.Item label="เบอร์โทรสำนักงาน">{po.office_phone ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="แฟกซ์">{po.fax ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="พนักงานขาย">{po.sales_person ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="อีเมลติดต่อ">{po.contact_email ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="เบอร์โทรติดต่อ">{po.contact_phone ?? '-'}</Descriptions.Item>
           <Descriptions.Item
             label="หมายเหตุ"
             span={3}

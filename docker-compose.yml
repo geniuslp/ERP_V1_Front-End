@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
     container_name: erp-frontend
     ports:
       - "3000:80"
@@ -29,10 +31,10 @@ services:
       - "5173:5173"
     command: sh -c "npm install --legacy-peer-deps && npm run dev -- --host"
     environment:
-    - VITE_API_URL=http://localhost:8000/api/v1
-    - CHOKIDAR_USEPOLLING=true    # ← เพิ่มบรรทัดนี้
-    - CHOKIDAR_INTERVAL=500
-    - WATCHPACK_POLLING=true
+      - VITE_API_URL=${VITE_API_URL}
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=500
+      - WATCHPACK_POLLING=true
     networks:
       - erp-network
     profiles:

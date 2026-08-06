@@ -38,6 +38,11 @@
 
 ### สีสถานะ PR/PO (StatusBadge)
 
+> ⚠️ list ด้านล่างเป็นแค่ตัวอย่างโทนสีเท่านั้น ไม่ใช่ enum ค่าจริงครบทุกตัว — สถานะจริงทั้งหมด
+> (`PARTIALLY_RECEIVED`, `PENDING_REAPPROVAL`, `IN_PROGRESS`, `PARTIALLY_RETURNED` ฯลฯ) ดูที่
+> `CLAUDE.md` (frontend) หัวข้อ "StatusBadge — สถานะที่ต้อง map สี" แทน ที่นี่บอกแค่ว่าแต่ละ
+> "กลุ่มความหมาย" ควรใช้โทนสีอะไร
+
 ```
 draft     → default (เทา)
 pending   → orange

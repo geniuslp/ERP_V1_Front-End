@@ -56,6 +56,7 @@ export const useApprovalPermission = (
     const fetchMyStatus = async () => {
       setLoading(true)
       try {
+        console.log('[useApprovalPermission] GET', `${BASE_URL}/approval-request/${docType}/${docId}/my-status`)
         const res = await axios.get(`${BASE_URL}/approval-request/${docType}/${docId}/my-status`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })

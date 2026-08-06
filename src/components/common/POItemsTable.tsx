@@ -9,13 +9,9 @@ import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
+import { calcDisc } from '@/utils/poCalc'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
-
-function calcDisc(lineAmt: number, disc: number, discType: 'pct' | 'amt'): number {
-  const d = discType === 'pct' ? lineAmt * (disc / 100) : disc
-  return Math.min(d, lineAmt)
-}
 
 interface POItemsTableProps {
   items: POLineItem[]
@@ -119,7 +115,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       onCell: () => ({ style: { background: '#f0fdf4' } }),
       render: (_: unknown, r: POLineItem) => {
         // ใช้ disc_type ของ row นั้นๆ ถ้าไม่มีใช้ global discType
-        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+        const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         return (
           <Space.Compact style={{ width: '100%' }}>
             <InputNumber
@@ -138,7 +134,16 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
                 { label: '%', value: 'pct' },
                 { label: '฿', value: 'amt' },
               ]}
-              onChange={(v) => updateItem(r.key, 'disc_type' as any, v)}
+              onChange={(v) =>
+                // Switching this row's unit reinterprets its raw `disc` number
+                // under the new unit if left alone (e.g. 500 baht silently read
+                // as 500%) — reset to 0 so the user re-enters under the new unit.
+                onChange(
+                  items.map((i) =>
+                    i.key === r.key ? { ...i, disc_type: v, disc: 0 } : i,
+                  ),
+                )
+              }
             />
           </Space.Compact>
         )
@@ -154,7 +159,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       align: 'right' as const,
       onHeaderCell: () => ({ style: { background: '#fefce8', color: '#854d0e' } }),
       render: (_: unknown, r: POLineItem) => {
-        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+        const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const vat = (lineAmt - discAmt) * 0.07
@@ -196,7 +201,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       align: 'right' as const,
       onHeaderCell: () => ({ style: { background: '#fef2f2', color: '#991b1b' } }),
       render: (_: unknown, r: POLineItem) => {
-        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+        const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const rate = (r.wht_rate ?? 3) / 100
@@ -217,7 +222,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       width: 96,
       align: 'right' as const,
       render: (_: unknown, r: POLineItem) => {
-        const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+        const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const afterDisc = lineAmt - discAmt
@@ -413,7 +418,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
 
           items.forEach((r) => {
-            const rowDiscType: 'pct' | 'amt' = (r as any).disc_type ?? discType
+            const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
             const lineAmt = r.qty * r.unit_price
             subtotal += lineAmt
             const d = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0

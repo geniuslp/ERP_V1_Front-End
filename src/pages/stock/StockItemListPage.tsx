@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Popconfirm, message, Modal, Spin } from 'antd'
+import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Checkbox, Pagination, Popconfirm, message, Modal, Spin, Grid } from 'antd'
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
   EditOutlined, DeleteOutlined, QrcodeOutlined, UploadOutlined,
@@ -37,14 +37,21 @@ interface ApiStockItem {
   updated_at: string
 }
 
+const { useBreakpoint } = Grid
+
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   border: 'none',
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
+const MOBILE_PAGE_SIZE = 20
+
 const StockItemListPage: React.FC = () => {
   const navigate = useNavigate()
+  const screens = useBreakpoint()
+  const isMobile = screens.md === false
+  const [mobilePage, setMobilePage] = useState(1)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const fileRef = useRef<HTMLInputElement>(null)
   const [data, setData] = useState<ApiStockItem[]>([])
@@ -346,13 +353,16 @@ const StockItemListPage: React.FC = () => {
         }
       />
       <Card style={cardStyle}>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+        <Space
+          direction={isMobile ? 'vertical' : 'horizontal'}
+          style={{ marginBottom: 16, width: isMobile ? '100%' : undefined, flexWrap: 'wrap' }}
+        >
           <Input
             placeholder="Search item code / name"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onPressEnter={fetchData}
-            style={{ width: 220 }}
+            style={isMobile ? { width: '100%' } : { width: 220 }}
             allowClear
           />
           <Select
@@ -360,7 +370,7 @@ const StockItemListPage: React.FC = () => {
             value={itemType}
             onChange={setItemType}
             allowClear
-            style={{ width: 150 }}
+            style={isMobile ? { width: '100%' } : { width: 150 }}
             options={[
               { value: 'RETURNABLE', label: 'Returnable' },
               { value: 'CONSUMABLE', label: 'Consumable' },
@@ -371,29 +381,106 @@ const StockItemListPage: React.FC = () => {
             value={isActive}
             onChange={setIsActive}
             allowClear
-            style={{ width: 130 }}
+            style={isMobile ? { width: '100%' } : { width: 130 }}
             options={[
               { value: true, label: 'Active' },
               { value: false, label: 'Inactive' },
             ]}
           />
-          <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>Search</Button>
-          <Button icon={<ReloadOutlined />} onClick={handleReset}>Reset</Button>
+          <Button type="primary" block={isMobile} icon={<SearchOutlined />} onClick={fetchData}>Search</Button>
+          <Button block={isMobile} icon={<ReloadOutlined />} onClick={handleReset}>Reset</Button>
           {selectedRowKeys.length > 0 && (
-            <Button icon={<QrcodeOutlined />} onClick={() => setQrBulkOpen(true)}>
+            <Button block={isMobile} icon={<QrcodeOutlined />} onClick={() => setQrBulkOpen(true)}>
               สร้าง QR Code ({selectedRowKeys.length})
             </Button>
           )}
         </Space>
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
-          pagination={{ pageSize: 20, showTotal: (t) => `Total ${t} items` }}
-          locale={{ emptyText: 'No items found' }}
-        />
+
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {!loading && data.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af' }}>No items found</div>
+            )}
+            {data
+              .slice((mobilePage - 1) * MOBILE_PAGE_SIZE, mobilePage * MOBILE_PAGE_SIZE)
+              .map((item) => {
+                const isSelected = selectedRowKeys.includes(item.id)
+                const toggle = () =>
+                  setSelectedRowKeys(
+                    isSelected ? selectedRowKeys.filter((k) => k !== item.id) : [...selectedRowKeys, item.id],
+                  )
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      ...cardStyle,
+                      display: 'flex',
+                      gap: 12,
+                      alignItems: 'flex-start',
+                      padding: 14,
+                      background: isSelected ? '#eff6ff' : '#fff',
+                      border: isSelected ? '1px solid #93c5fd' : '1px solid transparent',
+                    }}
+                  >
+                    <Checkbox checked={isSelected} onChange={toggle} style={{ marginTop: 2 }} />
+                    <div style={{ flex: 1, minWidth: 0 }} onClick={() => navigate(`/stock/items/${item.id}/edit`)}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#2563eb', wordBreak: 'break-all' }}>
+                        {item.mat_code}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 13, color: '#1f2937' }}>{item.item_name}</div>
+                      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        <Tag style={{ fontSize: 11 }}>{item.unit}</Tag>
+                        {item.category_name && <Tag style={{ fontSize: 11 }}>{item.category_name}</Tag>}
+                        <Tag color={item.item_type === 'RETURNABLE' ? 'blue' : 'orange'} style={{ fontSize: 11 }}>
+                          {item.item_type === 'RETURNABLE' ? 'Returnable' : 'Consumable'}
+                        </Tag>
+                        <Tag color={item.is_active ? 'green' : 'default'} style={{ fontSize: 11 }}>
+                          {item.is_active ? 'Active' : 'Inactive'}
+                        </Tag>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+                        Qty: {item.qty?.toLocaleString()}
+                      </div>
+                    </div>
+                    <Space direction="vertical" size={4}>
+                      <Tooltip title="Edit">
+                        <PermissionButton
+                          menuCode={MENU_CODE}
+                          action="edit"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => navigate(`/stock/items/${item.id}/edit`)}
+                        />
+                      </Tooltip>
+                      <Tooltip title="QR Code">
+                        <Button size="small" icon={<QrcodeOutlined />} onClick={() => setQrItem(item)} />
+                      </Tooltip>
+                    </Space>
+                  </div>
+                )
+              })}
+            {data.length > MOBILE_PAGE_SIZE && (
+              <Pagination
+                style={{ marginTop: 4, textAlign: 'center' }}
+                current={mobilePage}
+                pageSize={MOBILE_PAGE_SIZE}
+                total={data.length}
+                showSizeChanger={false}
+                onChange={setMobilePage}
+              />
+            )}
+          </div>
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={data}
+            rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+            pagination={{ pageSize: 20, showTotal: (t) => `Total ${t} items` }}
+            locale={{ emptyText: 'No items found' }}
+          />
+        )}
       </Card>
 
       <Modal

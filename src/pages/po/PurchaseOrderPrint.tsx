@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
+import { calcDisc, type DiscType } from '@/utils/poCalc'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -8,7 +9,9 @@ const BK   = '#000000'
 export interface POItem {
   no: string; code?: string; desc: string; subDesc?: string
   qty: number; unit: string; pricePerUnit: number
-  discPct: number; vatPct: number; whtPct: number
+  // `disc` is the raw number entered on the line; its unit (percent vs baht)
+  // is given by `discType` — never assume percent.
+  disc: number; discType?: DiscType; vatPct: number; whtPct: number
 }
 export interface POData {
   poNo: string; poDate: string; prNo: string; deliveryDate: string
@@ -29,21 +32,21 @@ export const MOCK_DATA: POData = {
   supplier:{ name:'บริษัท เหล็กไทย จำกัด', address1:'99/9 ถนนพระราม 2 แขวงบางมด',
     address2:'เขตจอมทอง กรุงเทพฯ 10150', termOfPayment:'Credit 30 Days', contact:'คุณสมชาย , 081-234-5678' },
   items:[
-    {no:'1',code:'1001001',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.',subDesc:'มาตรฐาน JIS G3101 SS400',qty:40,unit:'เส้น',pricePerUnit:239,discPct:0,vatPct:7,whtPct:0},
-    {no:'2',code:'1001002',desc:'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.',subDesc:'Zone A อาคาร 2',qty:10,unit:'เส้น',pricePerUnit:298,discPct:0,vatPct:7,whtPct:0},
-    {no:'3',code:'1001003',desc:'Flat Bar Steel (เหล็กแบน) 50×5mm×6M.',subDesc:'สี Primer สีแดง 1 ชั้น',qty:8,unit:'เส้น',pricePerUnit:310,discPct:0,vatPct:7,whtPct:0},
-    {no:'4',code:'1001004',desc:'Round Bar Steel (เหล็กกลม) Dia 16mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:220,discPct:0,vatPct:7,whtPct:0},
-    {no:'5',code:'1001005',desc:'Round Bar Steel (เหล็กกลม) Dia 20mm×6M.',subDesc:'ส่วนลดพิเศษ GNS-033',qty:10,unit:'เส้น',pricePerUnit:340,discPct:5,vatPct:7,whtPct:3},
-    {no:'6',code:'1001006',desc:'Steel Plate (เหล็กแผ่น) 4mm×1,200×2,400mm.',subDesc:'',qty:5,unit:'แผ่น',pricePerUnit:1850,discPct:0,vatPct:7,whtPct:0},
-    {no:'7',code:'1001007',desc:'Steel Plate (เหล็กแผ่น) 6mm×1,200×2,400mm.',subDesc:'Drawing No. STR-06-Rev2',qty:5,unit:'แผ่น',pricePerUnit:2700,discPct:0,vatPct:7,whtPct:3},
-    {no:'8',code:'1001008',desc:'Square Tube Steel (เหล็กท่อสี่เหลี่ยม) 50×50×2mm×6M.',subDesc:'ระบุ Heat No.',qty:6,unit:'เส้น',pricePerUnit:430,discPct:0,vatPct:7,whtPct:0},
-    {no:'9',code:'1001009',desc:'Channel Steel (เหล็กรางน้ำ) 100×50×5mm×6M.',subDesc:'Purlin Zone B',qty:12,unit:'เส้น',pricePerUnit:1240,discPct:0,vatPct:7,whtPct:3},
-    {no:'10',code:'1001010',desc:'I-Beam Steel (เหล็กไอ) 150×75×7mm×6M.',subDesc:'Main Beam Drawing STR-15',qty:6,unit:'เส้น',pricePerUnit:4500,discPct:3,vatPct:7,whtPct:3},
-    {no:'11',code:'1001011',desc:'Welding Rod (ลวดเชื่อม) AWS E6013 Ø3.2mm.',subDesc:'',qty:50,unit:'กก.',pricePerUnit:85,discPct:0,vatPct:7,whtPct:0},
-    {no:'12',code:'1001012',desc:'Galvanized Sheet 0.5mm×1,200×2,400mm.',subDesc:'Zone C หุ้มผนัง',qty:30,unit:'แผ่น',pricePerUnit:420,discPct:2,vatPct:7,whtPct:3},
-    {no:'13',code:'1001013',desc:'Channel Steel (เหล็กรางน้ำ) 75×40×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:8,unit:'เส้น',pricePerUnit:890,discPct:0,vatPct:7,whtPct:0},
-    {no:'14',code:'1001014',desc:'I-Beam Steel (เหล็กไอ) 100×50×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:4,unit:'เส้น',pricePerUnit:2100,discPct:0,vatPct:7,whtPct:0},
-    {no:'15',code:'1001015',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×5mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:378,discPct:0,vatPct:7,whtPct:0},
+    {no:'1',code:'1001001',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.',subDesc:'มาตรฐาน JIS G3101 SS400',qty:40,unit:'เส้น',pricePerUnit:239,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'2',code:'1001002',desc:'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.',subDesc:'Zone A อาคาร 2',qty:10,unit:'เส้น',pricePerUnit:298,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'3',code:'1001003',desc:'Flat Bar Steel (เหล็กแบน) 50×5mm×6M.',subDesc:'สี Primer สีแดง 1 ชั้น',qty:8,unit:'เส้น',pricePerUnit:310,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'4',code:'1001004',desc:'Round Bar Steel (เหล็กกลม) Dia 16mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:220,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'5',code:'1001005',desc:'Round Bar Steel (เหล็กกลม) Dia 20mm×6M.',subDesc:'ส่วนลดพิเศษ GNS-033',qty:10,unit:'เส้น',pricePerUnit:340,disc:5,discType:'pct',vatPct:7,whtPct:3},
+    {no:'6',code:'1001006',desc:'Steel Plate (เหล็กแผ่น) 4mm×1,200×2,400mm.',subDesc:'',qty:5,unit:'แผ่น',pricePerUnit:1850,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'7',code:'1001007',desc:'Steel Plate (เหล็กแผ่น) 6mm×1,200×2,400mm.',subDesc:'Drawing No. STR-06-Rev2',qty:5,unit:'แผ่น',pricePerUnit:2700,disc:0,discType:'pct',vatPct:7,whtPct:3},
+    {no:'8',code:'1001008',desc:'Square Tube Steel (เหล็กท่อสี่เหลี่ยม) 50×50×2mm×6M.',subDesc:'ระบุ Heat No.',qty:6,unit:'เส้น',pricePerUnit:430,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'9',code:'1001009',desc:'Channel Steel (เหล็กรางน้ำ) 100×50×5mm×6M.',subDesc:'Purlin Zone B',qty:12,unit:'เส้น',pricePerUnit:1240,disc:0,discType:'pct',vatPct:7,whtPct:3},
+    {no:'10',code:'1001010',desc:'I-Beam Steel (เหล็กไอ) 150×75×7mm×6M.',subDesc:'Main Beam Drawing STR-15',qty:6,unit:'เส้น',pricePerUnit:4500,disc:500,discType:'amt',vatPct:7,whtPct:3},
+    {no:'11',code:'1001011',desc:'Welding Rod (ลวดเชื่อม) AWS E6013 Ø3.2mm.',subDesc:'',qty:50,unit:'กก.',pricePerUnit:85,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'12',code:'1001012',desc:'Galvanized Sheet 0.5mm×1,200×2,400mm.',subDesc:'Zone C หุ้มผนัง',qty:30,unit:'แผ่น',pricePerUnit:420,disc:2,discType:'pct',vatPct:7,whtPct:3},
+    {no:'13',code:'1001013',desc:'Channel Steel (เหล็กรางน้ำ) 75×40×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:8,unit:'เส้น',pricePerUnit:890,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'14',code:'1001014',desc:'I-Beam Steel (เหล็กไอ) 100×50×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:4,unit:'เส้น',pricePerUnit:2100,disc:0,discType:'pct',vatPct:7,whtPct:0},
+    {no:'15',code:'1001015',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×5mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:378,disc:0,discType:'pct',vatPct:7,whtPct:0},
    
   ],
   extraDiscAmt:500, shippingAmt:0,
@@ -51,7 +54,41 @@ export const MOCK_DATA: POData = {
   useDiscount:true, useVat:true, useWht:true,
 }
 
-const lineAmt = (it:POItem) => { const b=it.qty*it.pricePerUnit; return b-b*it.discPct/100 }
+// The print view's `data` prop comes straight from GET /po/:id/print-data,
+// not from the live form's state — its per-line fields (disc/discType) and
+// header flags (useDiscount/useVat/useWht) may be missing, null, or absent
+// depending on backend response shape. calcDisc has no null-guards (the
+// live form always feeds it clean numbers), so normalize at this call site
+// before anything touches the shared calc function.
+function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
+  return {
+    no: raw.no ?? '',
+    code: raw.code,
+    desc: raw.desc ?? '',
+    subDesc: raw.subDesc,
+    qty: raw.qty ?? 0,
+    unit: raw.unit ?? '',
+    pricePerUnit: raw.pricePerUnit ?? 0,
+    disc: raw.disc ?? 0,
+    discType: raw.discType ?? 'pct',
+    vatPct: raw.vatPct ?? 0,
+    whtPct: raw.whtPct ?? 0,
+  }
+}
+
+function normalizeData(raw: POData): POData {
+  return {
+    ...raw,
+    items: (raw.items ?? []).map(normalizeItem),
+    extraDiscAmt: raw.extraDiscAmt ?? 0,
+    shippingAmt: raw.shippingAmt ?? 0,
+    useDiscount: raw.useDiscount ?? false,
+    useVat: raw.useVat ?? false,
+    useWht: raw.useWht ?? false,
+  }
+}
+
+const lineAmt = (it:POItem) => { const b=it.qty*it.pricePerUnit; return b-calcDisc(b,it.disc,it.discType??'pct') }
 const lineVat = (it:POItem) => lineAmt(it)*it.vatPct/100
 const lineWht = (it:POItem) => lineAmt(it)*it.whtPct/100
 const thb = (n:number) => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -254,7 +291,7 @@ const ItemRow = ({row}:{row:POItem}) => (
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
     <td style={{textAlign:'center'}}>{row.unit}</td>
     <td style={{textAlign:'right'}}>{row.pricePerUnit?thb(row.pricePerUnit):''}</td>
-    <td style={{textAlign:'center'}}>{row.discPct?`${row.discPct}%`:''}</td>
+    <td style={{textAlign:'center'}}>{row.disc?(row.discType==='amt'?thb(row.disc):`${row.disc}%`):''}</td>
     <td style={{textAlign:'right'}}>{row.desc?thb(lineAmt(row)):''}</td>
   </tr>
 )
@@ -277,11 +314,11 @@ const POFooter = ({data}:{data:POData}) => {
           </div>
           <div style={{width:'69.50mm',display:'flex',flexDirection:'column',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row"><span className="sum-l">Subtotal</span><span className="sum-v">{thb(s.subtotal)}</span></div>
-            {data.useDiscount&&s.disc>0&&<div className="sum-row"><span className="sum-l">Special Discount</span><span className="sum-v">-{thb(s.disc)}</span></div>}
-            {data.useDiscount&&s.disc>0&&<div className="sum-row"><span className="sum-l">After Discount</span><span className="sum-v">{thb(s.afterDisc)}</span></div>}
-            {data.useVat&&vatPcts.map(v=><div key={v} className="sum-row"><span className="sum-l">Value Added Tax {v}%</span><span className="sum-v">+{thb(s.totalVat)}</span></div>)}
+            <div className="sum-row"><span className="sum-l">Special Discount</span><span className="sum-v">-{thb(s.disc)}</span></div>
+            <div className="sum-row"><span className="sum-l">After Discount</span><span className="sum-v">{thb(s.afterDisc)}</span></div>
+            {(vatPcts.length>0?vatPcts:[0]).map(v=><div key={v} className="sum-row"><span className="sum-l">Value Added Tax {v}%</span><span className="sum-v">+{thb(s.totalVat)}</span></div>)}
             {data.shippingAmt>0&&<div className="sum-row"><span className="sum-l">ค่าขนส่ง</span><span className="sum-v">+{thb(data.shippingAmt)}</span></div>}
-            {data.useWht&&whtPcts.map(w=><div key={w} className="sum-row"><span className="sum-l">Withholding Tax {w}%</span><span className="sum-v">-{thb(s.totalWht)}</span></div>)}
+            {(whtPcts.length>0?whtPcts:[0]).map(w=><div key={w} className="sum-row"><span className="sum-l">Withholding Tax {w}%</span><span className="sum-v">-{thb(s.totalWht)}</span></div>)}
             <div style={{flex:1,display:'flex'}}>
               <span style={{flex:1}}/>
               <span style={{width:'28mm',borderLeft:'1px solid #000'}}/>
@@ -293,12 +330,10 @@ const POFooter = ({data}:{data:POData}) => {
             ( {thaiBahtText(s.grand)} )
           </div>
           <div style={{width:'69.50mm',display:'flex',alignItems:'center',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
-            {data.useWht&&whtPcts.length>0&&(
-              <div className="sum-row" style={{width:'100%'}}>
-                <span className="sum-l" style={{color:NAVY,fontWeight:700}}>Net Amount</span>
-                <span className="sum-v" style={{color:NAVY,fontWeight:700,borderLeft:'none'}}>{thb(s.netPay)}</span>
-              </div>
-            )}
+            <div className="sum-row" style={{width:'100%'}}>
+              <span className="sum-l" style={{color:NAVY,fontWeight:700}}>Net Amount</span>
+              <span className="sum-v" style={{color:NAVY,fontWeight:700,borderLeft:'none'}}>{thb(s.netPay)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -321,11 +356,15 @@ const POFooter = ({data}:{data:POData}) => {
   )
 }
 
-const EMPTY_ROW: POItem = {no:'',code:'',desc:'',qty:0,unit:'',pricePerUnit:0,discPct:0,vatPct:0,whtPct:0}
+const EMPTY_ROW: POItem = {no:'',code:'',desc:'',qty:0,unit:'',pricePerUnit:0,disc:0,discType:'pct',vatPct:0,whtPct:0}
 
 interface Props { data: POData; onReady?: () => void }
 
-const PurchaseOrderPrint: React.FC<Props> = ({ data, onReady }) => {
+const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
+  // rawData is whatever GET /po/:id/print-data returned — normalize once,
+  // here, so every downstream read of `data` sees complete, correctly-typed
+  // fields regardless of backend response shape.
+  const data = normalizeData(rawData)
   const refHeader = useRef<HTMLDivElement>(null)
   const refInfo   = useRef<HTMLDivElement>(null)
   const refFooter = useRef<HTMLDivElement>(null)

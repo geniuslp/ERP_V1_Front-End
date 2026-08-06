@@ -1,16 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col, Tag, message } from 'antd'
-import { SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons'
+import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
-import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-
-// Edit uses the create page's own menu code (same convention as
-// POStatusPage.tsx gating its edit button with MENU_PO_CREATE).
-const MENU_CODE = 'MENU_PR_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -143,18 +138,6 @@ const PRStatusPage: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => navigate(`/pr/${record.id}`)}
           />
-          {record.status === 'DRAFT' && (
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="edit"
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => navigate(`/pr/${record.id}/edit`)}
-            >
-              แก้ไข
-            </PermissionButton>
-          )}
         </Space>
       ),
     },

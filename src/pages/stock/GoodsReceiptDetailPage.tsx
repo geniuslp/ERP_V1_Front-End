@@ -18,7 +18,9 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-interface ReceiptLine extends GRNPoLine {
+interface ReceiptLine extends Omit<GRNPoLine, 'current_stock_qty' | 'line_id'> {
+  po_line_id: number
+  current_stock: number | null
   add_qty: number
 }
 
@@ -54,9 +56,14 @@ const GoodsReceiptDetailPage: React.FC = () => {
         if (cancelled) return
         setPo(result)
         setLines(
-          (result.lines || []).map((l, index) => ({
+          (result.lines || []).map((l) => ({
             ...l,
-            po_line_id: l.po_line_id ?? (l as any).id ?? index,
+            // GET /po/:id's lines carry the real PK as `line_id` (models.POLine),
+            // not `po_line_id` — falling back to the array index here was the
+            // bug that made every save send po_line_id: 0 for line 0, 1 for
+            // line 1, etc. instead of the real purchase_order_line.id.
+            po_line_id: (l as any).line_id,
+            current_stock: (l as any).current_stock ?? null,
             add_qty: Math.max(0, l.qty_ordered - l.qty_received),
           }))
         )
@@ -94,7 +101,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
       const res = await axios.post(
         `${BASE_URL}/grn/receive`,
         {
-          po_id: po.id,
+          po_id: po.po_id,
           warehouse_code: po.warehouse_code,
           supplier_code: po.supplier_code,
           lines: receivingLines,
@@ -146,13 +153,12 @@ const GoodsReceiptDetailPage: React.FC = () => {
 
   const columns = [
     { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
-    { title: 'ชื่อวัสดุ', dataIndex: 'item_name', key: 'item_name', ellipsis: true },
+    { title: 'ชื่อวัสดุ', dataIndex: 'mat_name', key: 'mat_name', ellipsis: true },
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qty_ordered', key: 'qty_ordered', align: 'right' as const },
-    { title: 'รับแล้ว', dataIndex: 'qty_received', key: 'qty_received', align: 'right' as const },
     {
       title: 'คงเหลือในคลัง',
-      dataIndex: 'current_stock_qty',
-      key: 'current_stock_qty',
+      dataIndex: 'current_stock',
+      key: 'current_stock',
       align: 'right' as const,
       render: (val: number | null) => (val ?? 0).toLocaleString(),
     },
@@ -174,7 +180,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
       key: 'will_be',
       align: 'right' as const,
       render: (_: any, record: ReceiptLine) => {
-        const total = (record.current_stock_qty ?? 0) + (record.add_qty || 0)
+        const total = (record.current_stock ?? 0) + (record.add_qty || 0)
         return <span style={{ fontWeight: 600, color: '#2563eb' }}>{total.toLocaleString()}</span>
       },
     },

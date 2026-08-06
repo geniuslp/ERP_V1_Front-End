@@ -1,16 +1,17 @@
 import React, { useState } from 'react'
-import { Layout, Avatar, Dropdown, Badge, Button, Typography } from 'antd'
+import { Layout, Avatar, Dropdown, Badge, Button, Typography, Drawer, Grid } from 'antd'
 import {
   BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined,
 } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
 import SidebarMenu from './SidebarMenu'
 
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
+const { useBreakpoint } = Grid
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -18,9 +19,18 @@ interface AppLayoutProps {
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAppSelector((state) => state.auth)
+  const screens = useBreakpoint()
+  const isMobile = screens.md === false
+
+  // Auto-close the mobile drawer whenever the route changes (nav-item click)
+  React.useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
 
   const handleLogout = () => {
     dispatch(logout())
@@ -34,88 +44,107 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true, onClick: handleLogout },
   ]
 
+  const logoBlock = (collapsedState: boolean) => (
+    <div style={{
+      height: 64,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: collapsedState ? 'center' : 'flex-start',
+      padding: collapsedState ? '0' : '0 20px',
+      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      gap: 10,
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontWeight: 800, color: '#fff', fontSize: 18, flexShrink: 0,
+      }}>E</div>
+      {!collapsedState && (
+        <div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun' }}>ERP System</div>
+          <div style={{ color: '#60a5fa', fontSize: 11 }}>Enterprise Resource</div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      {/* ── Sidebar ── */}
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        trigger={null}
-        width={260}
-        collapsedWidth={72}
-        theme="dark"
-        style={{
-          background: '#0f2d5e',
-          boxShadow: '4px 0 20px rgba(15,45,94,0.3)',
-          position: 'fixed',
-          height: '100vh',
-          zIndex: 100,
-          overflow: 'auto',
-        }}
-      >
-        {/* Logo */}
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '0' : '0 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          gap: 10,
-        }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, color: '#fff', fontSize: 18, flexShrink: 0,
-          }}>E</div>
-          {!collapsed && (
-            <div>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun' }}>ERP System</div>
-              <div style={{ color: '#60a5fa', fontSize: 11 }}>Enterprise Resource</div>
-            </div>
-          )}
-        </div>
+      {/* ── Sidebar (desktop/tablet: fixed Sider, unchanged) ── */}
+      {!isMobile && (
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          trigger={null}
+          width={260}
+          collapsedWidth={72}
+          theme="dark"
+          style={{
+            background: '#0f2d5e',
+            boxShadow: '4px 0 20px rgba(15,45,94,0.3)',
+            position: 'fixed',
+            height: '100vh',
+            zIndex: 100,
+            overflow: 'auto',
+          }}
+        >
+          {logoBlock(collapsed)}
+          <SidebarMenu collapsed={collapsed} />
+        </Sider>
+      )}
 
-        <SidebarMenu collapsed={collapsed} />
-
-      </Sider>
+      {/* ── Sidebar (mobile: Drawer, closed by default) ── */}
+      {isMobile && (
+        <Drawer
+          placement="left"
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          closable={false}
+          width={260}
+          styles={{ body: { padding: 0, background: '#0f2d5e' }, content: { background: '#0f2d5e' } }}
+        >
+          {logoBlock(false)}
+          <SidebarMenu collapsed={false} />
+        </Drawer>
+      )}
 
       {/* ── Main ── */}
-      <Layout style={{ marginLeft: collapsed ? 72 : 260, transition: 'margin 0.2s' }}>
+      <Layout style={{ marginLeft: isMobile ? 0 : (collapsed ? 72 : 260), transition: 'margin 0.2s' }}>
         {/* Header */}
         <Header style={{
           position: 'sticky', top: 0, zIndex: 99,
           background: '#fff',
-          padding: '0 24px',
+          padding: isMobile ? '0 12px' : '0 24px',
           boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          height: 64,
+          height: isMobile ? 56 : 64,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <Button
               type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
+              icon={isMobile ? <MenuOutlined /> : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
+              onClick={() => (isMobile ? setMobileOpen(true) : setCollapsed(!collapsed))}
               style={{
                 width: 38, height: 38,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 borderRadius: 8, color: '#1d4ed8', fontSize: 18,
                 border: '0.5px solid #dbeafe', background: '#eff6ff',
+                flexShrink: 0,
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
               <div style={{
-                height: 6, width: 32, borderRadius: 3,
+                height: 6, width: 32, borderRadius: 3, flexShrink: 0,
                 background: 'linear-gradient(90deg, #2563eb, #60a5fa)',
               }} />
-              <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15 }}>
-                ระบบบริหารองค์กร
+              <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {isMobile ? 'ERP' : 'ระบบบริหารองค์กร'}
               </Text>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, flexShrink: 0 }}>
             <Badge count={3} size="small">
               <Button type="text" icon={<BellOutlined style={{ fontSize: 18, color: '#1d4ed8' }} />} />
             </Badge>
@@ -134,10 +163,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 >
                   {user?.fullName?.charAt(0) || 'U'}
                 </Avatar>
-                <div style={{ lineHeight: 1.2 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a8a' }}>{user?.fullName || 'Admin'}</div>
-                  <div style={{ fontSize: 11, color: '#60a5fa' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
-                </div>
+                {!isMobile && (
+                  <div style={{ lineHeight: 1.2 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a8a' }}>{user?.fullName || 'Admin'}</div>
+                    <div style={{ fontSize: 11, color: '#60a5fa' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
+                  </div>
+                )}
               </div>
             </Dropdown>
           </div>
@@ -145,7 +176,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
         {/* Content */}
         <Content style={{
-          margin: 24,
+          margin: isMobile ? 12 : 24,
           minHeight: 'calc(100vh - 112px)',
         }}>
           {children}

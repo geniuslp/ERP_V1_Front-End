@@ -1,16 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography } from 'antd'
-import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, PaperClipOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
-import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-
-// Edit uses the create page's own menu code (same convention as
-// POStatusPage.tsx / PRStatusPage.tsx gating their edit buttons).
-const MENU_CODE = 'MENU_PR_CREATE'
 
 const { Text } = Typography
 
@@ -200,16 +195,6 @@ const PRDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: pr.prNo }]}
         extra={
           <Space>
-            {pr.status === 'DRAFT' && (
-              <PermissionButton
-                menuCode={MENU_CODE}
-                action="edit"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/pr/${pr.id}/edit`)}
-              >
-                แก้ไข
-              </PermissionButton>
-            )}
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/pr/status')}>
               กลับ
             </Button>

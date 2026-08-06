@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Input, DatePicker, Button, Space, Rate, message } from 'antd'
+import { Card, Table, Input, DatePicker, Button, Space, Rate, Tag, Pagination, message, Grid } from 'antd'
 import axios from 'axios'
 import dayjs, { Dayjs } from 'dayjs'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import type { GRNHistoryItem } from '@/types'
+
+const { useBreakpoint } = Grid
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -16,6 +19,9 @@ const cardStyle: React.CSSProperties = {
 
 const GRNHistoryPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const navigate = useNavigate()
+  const screens = useBreakpoint()
+  const isMobile = screens.md === false
 
   const [data, setData] = useState<GRNHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -90,35 +96,80 @@ const GRNHistoryPage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: 'ประวัติการรับเข้า' }]}
       />
       <Card style={cardStyle}>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+        <Space
+          direction={isMobile ? 'vertical' : 'horizontal'}
+          style={{ marginBottom: 16, width: isMobile ? '100%' : undefined, flexWrap: 'wrap' }}
+        >
           <DatePicker.RangePicker
             value={dateRange}
             onChange={(val) => setDateRange(val as [Dayjs, Dayjs] | null)}
             format="DD/MM/YYYY"
+            style={isMobile ? { width: '100%' } : undefined}
           />
           <Input
             placeholder="Supplier code"
             value={supplierFilter}
             onChange={(e) => setSupplierFilter(e.target.value)}
             allowClear
-            style={{ width: 180 }}
+            style={isMobile ? { width: '100%' } : { width: 180 }}
           />
-          <Button type="primary" onClick={() => fetchHistory(1)}>ค้นหา</Button>
+          <Button type="primary" block={isMobile} onClick={() => fetchHistory(1)}>ค้นหา</Button>
         </Space>
-        <Table
-          rowKey="grn_id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          pagination={{
-            current: page,
-            pageSize: limit,
-            total,
-            showSizeChanger: false,
-            onChange: (p) => fetchHistory(p),
-          }}
-          locale={{ emptyText: 'ไม่พบประวัติการรับเข้า' }}
-        />
+
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {!loading && data.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af' }}>
+                ไม่พบประวัติการรับเข้า
+              </div>
+            )}
+            {data.map((row) => (
+              <Card
+                key={row.grn_id}
+                size="small"
+                style={cardStyle}
+                styles={{ body: { padding: 16 } }}
+                onClick={() => navigate(`/stock/grn/${row.grn_id}`)}
+                hoverable
+              >
+                <div style={{ fontWeight: 700, fontSize: 16, color: '#1e40af' }}>
+                  {row.po_no}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: '#60a5fa' }}>
+                  {row.grn_date ? dayjs(row.grn_date).format('DD/MM/YYYY') : '—'} · {row.supplier_code}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <Tag color="blue">{row.warehouse_code || '—'}</Tag>
+                </div>
+              </Card>
+            ))}
+            {total > limit && (
+              <Pagination
+                style={{ marginTop: 8, textAlign: 'center' }}
+                current={page}
+                pageSize={limit}
+                total={total}
+                showSizeChanger={false}
+                onChange={(p) => fetchHistory(p)}
+              />
+            )}
+          </div>
+        ) : (
+          <Table
+            rowKey="grn_id"
+            loading={loading}
+            columns={columns}
+            dataSource={data}
+            pagination={{
+              current: page,
+              pageSize: limit,
+              total,
+              showSizeChanger: false,
+              onChange: (p) => fetchHistory(p),
+            }}
+            locale={{ emptyText: 'ไม่พบประวัติการรับเข้า' }}
+          />
+        )}
       </Card>
     </div>
   )

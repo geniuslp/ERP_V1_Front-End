@@ -57,6 +57,10 @@ const QRCodePage = lazy(() => import('@/pages/stock/QRCodePage'))
 const GoodsReceiptSearchPage = lazy(() => import('@/pages/stock/GoodsReceiptSearchPage'))
 const GoodsReceiptDetailPage = lazy(() => import('@/pages/stock/GoodsReceiptDetailPage'))
 const GRNHistoryPage = lazy(() => import('@/pages/stock/GRNHistoryPage'))
+const ReceivingListPage = lazy(() => import('@/pages/stock/ReceivingListPage'))
+const GRNCreatePage = lazy(() => import('@/pages/stock/GRNCreatePage'))
+const GRNv2ListPage = lazy(() => import('@/pages/stock/GRNv2ListPage'))
+const GRNv2DetailPage = lazy(() => import('@/pages/stock/GRNv2DetailPage'))
 const MaterialRequisitionListPage = lazy(() => import('@/pages/stock/MaterialRequisitionListPage'))
 const MaterialRequisitionCreatePage = lazy(() => import('@/pages/stock/MaterialRequisitionCreatePage'))
 const MaterialRequisitionEditPage = lazy(() => import('@/pages/stock/MaterialRequisitionEditPage'))
@@ -90,9 +94,6 @@ const AppRoutes: React.FC = () => (
               <Route path="/memo/:id/edit" element={<MemoCreateEditPage key="memo-edit" />} />
               <Route path="/pr/create" element={
                 <RequirePermission menuCode="MENU_PR_CREATE" action="write"><PRCreatePage key="pr-create" /></RequirePermission>
-              } />
-              <Route path="/pr/:id/edit" element={
-                <RequirePermission menuCode="MENU_PR_CREATE" action="edit"><PRCreatePage key="pr-edit" /></RequirePermission>
               } />
               <Route path="/pr/status" element={
                 <RequirePermission menuCode="MENU_PR_STATUS" action="read"><PRStatusPage /></RequirePermission>
@@ -149,6 +150,14 @@ const AppRoutes: React.FC = () => (
               <Route path="/stock/receiving/history" element={<GRNHistoryPage />} />
               <Route path="/stock/receiving/:poId" element={<GoodsReceiptDetailPage />} />
               <Route path="/stock/receiving" element={<GoodsReceiptSearchPage />} />
+              {/* New two-step (draft/confirm) receiving flow — GET /po/receivable +
+                  GET /po/:id/receivable-lines, mocked until backend deploys them.
+                  Kept on separate paths from the legacy /stock/receiving flow above
+                  since both call different backend endpoints. */}
+              <Route path="/stock/receivable" element={<ReceivingListPage />} />
+              <Route path="/stock/grn/create/:poId" element={<GRNCreatePage />} />
+              <Route path="/stock/grn/:grnId" element={<GRNv2DetailPage />} />
+              <Route path="/stock/grn" element={<GRNv2ListPage />} />
               <Route path="/stock/requisition/create" element={<MaterialRequisitionCreatePage />} />
               <Route path="/stock/requisition/:id/edit" element={<MaterialRequisitionEditPage />} />
               <Route path="/stock/requisition/:id" element={<MaterialRequisitionDetailPage />} />

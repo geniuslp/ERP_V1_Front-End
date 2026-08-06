@@ -1,6 +1,8 @@
 import React from 'react'
-import { Checkbox, Segmented, Tag, Button, Divider, Space } from 'antd'
+import { Checkbox, Segmented, Tag, Button, Divider, Space, Drawer, Grid } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
+
+const { useBreakpoint } = Grid
 
 interface TaxSidebarPanelProps {
   open: boolean
@@ -29,27 +31,11 @@ const TaxSidebarPanel: React.FC<TaxSidebarPanelProps> = ({
   useVat, onUseVatChange,
   useWht, onUseWhtChange,
 }) => {
-  return (
-    <div
-      style={{
-        width: open ? 210 : 0,
-        minWidth: open ? 210 : 0,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        borderLeft: open ? '0.5px solid #dbeafe' : 'none',
-        background: '#ffffff',
-        transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
-      }}
-    >
-      <div style={{ width: 210, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 8px' }}>
-          <span style={sectionTitleStyle}>ภาษี / ส่วนลด</span>
-          <Button size="small" type="text" icon={<CloseOutlined />} onClick={onClose} />
-        </div>
+  const screens = useBreakpoint()
+  const isMobile = screens.md === false
 
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
+  const panelBody = (
+    <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
 
           <Checkbox
             checked={useDisc}
@@ -113,7 +99,46 @@ const TaxSidebarPanel: React.FC<TaxSidebarPanelProps> = ({
             </div>
           )}
 
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer
+        title={<span style={sectionTitleStyle}>ภาษี / ส่วนลด</span>}
+        placement="bottom"
+        height="auto"
+        open={open}
+        onClose={onClose}
+        closeIcon={<CloseOutlined />}
+        styles={{ body: { padding: '8px 16px 16px' } }}
+      >
+        {panelBody}
+      </Drawer>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        width: open ? 210 : 0,
+        minWidth: open ? 210 : 0,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        borderLeft: open ? '0.5px solid #dbeafe' : 'none',
+        background: '#ffffff',
+        transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
+      }}
+    >
+      <div style={{ width: 210, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 8px' }}>
+          <span style={sectionTitleStyle}>ภาษี / ส่วนลด</span>
+          <Button size="small" type="text" icon={<CloseOutlined />} onClick={onClose} />
         </div>
+
+        {panelBody}
       </div>
     </div>
   )

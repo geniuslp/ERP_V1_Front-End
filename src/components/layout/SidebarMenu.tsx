@@ -64,6 +64,12 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_STOCK_QRCODE: <QrcodeOutlined />,
   MENU_STOCK_RECEIVING: <InboxOutlined />,
   MENU_STOCK_RECEIVING_HISTORY: <HistoryOutlined />,
+  // New two-step (draft/confirm) receiving flow, separate menu rows from the
+  // legacy MENU_STOCK_RECEIVING pages above — DB menu rows for these
+  // (menu_code, menu_path=/stock/receivable and /stock/grn) still need to be
+  // created by an admin; this only maps the icon once that row exists.
+  MENU_STOCK_RECEIVABLE: <InboxOutlined />,
+  MENU_STOCK_GRN: <HistoryOutlined />,
   MENU_STOCK_REQUISITION: <ExportOutlined />,
   MENU_STOCK_REQUISITION_APPROVAL: <CheckOutlined />,
 }

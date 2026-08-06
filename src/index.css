@@ -85,3 +85,65 @@ body {
 .perm-checkbox-locked.ant-checkbox-disabled .ant-checkbox-inner::after {
   border-color: #ffffff !important;
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Mobile responsive safety net (≤768px)
+   Desktop styles are untouched — everything below is scoped to the
+   mobile breakpoint only. Component-level xs/sm props (PageHeader,
+   AppLayout, StatCard grids, Create/Edit form Cols) take precedence;
+   these rules are a global fallback so pages that weren't hand-tuned
+   still avoid horizontal overflow / clipped content on ~360–480px.
+   ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden; }
+
+  /* Tables: always allow horizontal scroll instead of collapsing columns */
+  .ant-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ant-table-wrapper .ant-table {
+    min-width: 600px;
+  }
+
+  /* Cards: tighten padding so content has more room */
+  .ant-card-body {
+    padding: 14px !important;
+  }
+
+  /* PageHeader extra actions: let buttons wrap/fill width nicely */
+  .page-header-extra .ant-space {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .page-header-extra .ant-space-item {
+    flex: 1 1 auto;
+  }
+  .page-header-extra .ant-btn {
+    min-height: 40px;
+  }
+
+  /* Forms: fall back to full-width columns when a page hasn't been
+     hand-tuned with xs/sm Col props yet */
+  .ant-form .ant-row .ant-col[class*="ant-col-"]:not([class*="ant-col-24"]) {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  /* Modals/drawers: avoid overflow on very small screens */
+  .ant-modal {
+    max-width: calc(100vw - 24px);
+    margin: 0 auto;
+  }
+
+  /* Ensure tap targets are reasonable */
+  .ant-btn {
+    min-height: 36px;
+  }
+
+  .login-card {
+    padding: 32px 22px !important;
+    max-width: calc(100vw - 32px) !important;
+    margin: 0 16px;
+  }
+}

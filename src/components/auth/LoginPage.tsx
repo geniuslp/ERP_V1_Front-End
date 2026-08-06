@@ -76,7 +76,7 @@ const LoginPage: React.FC = () => {
       <div style={{ position: 'absolute', top: '30%', left: '10%', width: 2, height: 200, background: 'rgba(255,255,255,0.1)', transform: 'rotate(30deg)' }} />
       <div style={{ position: 'absolute', top: '20%', right: '15%', width: 2, height: 150, background: 'rgba(255,255,255,0.08)', transform: 'rotate(-20deg)' }} />
 
-      <div style={{
+      <div className="login-card" style={{
         background: 'rgba(255,255,255,0.97)',
         borderRadius: 20,
         padding: '48px 40px',

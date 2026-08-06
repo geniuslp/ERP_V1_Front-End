@@ -1,31 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Space, message, Input, Row, Col } from 'antd'
+import { Card, Table, Button, Space, message, Input, Row, Col } from 'antd'
 import { EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-import type { POListItem, POStatus } from '@/types/po'
+import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
+import POStatusBadges from '@/components/po/POStatusBadge'
 
 const MENU_CODE = 'MENU_PO_CREATE'
-
-const statusTag = (status: POStatus) => {
-  const map: Record<POStatus, { color: string; label: string }> = {
-    DRAFT: { color: 'default', label: 'แบบร่าง' },
-    PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
-    APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
-    REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
-    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
-    SENT: { color: 'blue', label: 'ส่งแล้ว' },
-    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
-    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
-    CANCELLED: { color: 'warning', label: 'ยกเลิก' },
-  }
-  const s = map[status] ?? { color: 'default', label: status }
-  return <Tag color={s.color}>{s.label}</Tag>
-}
 
 const POStatusPage: React.FC = () => {
   const navigate = useNavigate()
@@ -56,7 +41,7 @@ const POStatusPage: React.FC = () => {
         created_by_name: f.created_by_name || undefined,
       })
       const data = res.data.data
-      setItems(Array.isArray(data.items) ? data.items : [])
+      setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
     } catch (err: any) {
       message.error(
@@ -92,7 +77,7 @@ const POStatusPage: React.FC = () => {
       dataIndex: 'po_no',
       key: 'po_no',
       render: (v: string, record) => (
-        <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.id}`)}>
+        <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.po_id}`)}>
           {v}
         </a>
       ),
@@ -102,7 +87,7 @@ const POStatusPage: React.FC = () => {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
-      render: (v: POStatus) => statusTag(v),
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
     },
     {
       title: 'มูลค่า (บาท)',
@@ -131,7 +116,7 @@ const POStatusPage: React.FC = () => {
             type="link"
             icon={<EyeOutlined />}
             size="small"
-            onClick={() => navigate(`/po/approval/${record.id}`)}
+            onClick={() => navigate(`/po/approval/${record.po_id}`)}
           >
             ดู
           </Button>
@@ -142,7 +127,7 @@ const POStatusPage: React.FC = () => {
               type="link"
               icon={<EditOutlined />}
               size="small"
-              onClick={() => navigate(`/po/${record.id}/edit`)}
+              onClick={() => navigate(`/po/${record.po_id}/edit`)}
             >
               แก้ไข
             </PermissionButton>
@@ -201,7 +186,7 @@ const POStatusPage: React.FC = () => {
         </Row>
 
         <Table
-          rowKey="id"
+          rowKey="po_id"
           loading={loading}
           dataSource={items}
           columns={columns}

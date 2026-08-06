@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal, Alert } from 'antd'
+import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal } from 'antd'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
   CloseOutlined,
-  FileTextOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PaperClipOutlined,
+  FileTextOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
 } from '@ant-design/icons'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
@@ -15,15 +15,10 @@ import axios from 'axios'
 import type { User, Memo } from '@/types'
 import { useAppSelector } from '@/store'
 
-// Edit uses the same menu code as create (matching POCreatePage.tsx's
-// established pattern — the create page's own menu code gates its edit mode
-// too, rather than the status page's menu code).
 const MENU_CODE = 'MENU_PR_CREATE'
 
-// PR has no approval workflow of its own (see CLAUDE.md) — once a PR leaves
-// DRAFT it is permanently non-editable. No age check, no reason-logging, no
-// re-approval flow like PO's edit-after-approval feature.
-const LOCKED_STATUSES = ['COMPLETED', 'STOCK_CHECK', 'PARTIALLY_FILLED', 'FULFILLED', 'CANCELLED']
+// PR has no approval workflow and, once submitted, is never editable again
+// (see CLAUDE.md). This page is create-only — there is no edit mode.
 
 interface AttachedFile {
   uid: string
@@ -112,8 +107,6 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 
 const PRCreatePage: React.FC = () => {
   const navigate = useNavigate()
-  const { id } = useParams<{ id: string }>()
-  const isEdit = Boolean(id)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [form] = Form.useForm()
   const attachmentsRef = useRef<AttachedFile[]>([])
@@ -131,18 +124,6 @@ const PRCreatePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [memoOpen, setMemoOpen] = useState(false)
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null)
-
-  // Edit mode
-  const [prLoading, setPrLoading] = useState(false)
-  const [prStatus, setPrStatus] = useState('')
-  const canEdit = !isEdit || !LOCKED_STATUSES.includes(prStatus)
-  const [initialItems, setInitialItems] = useState<
-    { mat_code: string; mat_name?: string; unit_name?: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; cost_code_label?: string | null }[]
-  >([])
-  const [savedAttachments, setSavedAttachments] = useState<
-    { id: string | number; fileName: string; filePath: string; fileSize: number }[]
-  >([])
-  const FILE_BASE_URL = BASE_URL.replace(/\/api\/v1\/?$/, '')
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -224,7 +205,6 @@ const PRCreatePage: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    if (isEdit) return
     const fetchNextNumber = async () => {
       try {
         const res = await axios.get(`${BASE_URL}/pr/next-number`, {
@@ -236,87 +216,15 @@ const PRCreatePage: React.FC = () => {
       }
     }
     fetchNextNumber()
-  }, [isEdit])
-
-  // Edit mode: load the existing PR and populate the form/items/attachments with it.
-  useEffect(() => {
-    if (!isEdit || !id) return
-    const fetchPr = async () => {
-      setPrLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/pr/${id}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw: any = res.data?.data ?? res.data
-
-        const status = (raw.status ?? '').toUpperCase()
-        setPrStatus(status)
-        setPrNumber(raw.pr_no ?? '')
-
-        form.setFieldsValue({
-          location_text: raw.location_text ?? undefined,
-          warehouse_code: raw.warehouse_code ?? undefined,
-          required_date: raw.required_date ? dayjs(raw.required_date) : undefined,
-          project_code: raw.project_code ?? undefined,
-          remarks: raw.remarks ?? undefined,
-          requested_by: raw.requester_id != null ? Number(raw.requester_id) : undefined,
-        })
-
-        if (raw.memo_id != null) {
-          form.setFieldValue('memo_no_ref', raw.memo_no ?? `Memo #${raw.memo_id}`)
-        }
-
-        const lines = raw.lines ?? []
-        setInitialItems(
-          lines.map((l: any) => ({
-            mat_code: l.mat_code ?? '',
-            mat_name: l.mat_name ?? undefined,
-            unit_name: l.unit_name ?? undefined,
-            qty_requested: l.qty_requested ?? 0,
-            qty_to_order: l.qty_to_order ?? 0,
-            cost_subgroup_id: l.cost_subgroup_id ?? null,
-            cost_code_label: l.cost_code
-              ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
-              : null,
-          }))
-        )
-
-        setSavedAttachments(
-          (raw.attachments ?? []).map((a: any) => ({
-            id: a.id ?? `${a.file_path}-${a.file_name}`,
-            fileName: a.file_name ?? a.fileName ?? 'file',
-            filePath: a.file_path ?? a.filePath ?? '',
-            fileSize: a.file_size ?? a.fileSize ?? 0,
-          }))
-        )
-      } catch (err: any) {
-        message.error(
-          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูล PR ไม่สำเร็จ'
-        )
-      } finally {
-        setPrLoading(false)
-      }
-    }
-    fetchPr()
-  }, [isEdit, id])
+  }, [])
 
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
-    if (isEdit && !canEdit) {
-      message.warning('ไม่สามารถแก้ไขใบขอซื้อนี้ได้')
-      return
-    }
     setSubmitting(true)
     try {
       const { location_text, required_date, project_code, remarks, warehouse_code, requested_by } =
         await form.validateFields()
 
-      // 1. Upload newly-added files — keep already-saved attachments (edit mode) as-is.
-      const existingAttachments = savedAttachments.map((a) => ({
-        file_path: a.filePath,
-        file_name: a.fileName,
-        file_size: a.fileSize,
-        file_type: a.fileName.split('.').pop()?.toLowerCase() ?? '',
-      }))
+      // 1. Upload newly-added files.
       const uploadedFiles: UploadedFile[] = []
       for (const f of attachmentsRef.current) {
         const formData = new FormData()
@@ -355,20 +263,13 @@ const PRCreatePage: React.FC = () => {
           qty_to_order: item.qty_to_order,
           cost_subgroup_id: item.cost_subgroup_id,
         })),
-        attachments: [...existingAttachments, ...uploadedFiles],
+        attachments: uploadedFiles,
       }
 
-      if (isEdit) {
-        await axios.put(`${BASE_URL}/pr/${id}`, payload, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        message.success('บันทึกการแก้ไข PR สำเร็จ')
-      } else {
-        await axios.post(`${BASE_URL}/pr`, payload, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        message.success('บันทึก PR สำเร็จ')
-      }
+      await axios.post(`${BASE_URL}/pr`, payload, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      message.success('บันทึก PR สำเร็จ')
       navigate('/pr/status')
     } catch (err: any) {
       const shortages = err?.response?.data?.shortages
@@ -444,9 +345,9 @@ const PRCreatePage: React.FC = () => {
       <div style={{ flex: 1, overflow: 'auto', padding: 24, minWidth: 0, transition: 'all .25s ease' }}>
 
       <PageHeader
-        title={isEdit ? 'แก้ไขใบขอซื้อ' : 'สร้างใบขอซื้อ'}
+        title="สร้างใบขอซื้อ"
         subtitle="สร้างใบขอซื้อสินค้า/บริการเพื่อส่งอนุมัติ"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: isEdit ? 'แก้ไขใบขอซื้อ' : 'สร้างใบขอซื้อ' }]}
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'สร้างใบขอซื้อ' }]}
         extra={
           <Button
             icon={<FileTextOutlined />}
@@ -458,29 +359,19 @@ const PRCreatePage: React.FC = () => {
         }
       />
 
-      {isEdit && !canEdit && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16, borderRadius: 8 }}
-          message={`ใบขอซื้อนี้อยู่ในสถานะ ${prStatus} — ไม่สามารถแก้ไขได้ (แก้ไขได้เฉพาะสถานะแบบร่างเท่านั้น)`}
-        />
-      )}
-
       <div style={{ marginBottom: 16 }}>
-        <span style={{ color: '#999' }}>{isEdit ? 'เลขที่ PR : ' : 'PR ล่าสุด : '}</span>
+        <span style={{ color: '#999' }}>PR ล่าสุด : </span>
         <span style={{ color: 'red', fontWeight: 'bold', fontSize: 18 }}>{prNumber}</span>
       </div>
 
-      <Form form={form} layout="horizontal" disabled={isEdit && !canEdit} initialValues={{ pr_date: dayjs().format('YYYY-MM-DD') }}>
+      <Form form={form} layout="horizontal" initialValues={{ pr_date: dayjs().format('YYYY-MM-DD') }}>
         <Card
           title={
             <div style={{ textAlign: 'center', color: '#1e3a8a', fontWeight: 700, fontSize: 15 }}>
-              {isEdit ? 'แก้ไขใบขอซื้อ (PR)' : 'ออกใบขอซื้อ (PR)'}
+              ออกใบขอซื้อ (PR)
             </div>
           }
           style={cardStyle}
-          loading={prLoading}
         >
           <Row gutter={[40, 0]}>
             {/* ── Left column ── */}
@@ -639,69 +530,34 @@ const PRCreatePage: React.FC = () => {
                   }}
                 />
 
-                {/* Saved attachments (edit mode) */}
-                {savedAttachments.length > 0 && (
-                  <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {savedAttachments.map((a) => (
-                      <div
-                        key={a.id}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          background: '#f8faff',
-                          border: '0.5px solid #bfdbfe',
-                          borderRadius: 6,
-                          padding: '3px 8px',
-                          fontSize: 12,
-                        }}
-                      >
-                        <PaperClipOutlined style={{ color: '#2563eb' }} />
-                        <a
-                          href={`${FILE_BASE_URL}/${a.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="attachment-filename-link"
-                          style={{ color: '#1e40af', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        >
-                          {a.fileName}
-                        </a>
-                        <span style={{ color: '#9ca3af' }}>{formatSize(a.fileSize)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
                 {/* Drop zone */}
-                {(!isEdit || canEdit) && (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={(e) => { e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files) }}
-                    style={{
-                      border: `1.5px dashed ${isDragging ? '#2563eb' : '#bfdbfe'}`,
-                      borderRadius: 8,
-                      padding: '8px 14px',
-                      cursor: 'pointer',
-                      background: isDragging ? '#eff6ff' : '#f8faff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <UploadOutlined style={{ color: '#2563eb', fontSize: 16, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontSize: 13, color: '#1e40af' }}>
-                        คลิกเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
-                      </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
-                        รองรับ JPG, PDF, DOC, XLS — เลือกได้หลายไฟล์พร้อมกัน
-                      </div>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => { e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files) }}
+                  style={{
+                    border: `1.5px dashed ${isDragging ? '#2563eb' : '#bfdbfe'}`,
+                    borderRadius: 8,
+                    padding: '8px 14px',
+                    cursor: 'pointer',
+                    background: isDragging ? '#eff6ff' : '#f8faff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <UploadOutlined style={{ color: '#2563eb', fontSize: 16, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, color: '#1e40af' }}>
+                      คลิกเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                      รองรับ JPG, PDF, DOC, XLS — เลือกได้หลายไฟล์พร้อมกัน
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* File pills */}
                 {attachedFiles.length > 0 && (
@@ -751,42 +607,38 @@ const PRCreatePage: React.FC = () => {
         </Card>
 
         <PRItemsTable
-          readonly={isEdit && !canEdit}
-          initialItems={initialItems}
           onBack={() => navigate('/pr/status')}
           onItemsChange={setLineItems}
         />
 
         {/* ── Action bar ── */}
-        {(!isEdit || canEdit) && (
-          <Card style={{ ...cardStyle, marginTop: 16 }}>
-            <div className="pr-action-bar">
-              <Space wrap>
-                <PermissionButton
-                  menuCode={MENU_CODE}
-                  action={isEdit ? 'edit' : 'write'}
-                  icon={<SaveOutlined />}
-                  loading={submitting}
-                  disabled={submitting}
-                  onClick={() => handleSubmit('DRAFT')}
-                >
-                  บันทึกร่าง
-                </PermissionButton>
-                <PermissionButton
-                  menuCode={MENU_CODE}
-                  action={isEdit ? 'edit' : 'write'}
-                  type="primary"
-                  icon={<SendOutlined />}
-                  loading={submitting}
-                  disabled={submitting}
-                  onClick={() => handleSubmit('COMPLETED')}
-                >
-                  ส่งใบขอซื้อ
-                </PermissionButton>
-              </Space>
-            </div>
-          </Card>
-        )}
+        <Card style={{ ...cardStyle, marginTop: 16 }}>
+          <div className="pr-action-bar">
+            <Space wrap>
+              <PermissionButton
+                menuCode={MENU_CODE}
+                action="write"
+                icon={<SaveOutlined />}
+                loading={submitting}
+                disabled={submitting}
+                onClick={() => handleSubmit('DRAFT')}
+              >
+                บันทึกร่าง
+              </PermissionButton>
+              <PermissionButton
+                menuCode={MENU_CODE}
+                action="write"
+                type="primary"
+                icon={<SendOutlined />}
+                loading={submitting}
+                disabled={submitting}
+                onClick={() => handleSubmit('COMPLETED')}
+              >
+                ส่งใบขอซื้อ
+              </PermissionButton>
+            </Space>
+          </div>
+        </Card>
       </Form>
       </div>
 

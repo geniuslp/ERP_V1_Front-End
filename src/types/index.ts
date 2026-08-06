@@ -1,3 +1,8 @@
+// Aliased: index.ts already has its own legacy lowercase `POStatus` (mock-era,
+// unrelated) below — import the real uppercase DB-backed type under a
+// different name to avoid colliding with it.
+import type { POStatus as RealPOStatus, POReceiveStatus } from './po'
+
 // ─── Auth & User ───────────────────────────────────────────────
 export interface User {
   id: string
@@ -23,7 +28,7 @@ export interface AuthState {
 }
 
 // ─── Permission & Menu ─────────────────────────────────────────
-export type PermissionAction = 'read' | 'write' | 'edit' | 'delete'
+export type PermissionAction = 'read' | 'write' | 'edit' | 'update' | 'delete'
 
 export interface MenuPermission {
   userId: string
@@ -239,11 +244,14 @@ export interface GRNPoListItem {
   net_amount?: number
 }
 
+// Matches models.POLine's actual JSON tags (internal/models/models.go) as
+// returned by GET /po/:id — the line's real PK comes back as `line_id`,
+// not `po_line_id`.
 export interface GRNPoLine {
-  po_line_id: number
+  line_id: number
   line_no: number
   mat_code: string
-  item_name: string
+  mat_name: string
   qty_ordered: number
   qty_received: number
   current_stock_qty: number | null
@@ -301,6 +309,100 @@ export interface GRNScorePayload {
 export interface GRNScoreResult {
   grn_id: number
   status: string
+}
+
+// ─── PO Receivable / GRN v2 (2026-07-27 session) ───────────────────────
+// New two-step receiving flow: search receivable POs -> load only the
+// still-receivable lines -> POST /grn as a draft -> POST /grn/:id/confirm.
+// Distinct from the GRN types above (which back the older /po/search +
+// /grn/receive + /grn/:id/score flow, still in use by
+// GoodsReceiptSearchPage/GoodsReceiptDetailPage/GRNHistoryPage).
+// 🔴 GET /po/receivable and GET /po/:id/receivable-lines are NOT deployed
+// yet as of this session — grnReceivingService mocks these shapes until the
+// backend confirms they're live. See CLAUDE.md "หน้า รับเข้า (GRN receiving)".
+export interface ReceivablePoItem {
+  po_id: number
+  po_no: string
+  po_date: string
+  supplier_code: string
+  supplier_name?: string
+  status: RealPOStatus
+  status_receive: POReceiveStatus
+}
+
+export interface ReceivablePoLine {
+  po_line_id: number
+  line_no: number
+  mat_code: string
+  mat_name: string
+  qty_ordered: number
+  qty_received: number
+  qty_remaining: number
+  unit_name?: string
+}
+
+export interface ReceivablePoLinesResponse {
+  po_id: number
+  po_no: string
+  supplier_code: string
+  warehouse_code?: string
+  lines: ReceivablePoLine[]
+}
+
+export interface GRNv2CreateLine {
+  po_line_id: number
+  mat_code: string
+  qty_accepted: number
+}
+
+export interface GRNv2CreatePayload {
+  po_id: number
+  warehouse_code: string
+  delivery_note?: string
+  lines: GRNv2CreateLine[]
+}
+
+export interface GRNv2CreateResult {
+  grn_id: number
+  grn_no: string
+  status: string
+}
+
+export type GRNQualityStatus = 'PENDING' | 'PASSED' | 'FAILED' | 'PARTIAL'
+
+export interface GRNv2ListItem {
+  grn_id: number
+  grn_no: string
+  grn_date: string
+  po_id: number
+  po_no: string
+  supplier_code: string
+  warehouse_code?: string
+  status: string
+  quality_status: GRNQualityStatus
+}
+
+export interface GRNv2Line {
+  grn_line_id: number
+  po_line_id: number
+  mat_code: string
+  mat_name: string
+  qty_accepted: number
+  quality_status: GRNQualityStatus
+}
+
+export interface GRNv2Detail {
+  grn_id: number
+  grn_no: string
+  grn_date: string
+  po_id: number
+  po_no: string
+  supplier_code: string
+  warehouse_code?: string
+  delivery_note?: string
+  status: string
+  quality_status: GRNQualityStatus
+  lines: GRNv2Line[]
 }
 
 export interface StockTransactionLog {

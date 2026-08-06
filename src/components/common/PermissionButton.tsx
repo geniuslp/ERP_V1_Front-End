@@ -25,6 +25,7 @@ type PermissionButtonProps = MenuPermissionButtonProps | ApprovalPermissionButto
 const ApprovalGatedButton: React.FC<ApprovalPermissionButtonProps> = ({
   docType, docId, approvalAction, mode = 'hide', ...buttonProps
 }) => {
+  console.log('[PermissionButton] calling useApprovalPermission with', { docType, docId })
   const { canApprove, canReject, loading } = useApprovalPermission(docType, docId)
   const allowed = approvalAction === 'approve' ? canApprove : canReject
 

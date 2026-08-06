@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch } from 'antd'
 import type { UploadProps } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -423,7 +423,11 @@ const SupplierPage: React.FC = () => {
         <Input placeholder="เช่น THB, USD" />
       </Form.Item>
       <Form.Item name="payment_terms" label="เงื่อนไขการชำระเงิน">
-        <Input placeholder="เช่น 30 วัน" />
+        <Select
+          placeholder="เลือกเงื่อนไขการชำระเงิน"
+          options={[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` }))}
+          allowClear
+        />
       </Form.Item>
       <Form.Item name="is_active" label="สถานะการใช้งาน" valuePropName="checked" initialValue={true}>
         <Switch checkedChildren="ใช้งาน" unCheckedChildren="ปิดใช้งาน" />

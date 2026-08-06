@@ -1,33 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Space, message } from 'antd'
+import { Card, Table, Button, Space, message } from 'antd'
 import { EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import type { POListItem, POStatus } from '@/types/po'
+import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import EditApprovedButton from './components/EditApprovedButton'
+import POStatusBadges from '@/components/po/POStatusBadge'
 
 const MENU_CODE = 'MENU_PO_MY'
-
-// Same status map as POStatusPage.tsx / POHistoryPage.tsx — kept in sync with
-// the real DB CHECK constraint on purchase_order.status.
-const statusTag = (status: POStatus) => {
-  const map: Record<POStatus, { color: string; label: string }> = {
-    DRAFT: { color: 'default', label: 'แบบร่าง' },
-    PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
-    APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
-    REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
-    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
-    SENT: { color: 'blue', label: 'ส่งแล้ว' },
-    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
-    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
-    CANCELLED: { color: 'warning', label: 'ยกเลิก' },
-  }
-  const s = map[status] ?? { color: 'default', label: status }
-  return <Tag color={s.color}>{s.label}</Tag>
-}
 
 const POMyListPage: React.FC = () => {
   const navigate = useNavigate()
@@ -44,7 +27,7 @@ const POMyListPage: React.FC = () => {
     try {
       const res = await poApprovalService.getList(accessToken, { page: p, limit: l, my: true })
       const data = res.data.data
-      setItems(Array.isArray(data.items) ? data.items : [])
+      setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
     } catch (err: any) {
       message.error(
@@ -63,7 +46,7 @@ const POMyListPage: React.FC = () => {
       dataIndex: 'po_no',
       key: 'po_no',
       render: (v: string, record) => (
-        <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.id}`)}>
+        <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.po_id}`)}>
           {v}
         </a>
       ),
@@ -73,7 +56,7 @@ const POMyListPage: React.FC = () => {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
-      render: (v: POStatus) => statusTag(v),
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
     },
     {
       title: 'มูลค่า (บาท)',
@@ -96,7 +79,7 @@ const POMyListPage: React.FC = () => {
             type="link"
             icon={<EyeOutlined />}
             size="small"
-            onClick={() => navigate(`/po/approval/${record.id}`)}
+            onClick={() => navigate(`/po/approval/${record.po_id}`)}
           >
             ดู
           </Button>
@@ -104,13 +87,13 @@ const POMyListPage: React.FC = () => {
             <Button
               type="link"
               size="small"
-              onClick={() => navigate(`/po/${record.id}/edit`)}
+              onClick={() => navigate(`/po/${record.po_id}/edit`)}
             >
               แก้ไข
             </Button>
           )}
           {record.can_edit_approved && (
-            <EditApprovedButton poId={record.id} poNo={record.po_no} menuCode={MENU_CODE} size="small" />
+            <EditApprovedButton poId={record.po_id} poNo={record.po_no} menuCode={MENU_CODE} size="small" />
           )}
         </Space>
       ),
@@ -126,7 +109,7 @@ const POMyListPage: React.FC = () => {
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
         <Table
-          rowKey="id"
+          rowKey="po_id"
           loading={loading}
           dataSource={items}
           columns={columns}

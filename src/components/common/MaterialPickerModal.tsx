@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Modal, Table, Input, Select, Button, Space, Tag, Row, Col, Typography, message } from 'antd'
+import { Modal, Drawer, Table, Input, Select, Button, Space, Tag, Row, Col, Checkbox, Pagination, Grid, message } from 'antd'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 import { stockService } from '@/services/stock.service'
@@ -7,7 +7,13 @@ import type { Material, StockLookupResult } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
-const { Text } = Typography
+const { useBreakpoint } = Grid
+
+const cardStyle: React.CSSProperties = {
+  borderRadius: 12,
+  border: 'none',
+  boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+}
 
 interface SelectOption {
   value: number
@@ -23,6 +29,8 @@ interface Props {
 
 const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const screens = useBreakpoint()
+  const isMobile = screens.md === false
 
   /* ── main table state ─────────────────────────────────────────── */
   const [data, setData] = useState<Material[]>([])
@@ -248,38 +256,40 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
     },
   }
 
-  return (
-    <Modal
-      title={
-        <span style={{ color: '#1e3a8a', fontWeight: 700 }}>
-          เลือกรายการวัสดุและบริการ
-        </span>
-      }
-      open={open}
-      onCancel={onClose}
-      width={860}
-      destroyOnClose
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: '#6b7280', fontSize: 13 }}>
-            เลือกแล้ว{' '}
-            <span style={{ color: '#1e3a8a', fontWeight: 600 }}>{selectedRows.length}</span>{' '}
-            รายการ
-          </span>
-          <Space>
-            <Button onClick={onClose}>ยกเลิก</Button>
-            <Button
-              type="primary"
-              disabled={selectedRows.length === 0}
-              onClick={handleConfirm}
-            >
-              ยืนยัน ({selectedRows.length})
-            </Button>
-          </Space>
-        </div>
-      }
-    >
-      {/* ── cascading filters ── */}
+  const toggleRow = (row: Material) => {
+    const isSelected = selectedKeys.includes(row.mat_code)
+    if (isSelected) {
+      setSelectedKeys(selectedKeys.filter((k) => k !== row.mat_code))
+      setSelectedRows(selectedRows.filter((r) => r.mat_code !== row.mat_code))
+    } else {
+      setSelectedKeys([...selectedKeys, row.mat_code])
+      setSelectedRows([...selectedRows, row])
+      ensureStockLookup(row.mat_code)
+    }
+  }
+
+  const footer = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ color: '#6b7280', fontSize: 13 }}>
+        เลือกแล้ว{' '}
+        <span style={{ color: '#1e3a8a', fontWeight: 600 }}>{selectedRows.length}</span>{' '}
+        รายการ
+      </span>
+      <Space>
+        <Button onClick={onClose}>ยกเลิก</Button>
+        <Button
+          type="primary"
+          disabled={selectedRows.length === 0}
+          onClick={handleConfirm}
+        >
+          ยืนยัน ({selectedRows.length})
+        </Button>
+      </Space>
+    </div>
+  )
+
+  const filters = (
+    <>
       <Row gutter={[8, 8]} style={{ marginBottom: 8 }}>
         <Col xs={24} sm={12}>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>กลุ่มย่อย (Subgroup)</div>
@@ -320,7 +330,6 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
         </Col>
       </Row>
 
-      {/* ── search ── */}
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>ค้นหาอิสระ (รหัส / ชื่อ / Spec / ยี่ห้อ)</div>
       <Input.Search
         placeholder="ค้นหารหัส, ชื่อ, Spec, ยี่ห้อ..."
@@ -346,6 +355,114 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
           }
         }}
       />
+    </>
+  )
+
+  const mobileList = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {!loading && data.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af' }}>ไม่พบรายการวัสดุ</div>
+      )}
+      {data.map((row) => {
+        const isSelected = selectedKeys.includes(row.mat_code)
+        const lookup = stockLookups[row.mat_code]
+        return (
+          <div
+            key={row.mat_code}
+            onClick={() => toggleRow(row)}
+            style={{
+              ...cardStyle,
+              display: 'flex',
+              gap: 12,
+              alignItems: 'flex-start',
+              padding: 14,
+              background: isSelected ? '#eff6ff' : '#fff',
+              border: isSelected ? '1px solid #93c5fd' : '1px solid transparent',
+              cursor: 'pointer',
+            }}
+          >
+            <Checkbox checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={() => toggleRow(row)} style={{ marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#2563eb', wordBreak: 'break-all' }}>
+                {row.mat_code}
+              </div>
+              <div style={{ marginTop: 2, fontSize: 13, color: '#1f2937' }}>{row.mat_name_th}</div>
+              {row.spec_description && (
+                <div style={{ marginTop: 2, fontSize: 12, color: '#6b7280' }}>{row.spec_description}</div>
+              )}
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <Tag style={{ fontSize: 11 }}>{row.unit_name}</Tag>
+                {row.brand_name && <Tag style={{ fontSize: 11 }}>{row.brand_name}</Tag>}
+                <Tag color={row.is_active ? 'green' : 'default'} style={{ fontSize: 11 }}>
+                  {row.is_active ? 'ใช้งาน' : 'ปิด'}
+                </Tag>
+              </div>
+              {showStockLookup && isSelected && (
+                <div style={{ marginTop: 6 }}>
+                  {lookup === 'loading' && <Tag style={{ fontSize: 11 }}>กำลังตรวจสอบ Stock...</Tag>}
+                  {lookup && lookup !== 'loading' && lookup.found && (
+                    <Tag color={lookup.qtyOnHand > 0 ? 'success' : 'warning'} style={{ fontSize: 11 }}>
+                      คงเหลือใน Stock: {lookup.qtyOnHand.toLocaleString('th-TH')} {lookup.unit ?? row.unit_name}
+                    </Tag>
+                  )}
+                  {lookup && lookup !== 'loading' && !lookup.found && (
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>ไม่มีในระบบ Stock</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+      {total > 10 && (
+        <Pagination
+          style={{ marginTop: 4, textAlign: 'center' }}
+          current={page}
+          pageSize={10}
+          total={total}
+          showSizeChanger={false}
+          onChange={(p) => setPage(p)}
+        />
+      )}
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer
+        title={<span style={{ color: '#1e3a8a', fontWeight: 700 }}>เลือกรายการวัสดุและบริการ</span>}
+        open={open}
+        onClose={onClose}
+        placement="bottom"
+        height="100%"
+        destroyOnClose
+        styles={{ body: { padding: 16 } }}
+        footer={footer}
+      >
+        {filters}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>กำลังโหลด...</div>
+        ) : (
+          mobileList
+        )}
+      </Drawer>
+    )
+  }
+
+  return (
+    <Modal
+      title={
+        <span style={{ color: '#1e3a8a', fontWeight: 700 }}>
+          เลือกรายการวัสดุและบริการ
+        </span>
+      }
+      open={open}
+      onCancel={onClose}
+      width={860}
+      destroyOnClose
+      footer={footer}
+    >
+      {filters}
 
       <Table
         rowKey="mat_code"

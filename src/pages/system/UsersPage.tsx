@@ -8,10 +8,11 @@ import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { PermRole, Department } from '@/types/permission.types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+interface UserRole { role_id: number; role_code: string; role_name: string }
 interface UserRecord {
   key: string; id: string; username: string; fullName: string; email: string
   role: string; department: string; isActive: boolean
-  roleId: number | null; deptCode: string | null
+  roleId: number | null; roleIds: number[]; roles: UserRole[]; deptCode: string | null
 }
 const user = JSON.parse(sessionStorage.getItem('user') ?? '{}')
 const UsersPage: React.FC = () => {
@@ -44,10 +45,12 @@ const UsersPage: React.FC = () => {
         username: u.username,
         fullName: u.full_name ?? u.fullName ?? u.username,
         email: u.email,
-        role: u.role ?? '-',
+        role: (u.roles ?? []).map((rl: UserRole) => rl.role_name).join(', ') || u.role || '-',
         department: u.department ?? '-',
         isActive: u.is_active,
-        roleId: u.role_id ?? u.roles?.[0]?.role_id ?? null,
+        roleId: u.roles?.[0]?.role_id ?? u.role_id ?? null,
+        roleIds: (u.roles ?? []).map((rl: UserRole) => rl.role_id),
+        roles: u.roles ?? [],
         deptCode: u.dept_code ?? null,
       })))
       } catch {
@@ -66,28 +69,54 @@ const UsersPage: React.FC = () => {
   }, [accessToken])
 
   const openCreate = () => { setEditing(null); form.resetFields(); setRoleOptions([]); setOpen(true) }
-  const openEdit = (r: UserRecord) => {
+  const openEdit = async (r: UserRecord) => {
     setEditing(r)
     const deptCode = r.deptCode ?? departments.find((d) => d.dept_name === r.department)?.dept_code ?? undefined
-    const rolesForDept = deptCode ? allRoles.filter((role) => role.dept_code === deptCode) : allRoles
-    setRoleOptions(rolesForDept)
-    const roleId = r.roleId ?? rolesForDept.find((role) => role.role_name === r.role)?.id ?? undefined
+
+    // Ensure role options are loaded before we try to resolve/select roles below.
+    let roles = allRoles
+    if (roles.length === 0 && accessToken) {
+      try {
+        roles = await permissionMatrixService.getRoles(accessToken as string)
+        setAllRoles(roles)
+      } catch {
+        roles = []
+      }
+    }
+
+    let roleIds = r.roleIds
+    try {
+      const res = await axios.get(`${BASE_URL}/users/${r.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const fresh = res.data?.data ?? res.data
+      if (Array.isArray(fresh?.roles)) roleIds = fresh.roles.map((rl: UserRole) => rl.role_id)
+    } catch {
+      // fall back to roleIds already present on the row from the list fetch
+    }
+
+    // Role options are normally scoped to the selected department, but a user's
+    // existing roles may span departments — keep those visible so setFieldsValue
+    // doesn't silently drop values that don't resolve to an option.
+    const rolesForDept = deptCode ? roles.filter((role) => role.dept_code === deptCode) : roles
+    const missingAssigned = roles.filter((role) => roleIds.includes(role.id) && !rolesForDept.some((rd) => rd.id === role.id))
+    setRoleOptions([...rolesForDept, ...missingAssigned])
+
     form.setFieldsValue({
       username: r.username,
       fullName: r.fullName,
       email: r.email,
       deptCode,
-      roleId,
+      roleIds,
     })
     setOpen(true)
   }
   const handleDeptChange = (deptCode: string) => {
     const rolesForDept = allRoles.filter((role) => role.dept_code === deptCode)
     setRoleOptions(rolesForDept)
-    const currentRoleId = form.getFieldValue('roleId')
-    if (!rolesForDept.some((role) => role.id === currentRoleId)) {
-      form.setFieldValue('roleId', undefined)
-    }
+    const currentRoleIds: number[] = form.getFieldValue('roleIds') ?? []
+    const filtered = currentRoleIds.filter((id) => rolesForDept.some((role) => role.id === id))
+    form.setFieldValue('roleIds', filtered)
   }
   const handleDelete = (key: string) => { setData(data.filter((d) => d.key !== key)); message.success('ลบผู้ใช้เรียบร้อย') }
 
@@ -123,22 +152,26 @@ const UsersPage: React.FC = () => {
             full_name: values.fullName,
             email: values.email,
             dept_code: values.deptCode,
-            role_id: values.roleId,
+            role_ids: values.roleIds,
           }
           await axios.put(`${BASE_URL}/users/${editing.id}`, payload, {
             headers: { Authorization: `Bearer ${accessToken}` },
           })
           const dept = departments.find((d) => d.dept_code === values.deptCode)
-          const role = allRoles.find((r) => r.id === values.roleId)
+          const selectedRoles = allRoles
+            .filter((r) => (values.roleIds ?? []).includes(r.id))
+            .map((r) => ({ role_id: r.id, role_code: r.role_code, role_name: r.role_name }))
           setData(data.map((d) => d.key === editing.key ? {
             ...d,
             username: values.username,
             fullName: values.fullName,
             email: values.email,
             deptCode: values.deptCode,
-            roleId: values.roleId,
+            roleId: values.roleIds?.[0] ?? null,
+            roleIds: values.roleIds ?? [],
+            roles: selectedRoles.length ? selectedRoles : d.roles,
             department: dept?.dept_name ?? d.department,
-            role: role?.role_name ?? d.role,
+            role: selectedRoles.map((r) => r.role_name).join(', ') || d.role,
           } : d))
           message.success('แก้ไขข้อมูลเรียบร้อย')
           setOpen(false)
@@ -196,8 +229,9 @@ const UsersPage: React.FC = () => {
               placeholder="เลือกแผนก"
             />
           </Form.Item>
-          <Form.Item label="บทบาท" name="roleId" rules={[{ required: true }]}>
+          <Form.Item label="บทบาท" name="roleIds" rules={[{ required: true, type: 'array', min: 1 }]}>
             <Select
+              mode="multiple"
               options={roleOptions.map((r) => ({ value: r.id, label: r.role_name }))}
               placeholder="เลือกบทบาท"
             />

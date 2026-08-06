@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert,
+  Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip,
 } from 'antd'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { Memo } from '@/types'
@@ -15,6 +15,7 @@ import dayjs from 'dayjs'
 import { useAppSelector } from '@/store'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
 import { poApprovalService } from '@/services/poApprovalService'
+import { getAvailablePRs } from '@/services/poService'
 import POItemsTable from '@/components/common/POItemsTable'
 import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
@@ -22,6 +23,9 @@ import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
 
 const MENU_CODE = 'MENU_PO_CREATE'
+
+const formatNumber = (n: number) =>
+  n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 // Uploaded files are served as static assets off the API server root, not under
@@ -48,10 +52,10 @@ interface SupplierOption {
   supplier_name: string
 }
 
-const LOCKED_STATUSES = [
-  'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'PENDING_REAPPROVAL',
-  'SENT', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED',
-]
+// POs are always editable regardless of status EXCEPT APPROVED, which still
+// requires going through EditApprovedButton's mandatory-reason modal
+// (PUT /po/:id/edit-approved) rather than the plain edit PUT /po/:id.
+const LOCKED_STATUSES = ['APPROVED']
 
 const POCreatePage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -94,6 +98,8 @@ const POCreatePage: React.FC = () => {
   const [warehousesLoading, setWarehousesLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [projectDetails, setProjectDetails] = useState<Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }>>({})
+  const [selectedProjectCode, setSelectedProjectCode] = useState<string | null>(null)
   const [items, setItems] = useState<POLineItem[]>([])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
   const [prDetailLoading, setPrDetailLoading] = useState(false)
@@ -117,6 +123,14 @@ const POCreatePage: React.FC = () => {
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
   const [useVat, setUseVat] = useState(false)
   const [useWht, setUseWht] = useState(false)
+
+  // Each row now carries its own explicit disc_type (set on load and on
+  // add-row), so the header toggle only changes the default applied to
+  // NEW rows going forward — it must not retroactively touch existing
+  // rows' type or value now that they're independently controlled.
+  const handleDiscTypeChange = (v: 'pct' | 'amt') => {
+    setDiscType(v)
+  }
 
   const [savedPoId, setSavedPoId] = useState<number | string | null>(id ?? null)
   const [printData, setPrintData] = useState<POData | null>(null)
@@ -204,49 +218,43 @@ const POCreatePage: React.FC = () => {
     fetchApprovers()
   }, [])
 
-  useEffect(() => {
-    const fetchPRs = async () => {
-      setPrOptionsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/pr`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: { page: 1, limit: 1000, status: 'COMPLETED' },
-        })
-        const list: PRListItem[] = Array.isArray(res.data) ? res.data : res.data?.data?.items ?? []
-
-        // A PR is fully referenced (and must be excluded) only when EVERY line's
-        // qty_remaining is used up — computed live from lines-with-po-status,
-        // the same join the PR-item picker itself uses, not any cached PR status.
-        const withRemaining = await Promise.all(
-          list.map(async (pr) => {
-            try {
-              const linesRes = await axios.get(`${BASE_URL}/pr/${pr.id}/lines-with-po-status`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              })
-              const data = linesRes.data?.data ?? linesRes.data
-              const lines: PRLineWithPOStatus[] = Array.isArray(data?.lines) ? data.lines : []
-              // An empty/unreadable lines array means "nothing with remaining qty" —
-              // that must exclude the PR, not fail open. Only a failed *request*
-              // (network/auth error, caught below) should fail open.
-              const hasRemaining = lines.some((l) => l.qty_remaining > 0)
-              return hasRemaining ? pr : null
-            } catch {
-              // If we can't confirm remaining qty, don't silently hide the PR.
-              return pr
-            }
-          }),
-        )
-        setPrOptions(withRemaining.filter((pr): pr is PRListItem => pr !== null))
-      } catch (err: any) {
-        message.error(
-          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรายการ PR ไม่สำเร็จ'
-        )
-      } finally {
-        setPrOptionsLoading(false)
-      }
+  const fetchPRs = async () => {
+    setPrOptionsLoading(true)
+    try {
+      // /po/available-prs already excludes PRs that are fully consumed by an
+      // existing PO — server-side equivalent of the old client-side
+      // per-line qty_remaining check against /pr/:id/lines-with-po-status.
+      const list = await getAvailablePRs()
+      setPrOptions(
+        list.map((pr) => ({
+          id: pr.pr_id,
+          pr_no: pr.pr_no,
+          status: pr.status as PRListItem['status'],
+          requested_by: pr.requested_by_name ?? '',
+          approver_name: null,
+          location_code: '',
+          project_code: null,
+          remarks: null,
+          pr_date: pr.created_at,
+        })),
+      )
+    } catch (err: any) {
+      message.error(
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรายการ PR ไม่สำเร็จ'
+      )
+    } finally {
+      setPrOptionsLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchPRs()
   }, [])
+
+  // TEMP DIAGNOSTIC — remove after PR-modal investigation
+  useEffect(() => {
+    console.log('[prOptions]', prOptions)
+  }, [prOptions])
 
   useEffect(() => {
     const fetchWarehouses = async () => {
@@ -305,6 +313,21 @@ const POCreatePage: React.FC = () => {
             ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
             : (p.project_name ?? p.name ?? String(p.id)),
         })))
+        // GET /master/projects already returns budget_amount / spent_amount /
+        // remaining_amount alongside the other project fields — reuse this
+        // response for the hover tooltip instead of firing a second request
+        // when a project is selected.
+        const detailMap: Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }> = {}
+        list.forEach((p: any) => {
+          if (!p.project_code) return
+          detailMap[p.project_code] = {
+            projectName: p.project_name ?? p.name ?? '',
+            budgetAmount: p.budget_amount ?? undefined,
+            spentAmount: p.spent_amount ?? undefined,
+            remainingAmount: p.remaining_amount ?? undefined,
+          }
+        })
+        setProjectDetails(detailMap)
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดรหัสงานไม่สำเร็จ')
       } finally {
@@ -392,6 +415,7 @@ const POCreatePage: React.FC = () => {
           projectCode: raw.project_code ?? null,
           approverId: raw.approver_id != null ? Number(raw.approver_id) : null,
         })
+        setSelectedProjectCode(raw.project_code ?? null)
 
         // pr_id links this PO back to the PR it was created from — select it in
         // the PR Order dropdown. That dropdown's options are filtered to
@@ -453,6 +477,10 @@ const POCreatePage: React.FC = () => {
             is_from_pr: l.pr_line_id != null,
             description: l.remarks ?? undefined,
             disc: l.discount ?? undefined,
+            // Fall back to the header's global type only for legacy rows saved
+            // before per-line disc_type existed — never overwrite a row that
+            // already has its own explicit type.
+            disc_type: l.disc_type ?? (raw.discount_type === 'amt' ? 'amt' : 'pct'),
             wht_rate: l.wht_rate ?? undefined,
           }))
         )
@@ -502,8 +530,13 @@ const POCreatePage: React.FC = () => {
         // ignores an undefined value (treated as "leave unchanged"), so a
         // missing field on the new PR would leave the OLD PR's value on
         // screen instead of clearing it. Only null actually clears a field.
-        const warehouseCode = raw.warehouse_code ?? null
-        const projectCode = raw.project_code ?? null
+        // Fall back to *_id variants in case this PR detail response ever uses
+        // the numeric FK name instead of the code — the warehouse_code/
+        // project_code Selects on this form are keyed by code either way, so
+        // an *_id fallback value still round-trips correctly as long as the
+        // options list's `value` uses the same string.
+        const warehouseCode = raw.warehouse_code ?? raw.warehouse_id ?? null
+        const projectCode = raw.project_code ?? raw.project_id ?? null
         const deliveryLocation = raw.location_text ?? null
         form.setFieldsValue({
           requestedBy: requestedById,
@@ -520,6 +553,7 @@ const POCreatePage: React.FC = () => {
           projectCode,
           approverId: prev?.approverId ?? null,
         }))
+        setSelectedProjectCode(projectCode)
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูล PR สำหรับ auto-fill ไม่สำเร็จ')
       } finally {
@@ -593,6 +627,8 @@ const POCreatePage: React.FC = () => {
 
   const handlePrChange = (newPrId: number | undefined) => {
     const prevPrId = selectedPrId
+    // TEMP DIAGNOSTIC — remove after PR-modal investigation
+    console.log('[POCreatePage] handlePrChange fired — newPrId:', newPrId, 'prevPrId:', prevPrId, 'items.length:', items.length)
     // The confirm dialog below promises to clear ALL selected items
     // ("ล้างรายการวัสดุที่เลือกไว้ทั้งหมด"), not just PR-linked ones — so the
     // gate for showing it, and the clear itself, must cover every row,
@@ -603,6 +639,7 @@ const POCreatePage: React.FC = () => {
     const hasItems = items.length > 0
 
     const applyChange = (id: number | null) => {
+      console.log('[POCreatePage] applyChange — setting selectedPrId:', id, 'and opening modal:', Boolean(id))
       isUserPrSwitch.current = true
       setSelectedPrId(id)
       setItems([])
@@ -612,6 +649,7 @@ const POCreatePage: React.FC = () => {
     // Switching to a genuinely different PR while any items are already in
     // the table is destructive — confirm before wiping them.
     if (prevPrId && newPrId && newPrId !== prevPrId && hasItems) {
+      console.log('[POCreatePage] showing confirm dialog before switching PR')
       Modal.confirm({
         title: 'เปลี่ยน PR',
         content: 'เปลี่ยน PR จะล้างรายการวัสดุที่เลือกไว้ทั้งหมด ต้องการดำเนินการต่อหรือไม่?',
@@ -633,6 +671,8 @@ const POCreatePage: React.FC = () => {
   // modal for that same-PR reselect case — switching to a different PR is handled
   // entirely by handlePrChange above (confirmation + clearing items).
   const handlePrSelect = (prId: number) => {
+    // TEMP DIAGNOSTIC — remove after PR-modal investigation
+    console.log('[POCreatePage] handlePrSelect (onSelect) fired — prId:', prId, 'selectedPrId:', selectedPrId)
     if (prId === selectedPrId) {
       setPrModalOpen(true)
     }
@@ -664,6 +704,7 @@ const POCreatePage: React.FC = () => {
         salesperson: raw?.sales_person ?? null,
         email: raw?.contact_email ?? null,
         contactPhone: raw?.contact_phone ?? null,
+        paymentTerm: raw?.payment_terms ?? null,
       })
     } catch (err: any) {
       message.error(
@@ -803,6 +844,7 @@ const POCreatePage: React.FC = () => {
             qty_ordered: item.qty,
             unit_price: item.unit_price,
             discount: item.disc ?? 0,
+            disc_type: item.disc_type ?? discType,
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
           })),
@@ -847,6 +889,13 @@ const POCreatePage: React.FC = () => {
           poId = res.data?.data?.id ?? res.data?.data?.po?.id ?? res.data?.id ?? res.data?.po?.id ?? null
           if (poId) {
             setSavedPoId(poId)
+            // Move the route from /po/create to /po/:id/edit now that the PO
+            // exists — without this, `id` (from useParams) stays undefined,
+            // so isEdit stays false forever on this mount: a refresh would
+            // lose the form back to a blank create page, and clicking
+            // "บันทึกร่าง" again would POST a duplicate PO instead of
+            // PUT-ing this one.
+            navigate(`/po/${poId}/edit`, { replace: true })
           } else {
             // Save succeeded (2xx) but the response didn't carry a usable id —
             // don't leave savedPoId silently unset with no trace of why.
@@ -887,9 +936,14 @@ const POCreatePage: React.FC = () => {
           }
         }
       } catch (err: any) {
-        message.error(
-          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึก PO ไม่สำเร็จ'
-        )
+        if (err?.response?.status === 409) {
+          message.error('PR นี้ถูกสร้าง PO ไปแล้ว กรุณาเลือก PR ใหม่')
+          fetchPRs()
+        } else {
+          message.error(
+            err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึก PO ไม่สำเร็จ'
+          )
+        }
       } finally {
         setSubmitting(false)
       }
@@ -1001,7 +1055,7 @@ const POCreatePage: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 16, borderRadius: 8 }}
-          message={`ใบสั่งซื้อนี้อยู่ในสถานะ ${poStatus} — ไม่สามารถแก้ไขได้ (แก้ไขได้เฉพาะสถานะแบบร่าง หรือ PO ที่อนุมัติแล้วผ่านปุ่ม "แก้ไข" ในหน้ารายละเอียดเท่านั้น)`}
+          message={`ใบสั่งซื้อนี้อนุมัติแล้ว — แก้ไขได้ผ่านปุ่ม "แก้ไข" ในหน้ารายละเอียดเท่านั้น (ต้องระบุเหตุผล)`}
         />
       )}
 
@@ -1147,7 +1201,11 @@ const POCreatePage: React.FC = () => {
                 {/* เงื่อนไขชำระเงิน */}
                 <Col xs={24} md={6}>
                   <Form.Item label={<span style={labelStyle}>เงื่อนไขชำระเงิน</span>} name="paymentTerm">
-                    <Input />
+                    <Select
+                      placeholder="เลือกเงื่อนไขการชำระเงิน"
+                      options={[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` }))}
+                      allowClear
+                    />
                   </Form.Item>
                 </Col>
 
@@ -1214,21 +1272,81 @@ const POCreatePage: React.FC = () => {
 
                 {/* รหัสงาน */}
                 <Col xs={24} md={6}>
-                  <Form.Item
-                    label={<span style={labelStyle}>รหัสงาน</span>}
-                    name="project_code"
+                  {/* Tooltip must wrap the whole Form.Item, not sit between
+                      Form.Item and Select — Form.Item clones its single direct
+                      child to inject `value`/`onChange`, so if Tooltip were
+                      that direct child, the injected value would land on
+                      Tooltip (which ignores it) and Select would never
+                      display the selected project. */}
+                  <Tooltip
+                    placement="right"
+                    title={
+                      selectedProjectCode && projectDetails[selectedProjectCode] ? (
+                        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+                          <div>
+                            <span style={{ color: '#aaa' }}>โครงการ: </span>
+                            <span style={{ fontWeight: 600 }}>
+                              {projectDetails[selectedProjectCode].projectName}
+                            </span>
+                          </div>
+                          <div>
+                            <span style={{ color: '#aaa' }}>รหัสโครงการ: </span>
+                            <span style={{ fontWeight: 600 }}>{selectedProjectCode}</span>
+                          </div>
+                          {projectDetails[selectedProjectCode].budgetAmount !== undefined && (
+                            <div>
+                              <span style={{ color: '#aaa' }}>งบประมาณ: </span>
+                              <span style={{ fontWeight: 600 }}>
+                                {formatNumber(projectDetails[selectedProjectCode].budgetAmount!)} บาท
+                              </span>
+                            </div>
+                          )}
+                          {projectDetails[selectedProjectCode].spentAmount !== undefined && (
+                            <div>
+                              <span style={{ color: '#aaa' }}>ยอดใช้จ่ายไปแล้ว: </span>
+                              <span style={{ fontWeight: 600 }}>
+                                {formatNumber(projectDetails[selectedProjectCode].spentAmount!)} บาท
+                              </span>
+                            </div>
+                          )}
+                          {projectDetails[selectedProjectCode].remainingAmount !== undefined && (
+                            <div>
+                              <span style={{ color: '#aaa' }}>คงเหลือ: </span>
+                              <span
+                                style={{
+                                  fontWeight: 600,
+                                  color: projectDetails[selectedProjectCode].remainingAmount! < 0 ? '#dc2626' : undefined,
+                                }}
+                              >
+                                {formatNumber(projectDetails[selectedProjectCode].remainingAmount!)} บาท
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : null
+                    }
                   >
-                    <Select
-                      placeholder="- เลือกรายการ -"
-                      loading={projectsLoading || prDetailLoading}
-                      showSearch
-                      allowClear
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={projects}
-                    />
-                  </Form.Item>
+                    <Form.Item
+                      label={<span style={labelStyle}>รหัสงาน</span>}
+                      name="project_code"
+                    >
+                      <Select
+                        placeholder="- เลือกรายการ -"
+                        loading={projectsLoading || prDetailLoading}
+                        showSearch
+                        allowClear
+                        // Locked once a PR is linked — the project comes from that
+                        // PR and must stay in sync with it; clearing the PR
+                        // (selectedPrId back to null) unlocks it again.
+                        disabled={Boolean(selectedPrId)}
+                        filterOption={(input, option) =>
+                          String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                        }
+                        options={projects}
+                        onChange={(val) => setSelectedProjectCode(val ?? null)}
+                      />
+                    </Form.Item>
+                  </Tooltip>
                 </Col>
 
                 {/* ผู้อนุมัติ */}
@@ -1290,14 +1408,17 @@ const POCreatePage: React.FC = () => {
                       onChange={handlePrChange}
                       onSelect={(val) => { if (val != null) handlePrSelect(val) }}
                       filterOption={(input, option) => {
-                        const haystack = `${option?.pr_no ?? ''} ${option?.status ?? ''}`.toLowerCase()
+                        const haystack = `${option?.pr_no ?? ''} ${option?.status ?? ''} ${option?.requested_by ?? ''}`.toLowerCase()
                         return haystack.includes(input.toLowerCase())
                       }}
                       optionRender={(option) => (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <span>{option.data.pr_no}</span>
+                          <span>
+                            {option.data.pr_no}
+                            {option.data.requested_by ? ` — ${option.data.requested_by}` : ''}
+                          </span>
                           <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>
-                            {option.data.pr_date}
+                            {option.data.pr_date ? dayjs(option.data.pr_date).format('DD-MM-YY') : ''}
                             {option.data.status ? ` · ${option.data.status}` : ''}
                           </span>
                         </div>
@@ -1309,10 +1430,11 @@ const POCreatePage: React.FC = () => {
                           : []),
                       ].map((pr) => ({
                         value: pr.id,
-                        label: pr.pr_no,
+                        label: pr.requested_by ? `${pr.pr_no} — ${pr.requested_by}` : pr.pr_no,
                         pr_no: pr.pr_no,
                         pr_date: pr.pr_date,
                         status: pr.status,
+                        requested_by: pr.requested_by,
                       }))}
                     />
                   </Form.Item>
@@ -1354,7 +1476,7 @@ const POCreatePage: React.FC = () => {
                 useDisc={useDisc}
                 onUseDiscChange={setUseDisc}
                 discType={discType}
-                onDiscTypeChange={setDiscType}
+                onDiscTypeChange={handleDiscTypeChange}
                 useVat={useVat}
                 onUseVatChange={setUseVat}
                 useWht={useWht}
@@ -1564,6 +1686,11 @@ const POCreatePage: React.FC = () => {
         />
       )}
 
+      {/* TEMP DIAGNOSTIC — remove after PR-modal investigation */}
+      {(() => {
+        console.log('[POCreatePage] render — isEdit:', isEdit, 'canEdit:', canEdit, 'formDisabled:', isEdit && !canEdit, 'prModalOpen:', prModalOpen, 'selectedPrId:', selectedPrId)
+        return null
+      })()}
       <PRItemSelectionModal
         open={prModalOpen}
         prId={selectedPrId}

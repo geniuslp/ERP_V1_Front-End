@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Select, Input, Tag, Button, Space, Badge, message } from 'antd'
+import { Table, Select, Input, Button, Space, Badge, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
-import type { POListItem, POStatus } from '@/types/po'
+import type { POListItem } from '@/types/po'
 import PageHeader from '@/components/common/PageHeader'
 import { poApprovalService } from '@/services/poApprovalService'
+import POStatusBadges from '@/components/po/POStatusBadge'
 
 // TODO: enable when permission system is ready
 // const userDept = useAppSelector((s) => s.auth.user?.department)
@@ -20,22 +21,6 @@ const statusOptions = [
   { value: 'DRAFT', label: 'แบบร่าง' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
 ]
-
-const statusTag = (status: POStatus) => {
-  const map: Record<POStatus, { color: string; label: string }> = {
-    DRAFT: { color: 'default', label: 'แบบร่าง' },
-    PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
-    APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
-    REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
-    PENDING_REAPPROVAL: { color: 'gold', label: 'รออนุมัติอีกครั้ง' },
-    SENT: { color: 'blue', label: 'ส่งแล้ว' },
-    PARTIALLY_RECEIVED: { color: 'cyan', label: 'รับสินค้าบางส่วน' },
-    RECEIVED: { color: 'green', label: 'รับสินค้าแล้ว' },
-    CANCELLED: { color: 'warning', label: 'ยกเลิก' },
-  }
-  const s = map[status] ?? { color: 'default', label: status }
-  return <Tag color={s.color}>{s.label}</Tag>
-}
 
 const POApprovalListPage: React.FC = () => {
   const navigate = useNavigate()
@@ -57,7 +42,7 @@ const POApprovalListPage: React.FC = () => {
         limit: 20,
       })
       const data = res.data.data
-      setItems(Array.isArray(data.items) ? data.items : [])
+      setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
     } catch (err: any) {
       message.error(
@@ -116,7 +101,7 @@ const POApprovalListPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 140,
-      render: (v: POStatus) => statusTag(v),
+      render: (_v: unknown, r: POListItem) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
     },
     {
       title: 'ผู้สร้าง',
@@ -140,7 +125,7 @@ const POApprovalListPage: React.FC = () => {
           icon={<EyeOutlined />}
           onClick={(e) => {
             e.stopPropagation()
-            navigate(`/po/approval/${record.id}`)
+            navigate(`/po/approval/${record.po_id}`)
           }}
         >
           ดูรายละเอียด
@@ -187,7 +172,7 @@ const POApprovalListPage: React.FC = () => {
       </div>
 
       <Table
-        rowKey="id"
+        rowKey="po_id"
         loading={loading}
         dataSource={filtered}
         columns={columns}
@@ -200,7 +185,7 @@ const POApprovalListPage: React.FC = () => {
           showSizeChanger: false,
         }}
         onRow={(record) => ({
-          onClick: () => navigate(`/po/approval/${record.id}`),
+          onClick: () => navigate(`/po/approval/${record.po_id}`),
           style: { cursor: 'pointer' },
         })}
         scroll={{ x: 900 }}
