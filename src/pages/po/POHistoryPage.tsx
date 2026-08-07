@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, message } from 'antd'
+import { Card, Table, Button, message, Space, Tag, Typography } from 'antd'
 import { EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -8,6 +8,9 @@ import { useAppSelector } from '@/store'
 import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
+
+const { Text } = Typography
 
 const POHistoryPage: React.FC = () => {
   const navigate = useNavigate()
@@ -44,11 +47,34 @@ const POHistoryPage: React.FC = () => {
       key: 'po_no',
       render: (v: string, record) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.po_id}`)}>
-          {v}
+          {formatPoNoWithRevision(v, record.revision_round)}
         </a>
       ),
     },
     { title: 'ผู้ขาย', dataIndex: 'supplier_name', key: 'supplier_name' },
+    {
+      title: 'โครงการ',
+      dataIndex: 'project_code',
+      key: 'project_code',
+      render: (v?: string) => v || '-',
+    },
+    {
+      title: 'งาน',
+      key: 'job_names',
+      render: (_: unknown, r) => {
+        const names = Array.from(new Set((r.job_names ?? []).filter(Boolean)))
+        if (names.length === 0) return <Text type="secondary">-</Text>
+        return (
+          <Space size={4} wrap>
+            {names.map((name) => (
+              <Tag key={name} color="geekblue" style={{ margin: 0, fontSize: 13 }}>
+                {name}
+              </Tag>
+            ))}
+          </Space>
+        )
+      },
+    },
     {
       title: 'สถานะ',
       dataIndex: 'status',
@@ -56,16 +82,36 @@ const POHistoryPage: React.FC = () => {
       render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
     },
     {
-      title: 'มูลค่า (บาท)',
-      key: 'net_amount',
+      // total_amount - discount_amount = after-discount, before VAT/WHT.
+      // net_amount already bakes in VAT/WHT — same fix as POStatusPage, kept
+      // consistent across both pages since they read the same GET /po response.
+      title: 'มูลค่า (หลังหักส่วนลด)',
+      key: 'amount_after_discount',
       align: 'right',
-      render: (_: unknown, r) => r.net_amount.toLocaleString('th-TH'),
+      render: (_: unknown, r) => (r.total_amount - (r.discount_amount ?? 0)).toLocaleString('th-TH'),
+    },
+    {
+      title: 'แก้ไขล่าสุดโดย',
+      key: 'last_edited_by',
+      render: (_: unknown, r) => {
+        const name =
+          r.updated_by_name && r.updated_by_name !== r.created_by_name
+            ? r.updated_by_name
+            : r.created_by_name
+        return name || '-'
+      },
     },
     {
       title: 'วันที่สั่ง',
       dataIndex: 'po_date',
       key: 'po_date',
       render: (v: string) => v?.slice(0, 10) ?? '-',
+    },
+    {
+      title: 'กำหนดส่ง',
+      dataIndex: 'expected_date',
+      key: 'expected_date',
+      render: (v: string | null) => v?.slice(0, 10) ?? '-',
     },
     // NOTE: GET /po's response (POListItem) has no closed/completed-date field —
     // same gap flagged for PRHistoryPage's "วันที่ปิด" column. Not invented here;
