@@ -24,6 +24,7 @@ const defaultMenus: MenuConfig[] = [
     { id: 'po-status', key: 'po-status', label: 'ตรวจสอบสถานะ', path: '/po/status', parentId: 'po', order: 1, isActive: true },
     { id: 'po-history', key: 'po-history', label: 'ประวัติใบสั่งซื้อ', path: '/po/history', parentId: 'po', order: 2, isActive: true },
     { id: 'po-approval', key: 'po-approval', label: 'อนุมัติ PO', path: '/po/approval', parentId: 'po', order: 3, isActive: true },
+    { id: 'po-line-items', key: 'po-line-items', label: 'รายการ PO', path: '/po/line-items', parentId: 'po', order: 4, isActive: true },
   ]},
   { id: 'master', key: 'master', label: 'ข้อมูลหลัก (Master)', icon: 'AppstoreOutlined', parentId: null, order: 3, isActive: true, children: [
     { id: 'master-groups', key: 'master-groups', label: 'กลุ่ม', path: '/master/groups', parentId: 'master', order: 0, isActive: true },

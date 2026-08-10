@@ -20,6 +20,7 @@ import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
 import POStatusBadges from '@/components/po/POStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const MENU_CODE = 'MENU_PO_STATUS'
 
@@ -277,7 +278,9 @@ const POApprovalDetailPage: React.FC = () => {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
             กลับ
           </Button>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>{po.po_no}</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>
+            {formatPoNoWithRevision(po.po_no, po.revision_round)}
+          </span>
           <POStatusBadges status={po.status} statusReceive={po.status_receive} />
         </Space>
 
@@ -366,7 +369,7 @@ const POApprovalDetailPage: React.FC = () => {
           column={{ xs: 1, sm: 2, lg: 3 }}
           labelStyle={{ fontWeight: 600, width: 140 }}
         >
-          <Descriptions.Item label="เลข PO">{po.po_no}</Descriptions.Item>
+          <Descriptions.Item label="เลข PO">{formatPoNoWithRevision(po.po_no, po.revision_round)}</Descriptions.Item>
           <Descriptions.Item label="เลข PR อ้างอิง">
             {po.pr_id ? (
               <a onClick={() => navigate(`/pr/${po.pr_id}`)}>{po.pr_no ?? `PR #${po.pr_id}`}</a>
@@ -381,7 +384,7 @@ const POApprovalDetailPage: React.FC = () => {
           <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
           <Descriptions.Item label="รหัส Supplier">{po.supplier_code}</Descriptions.Item>
           <Descriptions.Item label="เงื่อนไขการชำระ">{po.payment_terms ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.delivery_address ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.location_text ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="คลัง">{po.warehouse_code ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="สกุลเงิน">{po.currency}</Descriptions.Item>
           <Descriptions.Item label="มูลค่ารวม" contentStyle={{ textAlign: 'left' }}>

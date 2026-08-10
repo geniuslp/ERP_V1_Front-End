@@ -61,6 +61,17 @@ export interface PRLineWithPOStatus {
   last_price_date?: string | null
   price_history?: PRPriceHistoryEntry[]
   selected_unit_price?: number
+  // Confirmed present on GET /pr/:id/lines-with-po-status as of this session
+  // (internal/handlers/pr.go) — carries the PR line's cost code forward so it
+  // can be shown before conversion and copied server-side onto the PO line.
+  cost_subgroup_id?: number | null
+  cost_code?: string | null
+  cost_subgroup_name?: string | null
+  // Added alongside cost_subgroup_id — job_code/job_name are the resolved
+  // cost_job fields (cost_subgroup -> cost_group -> cost_job), used for display
+  // instead of the raw combined cost_code.
+  job_code?: string | null
+  job_name?: string | null
 }
 
 export interface PRLinesWithPOStatusResponse {

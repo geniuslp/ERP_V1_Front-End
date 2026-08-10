@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '@/components/common/PageHeader'
 import { grnReceivingService, GRN_RECEIVING_MOCK_MODE } from '@/services/grnReceivingService'
 import POStatusBadges from '@/components/po/POStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 import type { ReceivablePoItem } from '@/types'
 
 const cardStyle: React.CSSProperties = {
@@ -52,7 +53,12 @@ const ReceivingListPage: React.FC = () => {
   useEffect(() => { fetchData(1) }, [])
 
   const columns = [
-    { title: 'เลข PO', dataIndex: 'po_no', key: 'po_no' },
+    {
+      title: 'เลข PO',
+      dataIndex: 'po_no',
+      key: 'po_no',
+      render: (v: string, r: ReceivablePoItem) => formatPoNoWithRevision(v, r.revision_round),
+    },
     {
       title: 'วันที่สั่งซื้อ',
       dataIndex: 'po_date',

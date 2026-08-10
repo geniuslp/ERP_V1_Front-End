@@ -8,6 +8,7 @@ import type { POListItem } from '@/types/po'
 import PageHeader from '@/components/common/PageHeader'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 // TODO: enable when permission system is ready
 // const userDept = useAppSelector((s) => s.auth.user?.department)
@@ -75,6 +76,7 @@ const POApprovalListPage: React.FC = () => {
       dataIndex: 'po_no',
       key: 'po_no',
       width: 150,
+      render: (v: string, r) => formatPoNoWithRevision(v, r.revision_round),
     },
     {
       title: 'วันที่',

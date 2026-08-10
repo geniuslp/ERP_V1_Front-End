@@ -29,6 +29,28 @@ const attachAuthHeader = (config: InternalAxiosRequestConfig) => {
   return config
 }
 
+const GENERIC_ERROR_MESSAGE = 'ข้อมูลที่กรอกไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'
+
+// Raw Postgres/pgx error text (e.g. "ERROR: insert or update on table ... violates
+// foreign key constraint ... SQLSTATE 23503") should never reach the UI — this is
+// a catch-all safety net for cases the backend hasn't wrapped in a friendly message
+// yet. Every page reads error text via err?.response?.data?.message / ?.error, so
+// sanitizing it here in the shared interceptor covers all of them without having
+// to touch each page's catch block individually.
+const looksLikeRawDbError = (text: string) =>
+  /SQLSTATE|violates|foreign key constraint|duplicate key|null value in column|pq:/i.test(text)
+
+const sanitizeDbError = (error: unknown) => {
+  const data = (error as { response?: { data?: { message?: unknown; error?: unknown } } })?.response?.data
+  if (!data) return
+  if (typeof data.message === 'string' && looksLikeRawDbError(data.message)) {
+    data.message = GENERIC_ERROR_MESSAGE
+  }
+  if (typeof data.error === 'string' && looksLikeRawDbError(data.error)) {
+    data.error = GENERIC_ERROR_MESSAGE
+  }
+}
+
 let isRefreshing = false
 let failedQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = []
 
@@ -43,6 +65,7 @@ const attachInterceptors = (instance: AxiosInstance | AxiosStatic) => {
   instance.interceptors.response.use(
     (r) => r,
     async (error) => {
+      sanitizeDbError(error)
       const original = error.config
       if (error.response?.status === 401 && !original._retry && !original.url?.includes('/auth/login')) {
         if (isRefreshing) {

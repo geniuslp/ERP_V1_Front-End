@@ -328,6 +328,8 @@ export interface ReceivablePoItem {
   supplier_name?: string
   status: RealPOStatus
   status_receive: POReceiveStatus
+  // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval.
+  revision_round?: number
 }
 
 export interface ReceivablePoLine {

@@ -8,7 +8,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
   CloseOutlined, AppstoreOutlined, CheckCircleOutlined,
   UploadOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
-  FileExcelOutlined,
+  FileExcelOutlined, RightOutlined,
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
@@ -24,13 +24,18 @@ type MaterialRecord = Material & { key: string }
 
 interface PendingRow {
   rowKey: string
+  isTemplate?: boolean
   groupId: string
+  subGroupId: string
   subGroupCode: string
   subGroupName: string
+  matNameId: string
   materialCode: string
   materialName: string
+  specId: string
   specCode: string
   specDescription: string
+  brandId: string
   brandCode: string
   brandName: string
   unitCode: string
@@ -38,14 +43,24 @@ interface PendingRow {
 }
 
 
-const newRow = (): PendingRow => ({
+const newRow = (isTemplate = false): PendingRow => ({
   rowKey: `${Date.now()}${Math.random()}`,
-  groupId: '', subGroupCode: '', subGroupName: '',
-  materialCode: '', materialName: '',
-  specCode: '', specDescription: '',
-  brandCode: '', brandName: '',
+  isTemplate,
+  groupId: '',
+  subGroupId: '', subGroupCode: '', subGroupName: '',
+  matNameId: '', materialCode: '', materialName: '',
+  specId: '', specCode: '', specDescription: '',
+  brandId: '', brandCode: '', brandName: '',
   unitCode: '', unitName: '',
 })
+
+// the required fields also validated in handleSubmitAll — a template row only
+// counts as a real row once these are actually filled in
+const isRowComplete = (r: PendingRow): boolean =>
+  !!(r.groupId && r.subGroupCode && r.subGroupName && r.materialCode && r.materialName && r.unitCode && r.unitName)
+
+// template row is excluded from the count/submit unless the user has filled it in
+const isRealRow = (r: PendingRow): boolean => !r.isTemplate || isRowComplete(r)
 
 // ── helpers ──────────────────────────────────────────────────────
 const SectionPill: React.FC<{ color: string; bg: string; label: string }> = ({ color, bg, label }) => (
@@ -62,24 +77,101 @@ const FL: React.FC<{ text: string; required?: boolean }> = ({ text, required }) 
 
 const VSep = () => <div style={{ width: 1, background: '#e5e7eb', alignSelf: 'stretch', margin: '0 2px', flexShrink: 0 }} />
 
+// ── cascade breadcrumb ──────────────────────────────────────────────
+interface BreadcrumbStep { value: string; placeholderLabel: string }
+
+const CascadeBreadcrumb: React.FC<{ steps: BreadcrumbStep[] }> = ({ steps }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+    background: '#eff6ff', borderRadius: 8, padding: '6px 12px', marginBottom: 10, fontSize: 12,
+  }}>
+    {steps.map((s, i) => (
+      <React.Fragment key={i}>
+        {i > 0 && <RightOutlined style={{ fontSize: 10, color: '#93c5fd' }} />}
+        <span style={{ color: s.value ? '#2563eb' : '#60a5fa', fontWeight: s.value ? 600 : 400 }}>
+          {s.value || `ยังไม่เลือก${s.placeholderLabel}`}
+        </span>
+      </React.Fragment>
+    ))}
+  </div>
+)
+
 // ── insert row (new entry) ────────────────────────────────────────
-interface GroupOption { value: string; label: string }
+interface GroupOption { value: string; label: string; id: string; name: string }
+interface IdOption { id: number; code: string; name: string; label: string }
+
+// mirrors the fetch-on-parent-change pattern used in MaterialPickerModal.tsx
+function useCascadeOptions(parentId: string, path: string, paramName: string,
+  map: (raw: any) => IdOption, accessToken?: string) {
+  const [options, setOptions] = useState<IdOption[]>([])
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (!parentId || !accessToken) { setOptions([]); return }
+    setLoading(true)
+    axios.get(`${BASE_URL}${path}`, {
+      params: { [paramName]: parentId },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => setOptions((res.data?.data ?? []).map(map)))
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false))
+  }, [parentId, accessToken])
+  return { options, loading }
+}
+
+const mapSubGroup = (s: any): IdOption => ({ id: s.id, code: s.subgroup_code, name: s.subgroup_name, label: `${s.subgroup_code} — ${s.subgroup_name}` })
+const mapMatName = (m: any): IdOption => ({ id: m.id, code: m.mat_name_code, name: m.mat_name, label: `${m.mat_name_code} — ${m.mat_name}` })
+const mapSpec = (s: any): IdOption => ({ id: s.id, code: s.spec_code, name: s.spec_description, label: `${s.spec_code} — ${s.spec_description}` })
+const mapBrand = (b: any): IdOption => ({ id: b.id, code: b.brand_code, name: b.brand_name, label: `${b.brand_code} — ${b.brand_name}` })
 
 interface InsertRowProps {
-  row: PendingRow; index: number
+  row: PendingRow; displayNumber?: number
   groupOptions: GroupOption[]
-  onChange: (key: string, field: keyof PendingRow, val: string) => void
+  accessToken?: string
+  onChange: (key: string, patch: Partial<PendingRow>) => void
   onRemove: (key: string) => void; canRemove: boolean
 }
 
-const InsertRow: React.FC<InsertRowProps> = ({ row, index, groupOptions, onChange, onRemove, canRemove }) => (
-  <div style={{ display: 'flex', alignItems: 'flex-start', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', gap: 0 }}>
+const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions, accessToken, onChange, onRemove, canRemove }) => {
+  const isExample = !!row.isTemplate && !isRowComplete(row)
+  const groupNumericId = groupOptions.find((o) => o.value === row.groupId)?.id
+  const { options: subGroupOptions, loading: subGroupLoading } =
+    useCascadeOptions(groupNumericId ? String(groupNumericId) : '', '/master/subgroups', 'group_id', mapSubGroup, accessToken)
+  const { options: matNameOptions, loading: matNameLoading } =
+    useCascadeOptions(row.subGroupId, '/master/mat-names', 'subgroup_id', mapMatName, accessToken)
+  const { options: specOptions, loading: specLoading } =
+    useCascadeOptions(row.matNameId, '/master/specs', 'mat_name_id', mapSpec, accessToken)
+  const { options: brandOptions, loading: brandLoading } =
+    useCascadeOptions(row.specId, '/master/brands', 'spec_id', mapBrand, accessToken)
+
+  const groupLabel = groupOptions.find((o) => o.value === row.groupId)?.name ?? ''
+  const breadcrumbSteps: BreadcrumbStep[] = [
+    { value: groupLabel, placeholderLabel: 'กลุ่ม' },
+    { value: row.subGroupName, placeholderLabel: 'กลุ่มย่อย' },
+    { value: row.materialName, placeholderLabel: 'ชื่อวัสดุ' },
+    { value: row.specDescription, placeholderLabel: 'สเปค' },
+    { value: row.brandName, placeholderLabel: 'ยี่ห้อ' },
+  ]
+
+  return (
+  <div>
+  <CascadeBreadcrumb steps={breadcrumbSteps} />
+  <div style={{ display: 'flex', alignItems: 'flex-start', background: '#fff', border: isExample ? '1px dashed #d1d5db' : '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', gap: 0 }}>
 
     {/* number */}
-    <div style={{ flex: '0 0 28px', paddingTop: 30, marginRight: 12, textAlign: 'center' }}>
-      <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {index + 1}
-      </div>
+    <div style={{ flex: '0 0 46px', paddingTop: 28, marginRight: 12, textAlign: 'center' }}>
+      {isExample ? (
+        <>
+          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#e5e7eb', color: '#9ca3af', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+            –
+          </div>
+          <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 3, lineHeight: 1.2 }}>ตัวอย่าง</div>
+        </>
+      ) : (
+        <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+          {displayNumber}
+        </div>
+      )}
     </div>
 
     {/* GROUP */}
@@ -88,83 +180,95 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, index, groupOptions, onChang
       <FL text="กลุ่ม" required />
       <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่ม"
         options={groupOptions} value={row.groupId || undefined}
-        onChange={(v) => onChange(row.rowKey, 'groupId', v)} />
+        onChange={(v) => onChange(row.rowKey, {
+          groupId: v,
+          subGroupId: '', subGroupCode: '', subGroupName: '',
+          matNameId: '', materialCode: '', materialName: '',
+          specId: '', specCode: '', specDescription: '',
+          brandId: '', brandCode: '', brandName: '',
+        })} />
     </div>
 
     <VSep />
 
-    {/* SUBGROUP — free text */}
-    <div style={{ flex: '0 0 200px', marginLeft: 10, marginRight: 10 }}>
+    {/* SUBGROUP */}
+    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#0284c7" bg="#e0f2fe" label="Sub Group" />
-      <Row gutter={6}>
-        <Col span={11}>
-          <FL text="รหัสกลุ่มย่อย" required />
-          <Input size="small" placeholder="SUB001" value={row.subGroupCode}
-            onChange={(e) => onChange(row.rowKey, 'subGroupCode', e.target.value)} />
-        </Col>
-        <Col span={13}>
-          <FL text="ชื่อกลุ่มย่อย" required />
-          <Input size="small" placeholder="ชื่อกลุ่มย่อย" value={row.subGroupName}
-            onChange={(e) => onChange(row.rowKey, 'subGroupName', e.target.value)} />
-        </Col>
-      </Row>
+      <FL text="กลุ่มย่อย" required />
+      <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่มย่อย"
+        showSearch allowClear loading={subGroupLoading} disabled={!row.groupId}
+        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        options={subGroupOptions.map((o) => ({ value: o.id, label: o.label }))}
+        value={row.subGroupId ? Number(row.subGroupId) : undefined}
+        onChange={(v) => {
+          const opt = subGroupOptions.find((o) => o.id === v)
+          onChange(row.rowKey, {
+            subGroupId: opt ? String(opt.id) : '', subGroupCode: opt?.code ?? '', subGroupName: opt?.name ?? '',
+            matNameId: '', materialCode: '', materialName: '',
+            specId: '', specCode: '', specDescription: '',
+            brandId: '', brandCode: '', brandName: '',
+          })
+        }} />
     </div>
 
     <VSep />
 
     {/* MATERIAL */}
-    <div style={{ flex: '1 1 0', minWidth: 180, marginLeft: 10, marginRight: 10 }}>
+    <div style={{ flex: '1 1 0', minWidth: 200, marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#4f46e5" bg="#e0e7ff" label="Material" />
-      <Row gutter={6}>
-        <Col span={10}>
-          <FL text="รหัสวัสดุ" required />
-          <Input size="small" placeholder="MAT001" value={row.materialCode}
-            onChange={(e) => onChange(row.rowKey, 'materialCode', e.target.value)} />
-        </Col>
-        <Col span={14}>
-          <FL text="ชื่อวัสดุ" required />
-          <Input size="small" placeholder="ชื่อวัสดุ" value={row.materialName}
-            onChange={(e) => onChange(row.rowKey, 'materialName', e.target.value)} />
-        </Col>
-      </Row>
+      <FL text="ชื่อวัสดุ" required />
+      <Select size="small" style={{ width: '100%' }} placeholder="เลือกชื่อวัสดุ"
+        showSearch allowClear loading={matNameLoading} disabled={!row.subGroupId}
+        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        options={matNameOptions.map((o) => ({ value: o.id, label: o.label }))}
+        value={row.matNameId ? Number(row.matNameId) : undefined}
+        onChange={(v) => {
+          const opt = matNameOptions.find((o) => o.id === v)
+          onChange(row.rowKey, {
+            matNameId: opt ? String(opt.id) : '', materialCode: opt?.code ?? '', materialName: opt?.name ?? '',
+            specId: '', specCode: '', specDescription: '',
+            brandId: '', brandCode: '', brandName: '',
+          })
+        }} />
     </div>
 
     <VSep />
 
     {/* SPEC */}
-    <div style={{ flex: '0 0 210px', marginLeft: 10, marginRight: 10 }}>
+    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#7c3aed" bg="#ede9fe" label="Spec" />
-      <Row gutter={6}>
-        <Col span={10}>
-          <FL text="รหัสสเปค" />
-          <Input size="small" placeholder="SP001" value={row.specCode}
-            onChange={(e) => onChange(row.rowKey, 'specCode', e.target.value)} />
-        </Col>
-        <Col span={14}>
-          <FL text="คำอธิบาย" />
-          <Input size="small" placeholder="เช่น 3×1200×2400" value={row.specDescription}
-            onChange={(e) => onChange(row.rowKey, 'specDescription', e.target.value)} />
-        </Col>
-      </Row>
+      <FL text="สเปค" />
+      <Select size="small" style={{ width: '100%' }} placeholder="เลือกสเปค"
+        showSearch allowClear loading={specLoading} disabled={!row.matNameId}
+        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        options={specOptions.map((o) => ({ value: o.id, label: o.label }))}
+        value={row.specId ? Number(row.specId) : undefined}
+        onChange={(v) => {
+          const opt = specOptions.find((o) => o.id === v)
+          onChange(row.rowKey, {
+            specId: opt ? String(opt.id) : '', specCode: opt?.code ?? '', specDescription: opt?.name ?? '',
+            brandId: '', brandCode: '', brandName: '',
+          })
+        }} />
     </div>
 
     <VSep />
 
     {/* BRAND */}
-    <div style={{ flex: '0 0 190px', marginLeft: 10, marginRight: 10 }}>
+    <div style={{ flex: '0 0 200px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#b45309" bg="#fef3c7" label="Brand" />
-      <Row gutter={6}>
-        <Col span={10}>
-          <FL text="รหัสยี่ห้อ" />
-          <Input size="small" placeholder="BR001" value={row.brandCode}
-            onChange={(e) => onChange(row.rowKey, 'brandCode', e.target.value)} />
-        </Col>
-        <Col span={14}>
-          <FL text="ชื่อยี่ห้อ" />
-          <Input size="small" placeholder="ชื่อยี่ห้อ" value={row.brandName}
-            onChange={(e) => onChange(row.rowKey, 'brandName', e.target.value)} />
-        </Col>
-      </Row>
+      <FL text="ยี่ห้อ" />
+      <Select size="small" style={{ width: '100%' }} placeholder="เลือกยี่ห้อ"
+        showSearch allowClear loading={brandLoading} disabled={!row.specId}
+        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+        options={brandOptions.map((o) => ({ value: o.id, label: o.label }))}
+        value={row.brandId ? Number(row.brandId) : undefined}
+        onChange={(v) => {
+          const opt = brandOptions.find((o) => o.id === v)
+          onChange(row.rowKey, {
+            brandId: opt ? String(opt.id) : '', brandCode: opt?.code ?? '', brandName: opt?.name ?? '',
+          })
+        }} />
     </div>
 
     <VSep />
@@ -176,12 +280,12 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, index, groupOptions, onChang
         <Col span={10}>
           <FL text="รหัสหน่วย" required />
           <Input size="small" placeholder="UN001" value={row.unitCode}
-            onChange={(e) => onChange(row.rowKey, 'unitCode', e.target.value)} />
+            onChange={(e) => onChange(row.rowKey, { unitCode: e.target.value })} />
         </Col>
         <Col span={14}>
           <FL text="ชื่อหน่วย" required />
           <Input size="small" placeholder="เช่น ชิ้น, กก." value={row.unitName}
-            onChange={(e) => onChange(row.rowKey, 'unitName', e.target.value)} />
+            onChange={(e) => onChange(row.rowKey, { unitName: e.target.value })} />
         </Col>
       </Row>
     </div>
@@ -194,7 +298,9 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, index, groupOptions, onChang
       )}
     </div>
   </div>
-)
+  </div>
+  )
+}
 
 // ── file import helpers ──────────────────────────────────────────
 const FILE_COLS = ['groupCode', 'subGroupCode', 'subGroupName', 'materialCode', 'materialName', 'specCode', 'specDescription', 'brandCode', 'brandName', 'unitCode', 'unitName']
@@ -292,10 +398,15 @@ const MaterialPage: React.FC = () => {
   const [total, setTotal] = useState(0)
   const [groups, setGroups] = useState<GroupRaw[]>([])
   const [filterGroup, setFilterGroup] = useState<string | undefined>()
-  const [pendingRows, setPendingRows] = useState<PendingRow[]>([newRow()])
+  const [pendingRows, setPendingRows] = useState<PendingRow[]>([newRow(true)])
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<MaterialRecord | null>(null)
   const [editForm] = Form.useForm()
+  const editGroupId = Form.useWatch('groupId', editForm)
+  const editSubGroupName = Form.useWatch('subGroupName', editForm)
+  const editMaterialName = Form.useWatch('materialName', editForm)
+  const editSpecDescription = Form.useWatch('specDescription', editForm)
+  const editBrandName = Form.useWatch('brandName', editForm)
 
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -358,7 +469,7 @@ const MaterialPage: React.FC = () => {
   // load materials — re-runs when page changes
   useEffect(() => { fetchMaterials() }, [fetchMaterials])
 
-  const groupOptions = groups.map((g) => ({ value: g.group_code, label: `${g.group_code} — ${g.group_name}` }))
+  const groupOptions = groups.map((g) => ({ value: g.group_code, label: `${g.group_code} — ${g.group_name}`, id: g.id, name: g.group_name }))
   const groupById = (id: string) => groups.find((g) => g.group_code === id)
 
   const [uploadFileName, setUploadFileName] = useState<string>('')
@@ -461,8 +572,8 @@ const MaterialPage: React.FC = () => {
     })
   }
 
-  const updateRow = (rowKey: string, field: keyof PendingRow, val: string) =>
-    setPendingRows((p) => p.map((r) => r.rowKey === rowKey ? { ...r, [field]: val } : r))
+  const updateRow = (rowKey: string, patch: Partial<PendingRow>) =>
+    setPendingRows((p) => p.map((r) => r.rowKey === rowKey ? { ...r, ...patch } : r))
   const removeRow = (rowKey: string) => setPendingRows((p) => p.filter((r) => r.rowKey !== rowKey))
 
   const [submitting, setSubmitting] = useState(false)
@@ -492,7 +603,10 @@ const MaterialPage: React.FC = () => {
   }
 
   const handleSubmitAll = async () => {
-    const invalid = pendingRows.some((r) =>
+    const rowsToSubmit = pendingRows.filter(isRealRow)
+    if (rowsToSubmit.length === 0) { message.warning('กรุณาเพิ่มอย่างน้อย 1 รายการ'); return }
+
+    const invalid = rowsToSubmit.some((r) =>
       !r.groupId || !r.subGroupCode || !r.subGroupName ||
       !r.materialCode || !r.materialName || !r.unitCode || !r.unitName
     )
@@ -501,7 +615,7 @@ const MaterialPage: React.FC = () => {
     setSubmitting(true)
     try {
       await axios.post(`${BASE_URL}/master/materials`,
-        pendingRows.map((r) => ({
+        rowsToSubmit.map((r) => ({
           group_code:       r.groupId,
           subgroup_code:    r.subGroupCode,
           subgroup_name:    r.subGroupName,
@@ -516,8 +630,8 @@ const MaterialPage: React.FC = () => {
         })),
         { headers: authHeader }
       )
-      setPendingRows([newRow()])
-      message.success(`บันทึก ${pendingRows.length} รายการเรียบร้อย`)
+      setPendingRows([newRow(true)])
+      message.success(`บันทึก ${rowsToSubmit.length} รายการเรียบร้อย`)
       setPage(1)
     } catch {
       message.error('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
@@ -667,11 +781,18 @@ const MaterialPage: React.FC = () => {
 
           <div style={{ padding: '16px 20px', overflowX: 'auto' }}>
             <div style={{ minWidth: 1100 }}>
-              {pendingRows.map((row, idx) => (
-                <InsertRow key={row.rowKey} row={row} index={idx}
-                  groupOptions={groupOptions}
-                  onChange={updateRow} onRemove={removeRow} canRemove={pendingRows.length > 1} />
-              ))}
+              {(() => {
+                let counter = 0
+                return pendingRows.map((row) => {
+                  const isExample = !!row.isTemplate && !isRowComplete(row)
+                  if (!isExample) counter += 1
+                  return (
+                    <InsertRow key={row.rowKey} row={row} displayNumber={isExample ? undefined : counter}
+                      groupOptions={groupOptions} accessToken={accessToken}
+                      onChange={updateRow} onRemove={removeRow} canRemove={pendingRows.length > 1} />
+                  )
+                })
+              })()}
             </div>
             <Button block type="dashed" icon={<PlusOutlined />} style={{ marginTop: 4 }}
               onClick={() => setPendingRows((p) => [...p, newRow()])}>
@@ -680,10 +801,11 @@ const MaterialPage: React.FC = () => {
             <Divider style={{ margin: '16px 0' }} />
             <Row justify="end">
               <Space>
-                <Button onClick={() => setPendingRows([newRow()])}>ล้างทั้งหมด</Button>
+                <Button onClick={() => setPendingRows([newRow(true)])}>ล้างทั้งหมด</Button>
                 <Button type="primary" size="large" icon={<SaveOutlined />} onClick={handleSubmitAll} loading={submitting}
+                  disabled={pendingRows.filter(isRealRow).length === 0}
                   style={{ background: 'linear-gradient(135deg,#1d4ed8,#3b82f6)', border: 'none', paddingLeft: 28, paddingRight: 28 }}>
-                  บันทึกทั้งหมด ({pendingRows.length} รายการ)
+                  บันทึกทั้งหมด ({pendingRows.filter(isRealRow).length} รายการ)
                 </Button>
               </Space>
             </Row>
@@ -839,6 +961,13 @@ const MaterialPage: React.FC = () => {
       <Modal title="แก้ไขรายการวัสดุ" open={editOpen} onOk={handleEditOk} onCancel={() => setEditOpen(false)}
         okText="บันทึก" cancelText="ยกเลิก" width={580}>
         <Divider style={{ margin: '12px 0' }} />
+        <CascadeBreadcrumb steps={[
+          { value: groupOptions.find((o) => o.value === editGroupId)?.name ?? '', placeholderLabel: 'กลุ่ม' },
+          { value: editSubGroupName ?? '', placeholderLabel: 'กลุ่มย่อย' },
+          { value: editMaterialName ?? '', placeholderLabel: 'ชื่อวัสดุ' },
+          { value: editSpecDescription ?? '', placeholderLabel: 'สเปค' },
+          { value: editBrandName ?? '', placeholderLabel: 'ยี่ห้อ' },
+        ]} />
         <Form form={editForm} layout="vertical">
           <Row gutter={12}>
             <Col span={12}>

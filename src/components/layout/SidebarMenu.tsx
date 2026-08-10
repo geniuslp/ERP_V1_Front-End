@@ -47,6 +47,7 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PO_STATUS: <SearchOutlined />,
   MENU_PO_HISTORY: <HistoryOutlined />,
   MENU_PO_APPROVAL: <CheckCircleOutlined />,
+  MENU_PO_LINE_ITEMS: <SearchOutlined />,
   MENU_PO_MY: <UserOutlined />,
   MENU_SYSTEM_CONFIG: <SettingOutlined />,
   MENU_SYSTEM_USERS: <TeamOutlined />,

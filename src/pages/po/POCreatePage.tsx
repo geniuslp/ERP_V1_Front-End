@@ -482,6 +482,9 @@ const POCreatePage: React.FC = () => {
             // already has its own explicit type.
             disc_type: l.disc_type ?? (raw.discount_type === 'amt' ? 'amt' : 'pct'),
             wht_rate: l.wht_rate ?? undefined,
+            cost_subgroup_id: l.cost_subgroup_id ?? null,
+            job_code: l.job_code ?? null,
+            job_name: l.job_name ?? undefined,
           }))
         )
       } catch (err: any) {
@@ -733,6 +736,13 @@ const POCreatePage: React.FC = () => {
           qty: l.qty_remaining,
           unit_price: l.selected_unit_price ?? 0,
           is_from_pr: true,
+          // Carried over from the PR line so the read-only cost-code cell in
+          // POItemsTable shows the right value immediately, without waiting on
+          // a save+reload — backend independently re-copies cost_subgroup_id
+          // from the PR line server-side regardless of what's sent here.
+          cost_subgroup_id: l.cost_subgroup_id ?? null,
+          job_code: l.job_code ?? null,
+          job_name: l.job_name ?? undefined,
         })),
       ]
       return combined.map((item, idx) => ({ ...item, no: idx + 1 }))
@@ -847,6 +857,11 @@ const POCreatePage: React.FC = () => {
             disc_type: item.disc_type ?? discType,
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
+            // PR-sourced lines already inherit cost_subgroup_id server-side from
+            // the source PR line — the picker for those rows is locked read-only
+            // (see POItemsTable), so sending it here just round-trips the same
+            // value already shown. Manual lines send whatever was picked/cleared.
+            cost_subgroup_id: item.cost_subgroup_id ?? null,
           })),
 
           // NOTE: CreatePORequest (the same struct both POST /po and PUT /po/:id

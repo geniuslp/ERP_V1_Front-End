@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, type DiscType } from '@/utils/poCalc'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -21,6 +22,9 @@ export interface POData {
   items: POItem[]
   extraDiscAmt: number; shippingAmt: number; remark: string
   useDiscount: boolean; useVat: boolean; useWht: boolean
+  // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval.
+  // poNo itself never changes; compose the "#R{n}" suffix from this instead.
+  revisionRound?: number
 }
 
 // Dev-only fixture — use for isolated preview/testing only, never as a silent
@@ -264,7 +268,7 @@ const POInfoBox = ({data}:{data:POData}) => (
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
       <div style={{display:'flex',gap:8}}>
-        <span><b>Po No :</b>&nbsp;{data.poNo}</span>
+        <span><b>Po No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
         <span style={{marginLeft:'auto'}}><b>Date Doc. :</b>&nbsp;{data.poDate}</span>
       </div>
       <div><b>PR No. :</b>&nbsp;{data.prNo}</div>

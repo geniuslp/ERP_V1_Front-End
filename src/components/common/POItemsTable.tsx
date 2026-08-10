@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
+import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
@@ -36,6 +37,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
 
   useEffect(() => {
     const codes = Array.from(new Set(items.map((i) => i.mat_code).filter(Boolean)))
@@ -76,7 +78,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
 
   const renumber = (rows: POLineItem[]) => rows.map((r, idx) => ({ ...r, no: idx + 1 }))
 
-  const updateItem = (key: string, field: keyof POLineItem, value: string | number) => {
+  const updateItem = (key: string, field: keyof POLineItem, value: string | number | null) => {
     onChange(items.map((i) => (i.key === key ? { ...i, [field]: value } : i)))
   }
 
@@ -284,6 +286,31 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           <span style={{ fontSize: 13 }}>{r.mat_name}</span>
         </Space>
       ),
+    },
+    {
+      // cost_subgroup_id is the field actually persisted on the line — job_code
+      // is derived read-only server-side (cost_subgroup -> cost_group -> cost_job
+      // is a strict single-parent chain), so this picks a subgroup, not a job.
+      // Lines copied from a PR (pr_line_id set) already inherit cost_subgroup_id
+      // from the source PR line server-side — locked read-only here so the user
+      // can't override what the PR specified.
+      title: 'งาน (Job)',
+      key: 'job_code',
+      width: 160,
+      render: (_: unknown, r: POLineItem) =>
+        r.pr_line_id != null ? (
+          <span style={{ fontSize: 13, color: '#374151' }}>
+            {r.job_code ? `${r.job_code}${r.job_name ? ` — ${r.job_name}` : ''}` : '-'}
+          </span>
+        ) : (
+          <Button
+            size="small"
+            style={{ width: '100%' }}
+            onClick={() => setCostCodeModalRowKey(r.key)}
+          >
+            {r.job_code ?? 'เลือก Cost Code'}
+          </Button>
+        ),
     },
     {
       title: 'หน่วย',
@@ -508,6 +535,22 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
         showStockLookup
+      />
+
+      <CostCodeSelectionModal
+        open={costCodeModalRowKey !== null}
+        onClose={() => setCostCodeModalRowKey(null)}
+        onSelect={(item: CostCodeItem) => {
+          if (!costCodeModalRowKey) return
+          const key = costCodeModalRowKey
+          onChange(
+            items.map((i) =>
+              i.key === key
+                ? { ...i, cost_subgroup_id: item.subgroupId, job_code: item.jobCode, job_name: item.jobName }
+                : i,
+            ),
+          )
+        }}
       />
     </div>
   )

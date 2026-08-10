@@ -9,6 +9,7 @@ import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import EditApprovedButton from './components/EditApprovedButton'
 import POStatusBadges from '@/components/po/POStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const MENU_CODE = 'MENU_PO_MY'
 
@@ -47,7 +48,7 @@ const POMyListPage: React.FC = () => {
       key: 'po_no',
       render: (v: string, record) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/po/approval/${record.po_id}`)}>
-          {v}
+          {formatPoNoWithRevision(v, record.revision_round)}
         </a>
       ),
     },

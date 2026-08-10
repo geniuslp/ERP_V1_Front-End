@@ -36,6 +36,23 @@ export interface POListItem {
   // Not in the confirmed list response fields — kept optional since
   // POMyListPage still reads it defensively; unverified on this endpoint.
   can_edit_approved?: boolean
+  created_by_name?: string
+  // Added for POStatusPage "Job" / "Last Edited By" columns (2026-08-07).
+  // Backend returns job_name (not job_code) since this is display-only on
+  // the PO list — deduplicated server-side but deduped defensively client-side too.
+  job_names?: string[]
+  updated_by_name?: string
+  // Confirmed present on GET /po (list) as of this session — backend now
+  // selects po.project_code directly (internal/handlers/po.go List).
+  project_code?: string
+  // NOT confirmed present on GET /po (list) as of 2026-08-07 — only seen on
+  // PODetail so far. Used defensively for the "Amount (after-discount)"
+  // column; verify the list SQL/handler actually selects this before relying
+  // on it in production.
+  discount_amount?: number
+  // COUNT of po_edit_log rows for this PO — 0 if never edited-and-resent for
+  // re-approval, confirmed present on GET /po (list) as of this session.
+  revision_round?: number
 }
 
 export interface POLine {
@@ -58,6 +75,12 @@ export interface POLine {
   discount?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: number | null
+  // cost_subgroup_id is the field actually persisted on purchase_order_line —
+  // job_code is derived read-only server-side via cost_subgroup -> cost_group
+  // -> cost_job (strict single-parent chain, confirmed this session).
+  cost_subgroup_id?: number | null
+  job_code?: string | null
+  job_name?: string
 }
 
 export interface PODetail {
@@ -73,7 +96,10 @@ export interface PODetail {
   supplier_code: string
   supplier_name: string
   payment_terms: string | null
-  delivery_address: string | null
+  // po.location_text is what GET /po/:id actually returns (json:"location_text,omitempty"
+  // on the backend) — this is the "ที่อยู่จัดส่ง" value. There is no delivery_address or
+  // warehouse_address field on this endpoint; don't reintroduce either.
+  location_text?: string | null
   warehouse_code: string | null
   currency: string
   total_amount: number
@@ -101,6 +127,9 @@ export interface PODetail {
   sales_person?: string
   contact_email?: string
   contact_phone?: string
+  // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval,
+  // confirmed present on GET /po/:id as of this session.
+  revision_round?: number
 }
 
 export interface POLineItem {
@@ -117,6 +146,11 @@ export interface POLineItem {
   disc?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: 1 | 3 | 5 | null
+  // Set via CostCodeSelectionModal — job_code/job_name are derived display
+  // labels resolved from cost_subgroup_id, not independently editable.
+  cost_subgroup_id?: number | null
+  job_code?: string | null
+  job_name?: string
 }
 
 export interface AvailablePR {
@@ -142,4 +176,42 @@ export interface POListResponse {
 export interface PODetailResponse {
   success: boolean
   data: PODetail
+}
+
+// GET /po/line-items — now grouped by PO (status = 'APPROVED' only), one
+// object per PO with a nested `lines` array per purchase_order_line
+// (internal/handlers/po.go ListLineItems, updated this session). When a
+// filter like mat_code/job_code narrows the match, backend excludes
+// non-matching lines/POs but `amount` still reflects the PO's real
+// after-discount total, not the sum of the filtered lines.
+export interface POLineItemLine {
+  mat_code: string
+  mat_name?: string
+  qty_ordered: number
+  unit_price: number
+  amount: number
+  job_code?: string
+  job_name?: string
+}
+
+export interface POLineItemGroup {
+  po_id?: number
+  po_no: string
+  po_date: string
+  supplier_name?: string
+  requested_by: string
+  project_code?: string
+  status: POStatus
+  amount: number
+  lines: POLineItemLine[]
+}
+
+export interface CostJobOption {
+  job_code: string
+  job_name?: string
+}
+
+export interface POLineItemsResponse {
+  success: boolean
+  data: { data: POLineItemGroup[]; total: number; page: number; page_size: number; total_pages: number }
 }

@@ -231,6 +231,24 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       align: 'center' as const,
     },
     {
+      // Shown so the user can see what cost code will carry over to the PO
+      // line before conversion — backend copies cost_subgroup_id from this
+      // PR line onto the PO line automatically once selected.
+      title: 'Cost Code',
+      key: 'cost_code',
+      width: 140,
+      render: (_: unknown, r: PRLineWithPOStatus) =>
+        r.job_code ? (
+          <Tooltip title={r.cost_subgroup_name ?? ''}>
+            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
+              {r.job_code}{r.job_name ? ` — ${r.job_name}` : ''}
+            </span>
+          </Tooltip>
+        ) : (
+          <span style={{ color: '#9ca3af', fontSize: 12 }}>-</span>
+        ),
+    },
+    {
       title: 'Qty Requested',
       dataIndex: 'qty_requested',
       width: 110,
