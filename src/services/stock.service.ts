@@ -45,8 +45,15 @@ const normalizeItem = (r: any): StockItem => ({
   matCode: r.mat_code ?? r.matCode,
   itemName: r.item_name ?? r.itemName,
   description: r.description ?? undefined,
-  categoryId: String(r.category_id ?? r.categoryId),
-  categoryName: r.category_name ?? r.categoryName ?? undefined,
+  // `category_id`/`category_name` are legitimately `null` for uncategorized items — a
+  // plain `??` chain to the (nonexistent) camelCase candidate would treat that real `null`
+  // as "field missing" and fall through to `undefined`. Worse, wrapping the whole chain in
+  // String(...) turned that `undefined` into the literal string "undefined", which then
+  // failed to match any Select option and rendered as raw text. Read the snake_case key on
+  // its own merits — null/absent both become `undefined`, but a present value (including a
+  // valid 0/falsy id) is never discarded.
+  categoryId: r.category_id != null ? String(r.category_id) : undefined,
+  categoryName: r.category_name ?? undefined,
   itemType: r.item_type ?? r.itemType,
   trackingType: r.tracking_type ?? r.trackingType,
   unit: r.unit,
@@ -56,6 +63,21 @@ const normalizeItem = (r: any): StockItem => ({
   isActive: r.is_active ?? r.isActive,
   createdAt: r.created_at ?? r.createdAt,
   updatedAt: r.updated_at ?? r.updatedAt,
+})
+
+// Mirror of normalizeItem for the request direction — confirmed against the create
+// endpoint (previously the only caller); reused by updateItem so both go through one
+// place instead of duplicating the mapping and risking them drifting apart.
+const toItemBody = (payload: CreateStockItemPayload) => ({
+  mat_code: payload.matCode,
+  item_name: payload.itemName,
+  ...(payload.description ? { description: payload.description } : {}),
+  category_id: payload.categoryId,
+  item_type: payload.itemType,
+  tracking_type: payload.trackingType,
+  unit: payload.unit,
+  unit_cost: payload.unitCost,
+  qty: payload.qty,
 })
 
 // Backend errors are plain strings like "row 5: item_name is required" — parse
@@ -111,6 +133,38 @@ const unwrapPaginationMeta = (resData: any, fallbackPage: number, fallbackPageSi
   const pageSize = Number(payload?.page_size ?? fallbackPageSize)
   const totalPages = Number(payload?.total_pages ?? Math.max(1, Math.ceil(total / pageSize)))
   return { total, page, pageSize, totalPages }
+}
+
+export interface BulkPreviewMaster {
+  mat_code: string | null
+  group_name: string | null
+  subgroup_name: string | null
+  mat_name: string | null
+  spec_description: string | null
+  brand_name: string | null
+  unit_name: string | null
+}
+
+export interface BulkPreviewRow {
+  row_no: number
+  mat_code: string
+  file_name: string
+  code_found: boolean
+  master: BulkPreviewMaster | null
+  name_matched: boolean
+  status: 'ok' | 'code_not_found' | 'name_mismatch'
+}
+
+export interface BulkPreviewSummary {
+  total: number
+  ok: number
+  code_not_found: number
+  name_mismatch: number
+}
+
+export interface BulkPreviewResult {
+  rows: BulkPreviewRow[]
+  summary: BulkPreviewSummary
 }
 
 export interface CreateStockItemPayload {
@@ -190,20 +244,60 @@ export const stockService = {
       mockItems.push(item)
       return item
     }
-    const body = {
-      mat_code: payload.matCode,
-      item_name: payload.itemName,
-      ...(payload.description ? { description: payload.description } : {}),
-      category_id: payload.categoryId,
-      item_type: payload.itemType,
-      tracking_type: payload.trackingType,
-      unit: payload.unit,
-      unit_cost: payload.unitCost,
-      qty: payload.qty,
-    }
-    const res = await axios.post(`${BASE_URL}/stock/items`, body, { headers: authHeader(token) })
+    const res = await axios.post(`${BASE_URL}/stock/items`, toItemBody(payload), { headers: authHeader(token) })
     const r = res.data?.data ?? res.data
     return normalizeItem(r)
+  },
+
+  getItem: async (token: string, id: string | number): Promise<StockItem> => {
+    if (useMock) {
+      const item = mockItems.find((i) => i.id === String(id))
+      if (!item) throw new Error('Item not found')
+      return item
+    }
+    const res = await axios.get(`${BASE_URL}/stock/items/${id}`, { headers: authHeader(token) })
+    return normalizeItem(res.data?.data ?? res.data)
+  },
+
+  updateItem: async (token: string, id: string | number, payload: CreateStockItemPayload): Promise<StockItem> => {
+    if (useMock) {
+      const idx = mockItems.findIndex((i) => i.id === String(id))
+      if (idx === -1) throw new Error('Item not found')
+      const category = mockCategories.find((c) => c.id === payload.categoryId)
+      mockItems[idx] = {
+        ...mockItems[idx],
+        matCode: payload.matCode,
+        itemName: payload.itemName,
+        description: payload.description,
+        categoryId: payload.categoryId,
+        categoryName: category?.name,
+        itemType: payload.itemType,
+        trackingType: payload.trackingType,
+        unit: payload.unit,
+        unitCost: payload.unitCost,
+        qty: payload.qty,
+        updatedAt: new Date().toISOString(),
+      }
+      return mockItems[idx]
+    }
+    const res = await axios.put(`${BASE_URL}/stock/items/${id}`, toItemBody(payload), { headers: authHeader(token) })
+    return normalizeItem(res.data?.data ?? res.data)
+  },
+
+  previewImport: async (token: string, file: File): Promise<BulkPreviewResult> => {
+    if (useMock) {
+      return { rows: [], summary: { total: 0, ok: 0, code_not_found: 0, name_mismatch: 0 } }
+    }
+    const formData = new FormData()
+    formData.append(IMPORT_FILE_FIELD, file)
+    const res = await axios.post(`${BASE_URL}/stock/items/bulk/preview`, formData, {
+      headers: { ...authHeader(token), 'Content-Type': 'multipart/form-data' },
+    })
+    const r = res.data?.data ?? res.data
+    return {
+      rows: Array.isArray(r?.rows) ? r.rows : [],
+      summary: r?.summary ?? { total: 0, ok: 0, code_not_found: 0, name_mismatch: 0 },
+    }
   },
 
   importExcel: async (token: string, file: File): Promise<StockImportResult> => {

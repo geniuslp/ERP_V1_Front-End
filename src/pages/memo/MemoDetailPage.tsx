@@ -48,6 +48,7 @@ interface MemoDetail {
   requestedById: number
   approverName?: string
   department?: string
+  deliveryLocation?: string
   projectName?: string
   note?: string
   createdAt: string
@@ -73,6 +74,7 @@ const mapMemo = (raw: any): MemoDetail => {
     requestedById: raw.requested_by   ?? 0,
     approverName:  raw.approver_name ?? raw.approverName,
     department:    raw.department,
+    deliveryLocation: raw.delivery_location,
     projectName:   raw.project_code,
     note:          raw.note,
     createdAt:     raw.created_at     ?? '',
@@ -109,7 +111,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       setMemo(mapMemo(raw))
     } catch (err: any) {
       message.error(
-        err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลใบบันทึกไม่สำเร็จ'
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
       )
     } finally {
       setLoading(false)
@@ -144,8 +146,8 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const handleCancel = () => {
     if (!memo) return
     Modal.confirm({
-      title: 'ยืนยันการยกเลิกใบบันทึก',
-      content: `ต้องการยกเลิกใบบันทึก ${memo.memoNo} ใช่หรือไม่`,
+      title: 'ยืนยันการยกเลิกใบบันทึกขอซื้อ (Memo)',
+      content: `ต้องการยกเลิกใบบันทึกขอซื้อ (Memo) ${memo.memoNo} ใช่หรือไม่`,
       okText: 'ยืนยันยกเลิก',
       cancelText: 'ปิด',
       onOk: async () => {
@@ -153,11 +155,11 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           await axios.patch(`${BASE_URL}/memo/${memo.id}/cancel`, {}, {
             headers: { Authorization: `Bearer ${accessToken}` },
           })
-          message.success('ยกเลิกใบบันทึกสำเร็จ')
+          message.success('ยกเลิกใบบันทึกขอซื้อ (Memo) สำเร็จ')
           fetchMemo()
         } catch (err: any) {
           message.error(
-            err?.response?.data?.message || err?.response?.data?.error || err?.message || 'ยกเลิกใบบันทึกไม่สำเร็จ'
+            err?.response?.data?.message || err?.response?.data?.error || err?.message || 'ยกเลิกใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
           )
         }
       },
@@ -190,7 +192,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         { comments: cancelReason || 'Cancelled by approver' },
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
-      message.success('ยกเลิกใบบันทึกสำเร็จ')
+      message.success('ยกเลิกใบบันทึกขอซื้อ (Memo) สำเร็จ')
       setCancelModal(false)
       setCancelReason('')
       fetchMemo()
@@ -231,9 +233,9 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   if (!memo && !loading) {
     return (
       <div>
-        <PageHeader title="ใบบันทึก" breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึก' }]} />
+        <PageHeader title="ใบบันทึกขอซื้อ (Memo)" breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }]} />
         <Card style={cardStyle}>
-          <Empty description="ไม่พบใบบันทึก" />
+          <Empty description="ไม่พบใบบันทึกขอซื้อ (Memo)" />
         </Card>
       </div>
     )
@@ -244,7 +246,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       <PageHeader
         title={memo?.memoNo ?? '...'}
         subtitle={memo?.title}
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึก' }, { title: memo?.memoNo ?? '' }]}
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: memo?.memoNo ?? '' }]}
         extra={
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
@@ -280,7 +282,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
 
       <Card title={<span style={cardTitleStyle}>ข้อมูลทั่วไป</span>} style={{ ...cardStyle, marginBottom: 16 }} loading={loading}>
         <Descriptions column={2} size="small">
-          <Descriptions.Item label="เลขที่ใบบันทึก">
+          <Descriptions.Item label="เลขที่ใบบันทึกขอซื้อ (Memo)">
             <strong style={{ color: '#2563eb' }}>{memo?.memoNo}</strong>
           </Descriptions.Item>
           <Descriptions.Item label="วันที่">
@@ -289,6 +291,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           <Descriptions.Item label="ผู้สร้าง">{memo?.requestedBy || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{memo?.approverName || '—'}</Descriptions.Item>
           <Descriptions.Item label="หน่วยงาน">{memo?.department || '—'}</Descriptions.Item>
+          <Descriptions.Item label="สถานที่ส่งของ">{memo?.deliveryLocation || '—'}</Descriptions.Item>
           <Descriptions.Item label="โครงการ">{memo?.projectName || '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {memo && <MemoStatusBadge status={memo.status} />}
@@ -326,7 +329,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           <Space>
             {(memo?.status === 'DRAFT' || memo?.status === 'draft' || memo?.status === 'pending_po') && isOwner && (
               <Button danger icon={<StopOutlined />} onClick={handleCancel}>
-                ยกเลิกใบบันทึก
+                ยกเลิกใบบันทึกขอซื้อ (Memo)
               </Button>
             )}
             {memo?.status === 'PENDING_APPROVAL' && showApproveActions && canApprove && (

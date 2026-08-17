@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography } from 'antd'
-import { ArrowLeftOutlined, PaperClipOutlined } from '@ant-design/icons'
+import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal } from 'antd'
+import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined, WarningOutlined, PrinterOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import PRPrint, { type PRData } from './PRPrint'
 
 const { Text } = Typography
 
@@ -69,8 +70,10 @@ interface PRDetail {
   approverName: string | null
   locationText: string
   projectCode: string | null
+  orderType: 'stock' | 'cost' | null
   remarks: string | null
   prDate: string
+  requiredDate: string | null
   lines: PRLineItem[]
   attachments: PRAttachment[]
 }
@@ -83,8 +86,10 @@ const mapPR = (raw: any): PRDetail => ({
   approverName: raw.approver_name  ?? null,
   locationText: raw.location_text  ?? '—',
   projectCode:  raw.project_code   ?? null,
+  orderType:    raw.order_type     ?? null,
   remarks:      raw.remarks        ?? null,
   prDate:       raw.pr_date        ?? '',
+  requiredDate: raw.required_date  ?? null,
   lines: (raw.lines ?? []).map((l: any) => ({
     id:               l.id,
     lineNo:           l.line_no            ?? 0,
@@ -112,12 +117,52 @@ const mapPR = (raw: any): PRDetail => ({
 const formatSize = (b: number) =>
   b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
 
+interface BlockingPO {
+  po_id?: number
+  po_no: string
+}
+
+// GET /pr/:id/lines-with-po-status returns referenced_pos: { po_id, po_no, qty }[]
+// per line — these are the still-active (non-cancelled) POs consuming this PR's
+// lines, which is exactly what the reopen guard blocks on. Used both for the
+// proactive banner and to resolve po_id when the reactive error only has po_no.
+const extractBlockingPOs = (lines: any[]): BlockingPO[] => {
+  const byId = new Map<number, BlockingPO>()
+  for (const line of lines ?? []) {
+    for (const po of line.referenced_pos ?? []) {
+      if (po?.po_id != null && !byId.has(po.po_id)) {
+        byId.set(po.po_id, { po_id: po.po_id, po_no: po.po_no })
+      }
+    }
+  }
+  return Array.from(byId.values())
+}
+
+// Best-effort parse of the reopen 400 error — prefer a structured field if the
+// backend sends one, otherwise fall back to pulling PO numbers out of the
+// message text (format PO-YYYYMM-NNNN).
+const parseBlockingPOsFromError = (err: any): string[] | null => {
+  if (err?.response?.status !== 400) return null
+  const data = err?.response?.data
+  const structured = data?.blocking_pos ?? data?.pos ?? data?.data?.blocking_pos
+  if (Array.isArray(structured) && structured.length > 0) {
+    return structured.map((p: any) => (typeof p === 'string' ? p : p?.po_no)).filter(Boolean)
+  }
+  const msg: string = data?.message || data?.error || ''
+  const matches = msg.match(/PO-\d{4,}-\d+/g)
+  return matches && matches.length > 0 ? matches : null
+}
+
 const PRDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [pr, setPr] = useState<PRDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [reopening, setReopening] = useState(false)
+  const [blockingPOs, setBlockingPOs] = useState<BlockingPO[]>([])
+  const [blockModalPOs, setBlockModalPOs] = useState<BlockingPO[] | null>(null)
+  const [printData, setPrintData] = useState<PRData | null>(null)
 
   const fetchPR = async () => {
     setLoading(true)
@@ -135,6 +180,80 @@ const PRDetailPage: React.FC = () => {
   }
 
   useEffect(() => { fetchPR() }, [id])
+
+  // Proactive check: only relevant once the PR is COMPLETED (the only status
+  // that shows the "แก้ไข" button / calls reopen).
+  useEffect(() => {
+    if (pr?.status !== 'COMPLETED') {
+      setBlockingPOs([])
+      return
+    }
+    const fetchLinesPOStatus = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/pr/${id}/lines-with-po-status`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const body = res.data?.data ?? res.data
+        setBlockingPOs(extractBlockingPOs(body?.lines ?? []))
+      } catch {
+        // Non-critical — the reactive error modal on "แก้ไข" click still catches this.
+        setBlockingPOs([])
+      }
+    }
+    fetchLinesPOStatus()
+  }, [pr?.status, id])
+
+  const handleEdit = async () => {
+    setReopening(true)
+    try {
+      await axios.put(`${BASE_URL}/pr/${id}/reopen`, null, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      navigate(`/pr/${id}/edit`)
+    } catch (err: any) {
+      const blockingPoNos = parseBlockingPOsFromError(err)
+      if (blockingPoNos) {
+        // Resolve po_id from the already-fetched referenced_pos where possible
+        // so the list is clickable; falls back to plain text if not found.
+        setBlockModalPOs(
+          blockingPoNos.map((po_no) => blockingPOs.find((p) => p.po_no === po_no) ?? { po_no }),
+        )
+      } else {
+        message.error(
+          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'เปิด PR เพื่อแก้ไขไม่สำเร็จ'
+        )
+      }
+    } finally {
+      setReopening(false)
+    }
+  }
+
+  // No separate print-data endpoint for PR (unlike PO's GET /po/:id/print-data)
+  // — everything the print layout needs is already in the detail response
+  // this page loaded, so build PRData straight from `pr` instead of an extra call.
+  const handlePrint = () => {
+    if (!pr) return
+    setPrintData({
+      prNo: pr.prNo,
+      prDate: pr.prDate ? dayjs(pr.prDate).format('DD/MM/YYYY') : '',
+      projectDept: pr.projectCode ?? '',
+      vendor: '',
+      deliveryDate: pr.requiredDate ? dayjs(pr.requiredDate).format('DD/MM/YYYY') : '',
+      deliveryTo: pr.locationText ?? '',
+      remark: pr.remarks ?? '',
+      orderType: pr.orderType ?? '',
+      status: pr.status,
+      items: pr.lines.map((l) => ({
+        no: String(l.lineNo),
+        costCode: l.costCode ? `${l.costCode}${l.costSubgroupName ? ` — ${l.costSubgroupName}` : ''}` : '',
+        matCode: l.matCode,
+        desc: l.matName ?? '',
+        qty: l.qtyRequested,
+        unit: l.unitName ?? '',
+        remark: l.remarks ?? '',
+      })),
+    })
+  }
 
   // whether any line has a cost code assigned — hides the column entirely on older PRs
   const hasCostCode = pr?.lines.some((l) => l.costCode || l.costSubgroupName) ?? false
@@ -195,12 +314,46 @@ const PRDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: pr.prNo }]}
         extra={
           <Space>
+            <Button icon={<PrinterOutlined />} onClick={handlePrint}>
+              พิมพ์
+            </Button>
+            {pr.status === 'COMPLETED' && (
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                loading={reopening}
+                onClick={handleEdit}
+              >
+                แก้ไข
+              </Button>
+            )}
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/pr/status')}>
               กลับ
             </Button>
           </Space>
         }
       />
+
+      {blockingPOs.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ borderRadius: 12, marginBottom: 16 }}
+          message="ไม่สามารถแก้ไข PR นี้ได้ในขณะนี้"
+          description={
+            <span>
+              PO ที่ต้องยกเลิกก่อนแก้ไข PR นี้:{' '}
+              {blockingPOs.map((po, i) => (
+                <React.Fragment key={po.po_id ?? po.po_no}>
+                  {i > 0 && ', '}
+                  <a onClick={() => navigate(`/po/approval/${po.po_id}`)}>{po.po_no}</a>
+                </React.Fragment>
+              ))}
+            </span>
+          }
+        />
+      )}
 
       <Card style={{ ...cardStyle, marginBottom: 16 }} title={<span style={cardTitleStyle}>ข้อมูลใบขอซื้อ</span>}>
         <Descriptions column={{ xs: 1, sm: 2 }} size="middle">
@@ -262,6 +415,48 @@ const PRDetailPage: React.FC = () => {
             ))}
           </Space>
         </Card>
+      )}
+
+      <Modal
+        open={!!blockModalPOs}
+        title={
+          <Space>
+            <WarningOutlined style={{ color: '#d97706' }} />
+            <span>ไม่สามารถแก้ไข PR นี้ได้</span>
+          </Space>
+        }
+        onCancel={() => setBlockModalPOs(null)}
+        footer={[
+          <Button key="close" onClick={() => setBlockModalPOs(null)}>
+            ปิด
+          </Button>,
+        ]}
+      >
+        <Text>ไม่สามารถแก้ไข PR นี้ได้ เนื่องจากยังมี PO ที่ยังไม่ถูกยกเลิกอ้างอิงอยู่:</Text>
+        <ul style={{ marginTop: 8, marginBottom: 8, paddingLeft: 20 }}>
+          {blockModalPOs?.map((po) => (
+            <li key={po.po_id ?? po.po_no}>
+              {po.po_id ? (
+                <a onClick={() => { setBlockModalPOs(null); navigate(`/po/approval/${po.po_id}`) }}>
+                  {po.po_no}
+                </a>
+              ) : (
+                po.po_no
+              )}
+            </li>
+          ))}
+        </ul>
+        <Text>กรุณายกเลิก PO ดังกล่าวก่อน จึงจะสามารถแก้ไข PR นี้ได้</Text>
+      </Modal>
+
+      {printData && (
+        <PRPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
       )}
     </div>
   )

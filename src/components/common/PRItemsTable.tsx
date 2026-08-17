@@ -49,9 +49,31 @@ interface PRItemsTableProps {
   // per array identity — the parent should set this from its own fetch effect
   // exactly once, not recompute it on every render.
   initialItems?: InitialPRItem[]
+  // Remarks textarea near the line items — lifted to the parent (PRCreatePage)
+  // so it can be included in the submit payload instead of living as dead
+  // local state here.
+  remark?: string
+  onRemarkChange?: (value: string) => void
+  // Print the current (unsaved) form state — the parent assembles PRData
+  // from its own form values + this table's line items, since this
+  // component alone doesn't have access to the header fields. Items are
+  // passed through here (rather than relying on onItemsChange) because
+  // that callback only forwards the raw submit-payload fields, not the
+  // display-only ones (description/unit/cost code label/per-line remark)
+  // the print layout needs.
+  onPrint?: (items: {
+    mat_code: string
+    description: string
+    unit: string
+    qty_requested: number
+    cost_code_label: string | null
+    remark: string
+  }[]) => void
 }
 
-const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, onItemsChange, initialItems }) => {
+const PRItemsTable: React.FC<PRItemsTableProps> = ({
+  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint,
+}) => {
   const [items, setItems] = useState<PRItem[]>([])
 
   useEffect(() => {
@@ -80,7 +102,6 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
       cost_subgroup_id: i.costSubgroupId,
     })))
   }, [items])
-  const [remark, setRemark] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
@@ -180,14 +201,31 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
   }
 
   const handleMaterialConfirm = (materials: Material[]) => {
-    const existingCodes = new Set(items.map((i) => i.code))
+    const existingCodes = new Set(items.map((i) => i.code).filter(Boolean))
     const toAdd = materials.filter((m) => !existingCodes.has(m.mat_code))
     if (toAdd.length < materials.length) {
       message.warning(`ข้ามรายการที่มีอยู่แล้ว ${materials.length - toAdd.length} รายการ`)
     }
     if (toAdd.length === 0) return
     setItems((prev) => {
-      const newRows: PRItem[] = toAdd.map((m) => ({
+      // Fill existing blank rows (e.g. one just added via "เพิ่มรายการใหม่") first,
+      // in order, before creating new rows — otherwise picking a material always
+      // appends a fresh row and leaves the blank one untouched.
+      let materialIdx = 0
+      const filled = prev.map((item) => {
+        if (item.code || materialIdx >= toAdd.length) return item
+        const m = toAdd[materialIdx]
+        materialIdx += 1
+        return {
+          ...item,
+          code: m.mat_code,
+          description: m.mat_name_th,
+          unit: m.unit_name || 'Ea',
+        }
+      })
+      const remaining = toAdd.slice(materialIdx)
+
+      const newRows: PRItem[] = remaining.map((m) => ({
         key: `${Date.now()}-${m.mat_code}-${Math.random().toString(36).slice(2)}`,
         no: 0,
         code: m.mat_code,
@@ -199,7 +237,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
         costSubgroupId: null,
         costCodeLabel: null,
       }))
-      const combined = [...prev, ...newRows]
+      const combined = [...filled, ...newRows]
       return combined.map((i, idx) => ({ ...i, no: idx + 1 }))
     })
   }
@@ -213,6 +251,36 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
       render: (_: unknown, r: PRItem) => (
         <span style={{ fontSize: 13, color: '#374151' }}>{r.no}</span>
       ),
+    },
+    {
+      title: 'Cost Code',
+      dataIndex: 'costSubgroupId',
+      width: 200,
+      align: 'center' as const,
+      render: (_: unknown, r: PRItem) =>
+        readonly ? (
+          <span style={{ fontSize: 13 }}>{r.costCodeLabel ?? '-'}</span>
+        ) : (
+          <Space size={4} style={{ width: '100%' }}>
+            <Button
+              size="small"
+              style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              disabled={!r.code}
+              onClick={() => setCostCodeModalRowKey(r.key)}
+              title={r.costCodeLabel ?? undefined}
+            >
+              {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
+            </Button>
+            {r.costCodeLabel && (
+              <Button
+                size="small"
+                type="text"
+                icon={<CloseCircleFilled style={{ color: '#9ca3af' }} />}
+                onClick={() => clearCostCode(r.key)}
+              />
+            )}
+          </Space>
+        ),
     },
     {
       title: 'Code',
@@ -327,36 +395,6 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
           />
         ),
     },
-    {
-      title: 'Cost Code',
-      dataIndex: 'costSubgroupId',
-      width: 200,
-      align: 'center' as const,
-      render: (_: unknown, r: PRItem) =>
-        readonly ? (
-          <span style={{ fontSize: 13 }}>{r.costCodeLabel ?? '-'}</span>
-        ) : (
-          <Space size={4} style={{ width: '100%' }}>
-            <Button
-              size="small"
-              style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              disabled={!r.code}
-              onClick={() => setCostCodeModalRowKey(r.key)}
-              title={r.costCodeLabel ?? undefined}
-            >
-              {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
-            </Button>
-            {r.costCodeLabel && (
-              <Button
-                size="small"
-                type="text"
-                icon={<CloseCircleFilled style={{ color: '#9ca3af' }} />}
-                onClick={() => clearCostCode(r.key)}
-              />
-            )}
-          </Space>
-        ),
-    },
 
     ...(!readonly
       ? [
@@ -434,7 +472,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
           <Input.TextArea
             rows={3}
             value={remark}
-            onChange={(e) => setRemark(e.target.value)}
+            onChange={(e) => onRemarkChange?.(e.target.value)}
             style={{ borderRadius: 8, fontSize: 13 }}
           />
         </div>
@@ -466,7 +504,18 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({ readonly = false, onBack, o
         }}
       >
         <Space wrap>
-          <Button icon={<PrinterOutlined />} onClick={() => message.info('พิมพ์เอกสาร')}>
+          <Button
+            icon={<PrinterOutlined />}
+            disabled={!onPrint}
+            onClick={() => onPrint?.(items.map((i) => ({
+              mat_code: i.code,
+              description: i.description,
+              unit: i.unit,
+              qty_requested: i.qtyPR,
+              cost_code_label: i.costCodeLabel,
+              remark: i.remark,
+            })))}
+          >
             พิมพ์
           </Button>
           <Button icon={<RollbackOutlined />} onClick={onBack}>

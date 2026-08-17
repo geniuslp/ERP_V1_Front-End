@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Table, Space, Input, Select, Tag, Upload, Typography, Button, message } from 'antd'
+import { Card, Table, Space, Input, Select, Tag, Upload, Typography, Button, message, Descriptions, Modal } from 'antd'
 import type { UploadProps } from 'antd'
-import { InboxOutlined, CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SaveOutlined, DownloadOutlined } from '@ant-design/icons'
+import { InboxOutlined, CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SaveOutlined, DownloadOutlined, ExclamationCircleFilled } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import PermissionGate from '@/components/permission/PermissionGate'
 import { useAppSelector } from '@/store'
 import { stockService } from '@/services/stock.service'
+import type { BulkPreviewRow, BulkPreviewSummary } from '@/services/stock.service'
 import type { StockItem, StockCategory, StockImportResult, StockItemType, StockTrackingType } from '@/types'
 
 const { Text, Title } = Typography
@@ -45,23 +46,28 @@ const newRow = (): PendingRow => ({
 
 interface RowSaveResult { rowKey: string; matCode: string; ok: boolean; error?: string }
 
-interface PreviewRow {
+interface LocalParsedRow {
   row: number
-  matCode: string
-  itemName: string
   unit: string
   qty: string
   unitCost: string
-  error?: string
 }
 
-// Column mapping duplicated between here (frontend, preview-only/cosmetic) and the
-// backend import handler (source of truth, actually persists data). If the backend
-// mapping ever changes, this must be updated to match or the preview will lie to
-// users about what will actually be imported.
+type MergedPreviewRow = BulkPreviewRow & { unit?: string; qty?: string; unitCost?: string }
+
+const statusTag = (status: BulkPreviewRow['status']) => {
+  if (status === 'ok') return <Tag color="success">พร้อมนำเข้า</Tag>
+  if (status === 'name_mismatch') return <Tag color="warning">ชื่อไม่ตรง</Tag>
+  return <Tag color="error">ไม่พบรหัสวัสดุ</Tag>
+}
+
+// Local, cosmetic-only parse used solely to pull unit/qty/cost for display in the
+// preview table — the backend preview endpoint doesn't echo these back, only
+// match-check fields. The backend import handler remains the source of truth for
+// what actually gets persisted.
 // Header is always 3 rows; real data starts at row 4 (0-indexed row 3).
 // Col C(2)=item_name, D(3)=qty, E(4)=unit, G(6)=mat_code, J(9)=unit_cost.
-const parseStockImportFile = (file: File): Promise<PreviewRow[]> =>
+const parseStockImportFileLocal = (file: File): Promise<LocalParsedRow[]> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -75,7 +81,7 @@ const parseStockImportFile = (file: File): Promise<PreviewRow[]> =>
         // number without the "PG" prefix and leading zeros, silently corrupting the code.
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })
         const dataRows = rows.slice(3)
-        const preview: PreviewRow[] = []
+        const parsed: LocalParsedRow[] = []
         dataRows.forEach((r, idx) => {
           const itemName = String(r[2] ?? '').trim()
           const qty = String(r[3] ?? '').trim()
@@ -85,14 +91,9 @@ const parseStockImportFile = (file: File): Promise<PreviewRow[]> =>
 
           if (!matCode && !itemName) return // trailing blank row — skip entirely
 
-          const rowNum = idx + 4
-          let error: string | undefined
-          if (!matCode) error = 'ไม่พบรหัสวัสดุ (คอลัมน์ G)'
-          else if (!itemName) error = 'ไม่พบชื่อ Item (คอลัมน์ C)'
-
-          preview.push({ row: rowNum, matCode, itemName, unit, qty, unitCost, error })
+          parsed.push({ row: idx + 4, unit, qty, unitCost })
         })
-        resolve(preview)
+        resolve(parsed)
       } catch {
         reject(new Error('อ่านไฟล์ไม่ได้'))
       }
@@ -127,7 +128,11 @@ const StockListPage: React.FC = () => {
 
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<StockImportResult | null>(null)
-  const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewRows, setPreviewRows] = useState<MergedPreviewRow[] | null>(null)
+  const [previewSummary, setPreviewSummary] = useState<BulkPreviewSummary | null>(null)
+  const [previewFilter, setPreviewFilter] = useState<'all' | 'ok' | 'errors'>('all')
+  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   const fetchItems = useCallback(async () => {
@@ -223,26 +228,49 @@ const StockListPage: React.FC = () => {
   }
 
   const handleUpload: UploadProps['beforeUpload'] = (file) => {
+    if (!accessToken) return false
     setImportResult(null)
-    const doParse = async () => {
+    setPreviewFilter('all')
+    setPreviewLoading(true)
+    const doPreview = async () => {
       try {
-        const rows = await parseStockImportFile(file)
-        setPreviewRows(rows)
+        const [result, localRows] = await Promise.all([
+          stockService.previewImport(accessToken, file),
+          parseStockImportFileLocal(file),
+        ])
+        const localByRow = new Map(localRows.map((r) => [r.row, r]))
+        const merged: MergedPreviewRow[] = result.rows.map((r) => {
+          const local = localByRow.get(r.row_no)
+          return { ...r, unit: local?.unit, qty: local?.qty, unitCost: local?.unitCost }
+        })
+        setPreviewRows(merged)
+        setPreviewSummary(result.summary)
+        setExpandedRowKeys(merged.filter((r) => r.status !== 'ok').map((r) => r.row_no))
         setPendingFile(file)
       } catch (err: any) {
-        message.error(err?.message || 'อ่านไฟล์ไม่ได้')
+        const errMsg =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'ตรวจสอบไฟล์ไม่สำเร็จ'
+        message.error(errMsg)
+      } finally {
+        setPreviewLoading(false)
       }
     }
-    doParse()
+    doPreview()
     return false
   }
 
   const handleCancelPreview = () => {
     setPreviewRows(null)
+    setPreviewSummary(null)
+    setPreviewFilter('all')
+    setExpandedRowKeys([])
     setPendingFile(null)
   }
 
-  const handleConfirmImport = async () => {
+  const doConfirmImport = async () => {
     if (!accessToken || !pendingFile) return
     setImporting(true)
     try {
@@ -250,6 +278,7 @@ const StockListPage: React.FC = () => {
       setImportResult(result)
       if (result.failedCount === 0) message.success(`นำเข้าสำเร็จ ${result.successCount} รายการ`)
       setPreviewRows(null)
+      setPreviewSummary(null)
       setPendingFile(null)
       await fetchItems()
     } catch (err: any) {
@@ -261,6 +290,22 @@ const StockListPage: React.FC = () => {
       message.error(errMsg)
     } finally {
       setImporting(false)
+    }
+  }
+
+  const handleConfirmImport = () => {
+    const problemCount = previewRows?.filter((r) => r.status !== 'ok').length ?? 0
+    if (problemCount > 0) {
+      Modal.confirm({
+        title: 'นำเข้าต่อหรือไม่?',
+        icon: <ExclamationCircleFilled style={{ color: '#d97706' }} />,
+        content: `พบ ${problemCount} รายการที่มีปัญหา (ไม่พบรหัสวัสดุ หรือ ชื่อไม่ตรง) ต้องการนำเข้าต่อหรือไม่?`,
+        okText: 'นำเข้าต่อ',
+        cancelText: 'ยกเลิก',
+        onOk: doConfirmImport,
+      })
+    } else {
+      doConfirmImport()
     }
   }
 
@@ -432,33 +477,113 @@ const StockListPage: React.FC = () => {
           <div style={{ marginTop: 16 }}>
             <Space style={{ marginBottom: 10 }}>
               <Text strong>ตัวอย่างข้อมูลก่อนนำเข้า ({previewRows.length} แถว)</Text>
-              {previewRows.some((r) => r.error) && (
-                <Tag color="error">พบ {previewRows.filter((r) => r.error).length} แถวที่มีปัญหา</Tag>
-              )}
             </Space>
+            {previewSummary && (
+              <Space style={{ marginBottom: 10, display: 'flex' }}>
+                <Tag
+                  color={previewFilter === 'all' ? 'blue' : 'default'}
+                  style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
+                  onClick={() => setPreviewFilter('all')}
+                >
+                  ทั้งหมด: {previewSummary.total}
+                </Tag>
+                <Tag
+                  color={previewFilter === 'ok' ? 'green' : 'default'}
+                  style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
+                  onClick={() => setPreviewFilter('ok')}
+                >
+                  พร้อมนำเข้า: {previewSummary.ok}
+                </Tag>
+                <Tag
+                  color={previewFilter === 'errors' ? 'red' : 'default'}
+                  style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
+                  onClick={() => setPreviewFilter('errors')}
+                >
+                  มีปัญหา: {previewSummary.code_not_found + previewSummary.name_mismatch}
+                </Tag>
+              </Space>
+            )}
             <Table
               size="small"
-              rowKey="row"
-              dataSource={previewRows}
+              rowKey="row_no"
+              loading={previewLoading}
+              dataSource={previewRows.filter((r) => {
+                if (previewFilter === 'ok') return r.status === 'ok'
+                if (previewFilter === 'errors') return r.status !== 'ok'
+                return true
+              })}
               pagination={{ pageSize: 20 }}
               scroll={{ x: 700 }}
-              rowClassName={(r) => (r.error ? 'stock-preview-row-error' : '')}
+              onRow={(r) => ({
+                style: r.status === 'ok' ? undefined : { background: 'rgba(220,38,38,0.08)' },
+              })}
+              expandable={{
+                expandedRowKeys,
+                onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as React.Key[]),
+                expandedRowRender: (r: MergedPreviewRow) => (
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
+                      <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 12, color: '#6b7280' }}>
+                        จากไฟล์ (From File)
+                      </Text>
+                      <Descriptions column={1} size="small" bordered>
+                        <Descriptions.Item label="ชื่อ Item">{r.file_name || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="รหัสวัสดุ">{r.mat_code || '—'}</Descriptions.Item>
+                        {r.unit && <Descriptions.Item label="หน่วยนับ">{r.unit}</Descriptions.Item>}
+                        {(r.qty || r.unitCost) && (
+                          <Descriptions.Item label="จำนวน / ราคาต้นทุน">
+                            {[r.qty, r.unitCost].filter(Boolean).join(' / ')}
+                          </Descriptions.Item>
+                        )}
+                      </Descriptions>
+                    </div>
+                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
+                      <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 12, color: '#6b7280' }}>
+                        จาก Master (From Database)
+                      </Text>
+                      {r.master ? (
+                        <Descriptions column={2} size="small" bordered>
+                          <Descriptions.Item label="รหัสวัสดุ">{r.master.mat_code || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="กลุ่ม">{r.master.group_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="กลุ่มย่อย">{r.master.subgroup_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="ชื่อวัสดุ">{r.master.mat_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Spec">{r.master.spec_description || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="ยี่ห้อ">{r.master.brand_name || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="หน่วยนับ">{r.master.unit_name || '—'}</Descriptions.Item>
+                        </Descriptions>
+                      ) : (
+                        <Text type="secondary">ไม่พบข้อมูลในระบบ</Text>
+                      )}
+                    </div>
+                  </div>
+                ),
+              }}
               columns={[
-                { title: 'แถวที่', dataIndex: 'row', key: 'row', width: 80 },
+                { title: 'แถวที่', dataIndex: 'row_no', key: 'row_no', width: 80 },
                 {
-                  title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130,
+                  title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code', width: 260,
+                  render: (v: string, r: MergedPreviewRow) => {
+                    const masterCode = r.master?.mat_code ?? null
+                    const codeMismatch = r.code_found && masterCode != null && masterCode !== v
+                    return (
+                      <div style={codeMismatch ? { background: 'rgba(220,38,38,0.08)', borderRadius: 4, padding: '2px 4px' } : undefined}>
+                        <div style={{ fontSize: 13 }}>
+                          รหัสจากไฟล์: {v || <Text type="danger">—</Text>}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                          รหัสใน Master: {masterCode ?? '— ไม่พบ —'}
+                        </div>
+                      </div>
+                    )
+                  },
+                },
+                {
+                  title: 'ชื่อ Item', dataIndex: 'file_name', key: 'file_name', ellipsis: true,
                   render: (v: string) => v || <Text type="danger">—</Text>,
                 },
                 {
-                  title: 'ชื่อ Item', dataIndex: 'itemName', key: 'itemName',
-                  render: (v: string) => v || <Text type="danger">—</Text>,
-                },
-                { title: 'หน่วยนับ', dataIndex: 'unit', key: 'unit', width: 100 },
-                { title: 'จำนวน', dataIndex: 'qty', key: 'qty', width: 90, align: 'right' as const },
-                { title: 'ราคาต้นทุน', dataIndex: 'unitCost', key: 'unitCost', width: 110, align: 'right' as const },
-                {
-                  title: 'สถานะ', dataIndex: 'error', key: 'error', width: 200,
-                  render: (v?: string) => v ? <Tag color="error">{v}</Tag> : <Tag color="success">พร้อมนำเข้า</Tag>,
+                  title: 'สถานะ', dataIndex: 'status', key: 'status', width: 150,
+                  render: (status: BulkPreviewRow['status']) => statusTag(status),
                 },
               ]}
             />
@@ -467,7 +592,6 @@ const StockListPage: React.FC = () => {
               <PermissionButton
                 menuCode={MENU_CODE} action="write"
                 type="primary" loading={importing}
-                disabled={previewRows.some((r) => r.error)}
                 onClick={handleConfirmImport}
                 style={{ background: 'linear-gradient(135deg,#1d4ed8,#3b82f6)', border: 'none' }}
               >

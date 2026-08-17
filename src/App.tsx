@@ -66,6 +66,14 @@ const MaterialRequisitionListPage = lazy(() => import('@/pages/stock/MaterialReq
 const MaterialRequisitionCreatePage = lazy(() => import('@/pages/stock/MaterialRequisitionCreatePage'))
 const MaterialRequisitionEditPage = lazy(() => import('@/pages/stock/MaterialRequisitionEditPage'))
 const MaterialRequisitionDetailPage = lazy(() => import('@/pages/stock/MaterialRequisitionDetailPage'))
+const StockWhRequisitionListPage = lazy(() => import('@/pages/stock/StockWhRequisitionListPage'))
+const StockWhRequisitionCreatePage = lazy(() => import('@/pages/stock/StockWhRequisitionCreatePage'))
+const StockWhRequisitionDetailPage = lazy(() => import('@/pages/stock/StockWhRequisitionDetailPage'))
+const StockWhTransferListPage = lazy(() => import('@/pages/stock/StockWhTransferListPage'))
+const StockWhTransferCreatePage = lazy(() => import('@/pages/stock/StockWhTransferCreatePage'))
+const StockWhTransferDetailPage = lazy(() => import('@/pages/stock/StockWhTransferDetailPage'))
+const StockMovementHistoryPage = lazy(() => import('@/pages/stock/StockMovementHistoryPage'))
+const ProjectStockBalancePage = lazy(() => import('@/pages/stock/ProjectStockBalancePage'))
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -95,6 +103,9 @@ const AppRoutes: React.FC = () => (
               <Route path="/memo/:id/edit" element={<MemoCreateEditPage key="memo-edit" />} />
               <Route path="/pr/create" element={
                 <RequirePermission menuCode="MENU_PR_CREATE" action="write"><PRCreatePage key="pr-create" /></RequirePermission>
+              } />
+              <Route path="/pr/:id/edit" element={
+                <RequirePermission menuCode="MENU_PR_CREATE" action="write"><PRCreatePage key="pr-edit" /></RequirePermission>
               } />
               <Route path="/pr/status" element={
                 <RequirePermission menuCode="MENU_PR_STATUS" action="read"><PRStatusPage /></RequirePermission>
@@ -166,6 +177,39 @@ const AppRoutes: React.FC = () => (
               <Route path="/stock/requisition/:id/edit" element={<MaterialRequisitionEditPage />} />
               <Route path="/stock/requisition/:id" element={<MaterialRequisitionDetailPage />} />
               <Route path="/stock/requisition" element={<MaterialRequisitionListPage />} />
+
+              {/* Warehouse Stock Transfer module — new `stock_transfer` table, distinct from the
+                  Material Requisition module above (/stock/requisition/*, backed by /borrow).
+                  Routed under /stock/wh-requisition and /stock/wh-transfer to avoid colliding
+                  with that existing feature — see conversation decision. */}
+              <Route path="/stock/wh-requisition/create" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION" action="write"><StockWhRequisitionCreatePage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-requisition/:id" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION" action="read"><StockWhRequisitionDetailPage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-requisition" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION" action="read"><StockWhRequisitionListPage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-transfer/create" element={
+                <RequirePermission menuCode="MENU_STOCK_WH_TRANSFER" action="write"><StockWhTransferCreatePage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-transfer/:id" element={
+                <RequirePermission menuCode="MENU_STOCK_WH_TRANSFER" action="read"><StockWhTransferDetailPage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-transfer" element={
+                <RequirePermission menuCode="MENU_STOCK_WH_TRANSFER" action="read"><StockWhTransferListPage /></RequirePermission>
+              } />
+              {/* Path confirmed against menus.menu_path for menu_id=50 (MENU_WH_REQUISITION_HISTORY)
+                  — the sidebar navigates via menu.menu_path from the API, not a hardcoded string,
+                  so this route must match that DB value exactly or the link 404s into the "*"
+                  catch-all and lands on the dashboard. */}
+              <Route path="/stock/wh-requisition-history" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION_HISTORY" action="read"><StockMovementHistoryPage /></RequirePermission>
+              } />
+              <Route path="/stock/project-balance" element={
+                <RequirePermission menuCode="MENU_STOCK_PROJECT_BALANCE" action="read"><ProjectStockBalancePage /></RequirePermission>
+              } />
               <Route path="/system/config" element={
                 <RequireRole roleCode="ADMIN_CENTER"><SystemConfigPage /></RequireRole>
               } />

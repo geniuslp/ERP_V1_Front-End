@@ -52,6 +52,40 @@ body {
   background: #eff6ff !important;
 }
 
+/* รายการ PO (POLineItemsPage) — parent-row-per-PO / nested line-items table
+   visual separation. Parent rows get extra breathing room + a hairline
+   divider between PO groups; the nested table is indented, tinted
+   primary-50, and more compact since it's secondary detail. */
+.po-line-items-table .ant-table-thead > tr > th {
+  font-weight: 600;
+}
+
+.po-line-items-table .ant-table-tbody > tr.po-line-items-parent-row > td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dbeafe;
+}
+
+.po-line-items-table .ant-table-tbody > tr.ant-table-expanded-row > td {
+  background: #eff6ff !important;
+  padding: 8px 8px 8px 32px !important;
+}
+
+.po-line-items-nested-table .ant-table {
+  background: transparent;
+}
+
+.po-line-items-nested-table .ant-table-thead > tr > th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: #dbeafe !important;
+}
+
+.po-line-items-nested-table .ant-table-tbody > tr > td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
 .stock-preview-row-error > td {
   background: #fff1f0 !important;
 }

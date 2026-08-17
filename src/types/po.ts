@@ -130,6 +130,8 @@ export interface PODetail {
   // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval,
   // confirmed present on GET /po/:id as of this session.
   revision_round?: number
+  // purchase_order.order_type — same 'stock'/'cost' domain as PR's order_type.
+  order_type?: 'stock' | 'cost'
 }
 
 export interface POLineItem {
@@ -199,6 +201,7 @@ export interface POLineItemGroup {
   po_no: string
   po_date: string
   supplier_name?: string
+  contact_phone?: string
   requested_by: string
   project_code?: string
   status: POStatus

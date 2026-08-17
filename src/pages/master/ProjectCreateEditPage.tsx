@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber } from 'antd'
-import { SaveOutlined, CloseOutlined } from '@ant-design/icons'
+import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Divider } from 'antd'
+import { SaveOutlined, CloseOutlined, SettingOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
@@ -30,29 +30,62 @@ const ProjectCreateEditPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [locations, setLocations] = useState<{ value: string; label: string }[]>([])
   const [locationsLoading, setLocationsLoading] = useState(false)
+  const [newLocationName, setNewLocationName] = useState('')
+  const [creatingLocation, setCreatingLocation] = useState(false)
   const [owners, setOwners] = useState<{ value: number; label: string; dept?: string }[]>([])
   const [ownersLoading, setOwnersLoading] = useState(false)
 
-  useEffect(() => {
-    const fetchLocations = async () => {
-      setLocationsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/locations`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        setLocations(list.map((l: any) => ({
-          value: l.location_code,
-          label: l.location_name ?? l.name,
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดสถานที่ไม่สำเร็จ')
-      } finally {
-        setLocationsLoading(false)
-      }
+  const fetchLocations = async () => {
+    setLocationsLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/master/locations`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { is_active: true },
+      })
+      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+      setLocations(list.map((l: any) => ({
+        value: l.location_code,
+        label: l.location_name ?? l.name,
+      })))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดสถานที่ไม่สำเร็จ')
+    } finally {
+      setLocationsLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchLocations()
   }, [])
+
+  // Manager-tier quick-create: reuses the guard already on this page (project
+  // create/edit is manager-gated) rather than a separate permission check. Confirmed
+  // against the live backend: location_code is auto-generated server-side and
+  // location_type defaults to 'SITE' when omitted, so this quick-add flow only ever
+  // sends location_name — do not synthesize a code client-side.
+  const handleCreateLocation = async () => {
+    const name = newLocationName.trim()
+    if (!name) {
+      message.warning('กรุณาพิมพ์ชื่อสถานที่')
+      return
+    }
+    setCreatingLocation(true)
+    try {
+      const res = await axios.post(`${BASE_URL}/master/locations`, {
+        location_name: name,
+      }, { headers: { Authorization: `Bearer ${accessToken}` } })
+      const created = res.data?.data ?? res.data
+      const option = { value: created?.location_code, label: created?.location_name ?? name }
+      setLocations((prev) => [...prev, option])
+      form.setFieldValue('location_code', option.value)
+      setNewLocationName('')
+      message.success('เพิ่มสถานที่สำเร็จ')
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'เพิ่มสถานที่ไม่สำเร็จ')
+    } finally {
+      setCreatingLocation(false)
+    }
+  }
 
   useEffect(() => {
     const fetchOwners = async () => {
@@ -186,7 +219,17 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="สถานที่" name="location_code">
+              <Form.Item
+                label={
+                  <span>
+                    สถานที่{' '}
+                    <a onClick={() => navigate('/master/location')} style={{ fontSize: 12, fontWeight: 400 }}>
+                      <SettingOutlined /> จัดการสถานที่
+                    </a>
+                  </span>
+                }
+                name="location_code"
+              >
                 <Select
                   placeholder="— เลือกสถานที่ —"
                   loading={locationsLoading}
@@ -196,6 +239,23 @@ const ProjectCreateEditPage: React.FC = () => {
                     String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
                   options={locations}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: '4px 0' }} />
+                      <div style={{ padding: '4px 8px', display: 'flex', gap: 8 }}>
+                        <Input
+                          placeholder="พิมพ์ชื่อสถานที่ใหม่..."
+                          value={newLocationName}
+                          onChange={(e) => setNewLocationName(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        />
+                        <Button type="link" size="small" loading={creatingLocation} onClick={handleCreateLocation}>
+                          + เพิ่ม
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 />
               </Form.Item>
             </Col>

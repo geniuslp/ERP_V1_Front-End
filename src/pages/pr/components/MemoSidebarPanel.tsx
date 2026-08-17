@@ -11,6 +11,8 @@ import { useAppSelector } from '@/store'
 import type { Memo } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+// Uploaded files are served as static assets off the API server root, not under /api/v1.
+const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 type SidebarSize = 'compact' | 'expanded'
 
@@ -62,7 +64,14 @@ const mapMemo = (raw: any): Memo => ({
   department:  raw.department,
   projectName: raw.project_name      ?? raw.projectName,
   projectCode: raw.project_code      ?? raw.projectCode,
+  deliveryLocation: raw.delivery_location ?? raw.deliveryLocation,
   note:        raw.note,
+  attachments: (raw.attachments ?? []).map((a: any) => ({
+    filePath: a.file_path ?? a.filePath,
+    fileName: a.file_name ?? a.fileName,
+    fileSize: a.file_size ?? a.fileSize,
+    fileType: a.file_type ?? a.fileType,
+  })),
   createdAt:   raw.created_at        ?? raw.createdAt     ?? '',
 })
 
@@ -181,7 +190,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                 <Spin />
               </div>
             ) : memos.length === 0 ? (
-              <Empty description="ไม่พบใบบันทึกที่อนุมัติแล้ว" />
+              <Empty description="ไม่พบใบบันทึกขอซื้อ (Memo) ที่อนุมัติแล้ว" />
             ) : (
               memos.map((memo) => (
                 <div
@@ -249,6 +258,44 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
             {detailMemo?.note && (
               <div style={{ background: '#f0f5ff', borderRadius: 8, padding: 10, fontSize: 12, marginBottom: 12 }}>
                 {detailMemo.note}
+              </div>
+            )}
+
+            {detailMemo?.attachments && detailMemo.attachments.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#60a5fa', marginBottom: 4 }}>
+                  ไฟล์แนบจาก Memo
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {detailMemo.attachments.map((f) => (
+                    <a
+                      key={f.filePath}
+                      href={`${FILE_BASE_URL}/${f.filePath}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        background: '#f0f5ff',
+                        border: '0.5px solid #bfdbfe',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        fontSize: 12,
+                        color: '#1e40af',
+                        maxWidth: 240,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <span
+                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}
+                        title={f.fileName}
+                      >
+                        {f.fileName}
+                      </span>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -68,7 +68,7 @@ const MemoListPage: React.FC = () => {
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        'โหลดข้อมูลใบบันทึกไม่สำเร็จ'
+        'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
       )
     } finally {
       setLoading(false)
@@ -80,14 +80,14 @@ const MemoListPage: React.FC = () => {
       await axios.delete(`${BASE_URL}/memo/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-      message.success('ลบใบบันทึกสำเร็จ')
+      message.success('ลบใบบันทึกขอซื้อ (Memo) สำเร็จ')
       fetchData()
     } catch (err: any) {
       message.error(
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        'ลบใบบันทึกไม่สำเร็จ'
+        'ลบใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
       )
     }
   }
@@ -104,7 +104,7 @@ const MemoListPage: React.FC = () => {
 
   const columns = [
     {
-      title: 'เลขที่ใบบันทึก',
+      title: 'เลขที่ใบบันทึกขอซื้อ (Memo)',
       dataIndex: 'memoNo',
       key: 'memoNo',
       render: (memoNo: string, record: Memo) => (
@@ -183,7 +183,7 @@ const MemoListPage: React.FC = () => {
             </Tooltip>
           )}
           <Popconfirm
-            title="ยืนยันการลบใบบันทึกนี้?"
+            title="ยืนยันการลบใบบันทึกขอซื้อ (Memo) นี้?"
             okText="ลบ"
             cancelText="ยกเลิก"
             disabled={record.status === 'PO_CREATED' || record.status === 'po_created'}
@@ -212,9 +212,9 @@ const MemoListPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="ใบบันทึก (Memo)"
-        subtitle="รายการใบบันทึกความต้องการจัดซื้อ"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึก' }]}
+        title="ใบบันทึกขอซื้อ (Memo)"
+        subtitle="รายการใบบันทึกขอซื้อ (Memo)"
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }]}
         extra={
           <PermissionGate menuCode="MENU_MEMO_CREATE" action="write" mode="hide">
             <Button
@@ -227,7 +227,7 @@ const MemoListPage: React.FC = () => {
                 boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
               }}
             >
-              สร้างใบบันทึก
+              สร้างใบบันทึกขอซื้อ (Memo)
             </Button>
           </PermissionGate>
         }
@@ -280,7 +280,7 @@ const MemoListPage: React.FC = () => {
             showSizeChanger: true,
             showTotal: (total) => `ทั้งหมด ${total} รายการ`,
           }}
-          locale={{ emptyText: 'ไม่พบข้อมูลใบบันทึก' }}
+          locale={{ emptyText: 'ไม่พบข้อมูลใบบันทึกขอซื้อ (Memo)' }}
         />
       </Card>
     </div>

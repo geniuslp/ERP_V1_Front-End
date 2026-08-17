@@ -14,9 +14,9 @@ const defaultMenus: MenuConfig[] = [
     { id: 'pr-status', key: 'pr-status', label: 'ตรวจสอบสถานะ', path: '/pr/status', parentId: 'pr', order: 1, isActive: true },
     { id: 'pr-history', key: 'pr-history', label: 'ประวัติใบขอซื้อ', path: '/pr/history', parentId: 'pr', order: 2, isActive: true },
   ]},
-  { id: 'memo', key: 'memo', label: 'ใบบันทึก (Memo)', icon: 'FileTextOutlined', parentId: null, order: 1, isActive: true, children: [
-    { id: 'memo-list', key: 'memo-list', label: 'รายการใบบันทึก', path: '/memo', parentId: 'memo', order: 0, isActive: true },
-    { id: 'memo-create', key: 'memo-create', label: 'สร้างใบบันทึก', path: '/memo/create', parentId: 'memo', order: 1, isActive: true },
+  { id: 'memo', key: 'memo', label: 'ใบบันทึกขอซื้อ (Memo)', icon: 'FileTextOutlined', parentId: null, order: 1, isActive: true, children: [
+    { id: 'memo-list', key: 'memo-list', label: 'รายการใบบันทึกขอซื้อ (Memo)', path: '/memo', parentId: 'memo', order: 0, isActive: true },
+    { id: 'memo-create', key: 'memo-create', label: 'สร้างใบบันทึกขอซื้อ (Memo)', path: '/memo/create', parentId: 'memo', order: 1, isActive: true },
     { id: 'memo-approval', key: 'memo-approval', label: 'อนุมัติ Memo', path: '/memo/approval', parentId: 'memo', order: 2, isActive: true },
   ]},
   { id: 'po', key: 'po', label: 'ใบสั่งซื้อ (PO)', icon: 'ShoppingCartOutlined', parentId: null, order: 3, isActive: true, children: [

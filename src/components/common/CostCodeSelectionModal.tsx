@@ -40,18 +40,17 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
 
   /* ── filter state ──────────────────────────────────────────────
      The /cost-code/full response is already flat with job_code/group_code on every
-     row, so Job Type → Group cascading is done client-side against the single fetch
-     rather than round-tripping to the cascading /jobs, /groups endpoints — those exist
-     for the Material-style subject-scoped cascade, but here job_code/group_code alone
-     are enough to filter this already-small hierarchy table. */
-  const [selectedJob, setSelectedJob] = useState<string | null>(null)
+     row. Job is now a document-level field (PR's own "ประเภท Job" dropdown) rather
+     than a per-line selection, so there's no Job Type filter here anymore — Group
+     is filtered directly against the whole dataset instead of cascading from a
+     job selection. jobCode/jobName are still fetched/kept on each row (free-text
+     search still matches against them) — only the selectable Job level is gone. */
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
 
     setSearch('')
-    setSelectedJob(null)
     setSelectedGroup(null)
 
     const fetchCostCodes = async () => {
@@ -91,42 +90,22 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
     fetchCostCodes()
   }, [open, accessToken])
 
-  // Job Type filter options — distinct job_code across the whole hierarchy
-  const jobOptions: SelectOption[] = useMemo(() => {
+  // Group filter options — distinct group_code across the whole hierarchy
+  // (previously cascaded from a Job Type selection; Job is no longer a
+  // selectable filter level here, see note above).
+  const groupOptions: SelectOption[] = useMemo(() => {
     const seen = new Map<string, string>()
     data.forEach((d) => {
-      if (!seen.has(d.jobCode)) seen.set(d.jobCode, d.jobName)
+      if (!seen.has(d.groupCode)) seen.set(d.groupCode, d.groupName)
     })
     return Array.from(seen.entries())
       .map(([code, name]) => ({ value: code, label: name ? `${code} — ${name}` : code }))
       .sort((a, b) => a.value.localeCompare(b.value))
   }, [data])
 
-  // Group filter options — cascades from the selected Job Type
-  const groupOptions: SelectOption[] = useMemo(() => {
-    const seen = new Map<string, string>()
-    data
-      .filter((d) => !selectedJob || d.jobCode === selectedJob)
-      .forEach((d) => {
-        if (!seen.has(d.groupCode)) seen.set(d.groupCode, d.groupName)
-      })
-    return Array.from(seen.entries())
-      .map(([code, name]) => ({ value: code, label: name ? `${code} — ${name}` : code }))
-      .sort((a, b) => a.value.localeCompare(b.value))
-  }, [data, selectedJob])
-
-  // reset Group filter if it no longer applies once Job Type changes
-  useEffect(() => {
-    if (selectedGroup && !groupOptions.some((o) => o.value === selectedGroup)) {
-      setSelectedGroup(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJob])
-
   const filteredData = useMemo(() => {
     const q = search.trim().toLowerCase()
     return data.filter((d) => {
-      if (selectedJob && d.jobCode !== selectedJob) return false
       if (selectedGroup && d.groupCode !== selectedGroup) return false
       if (!q) return true
       return (
@@ -138,7 +117,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
         d.subgroupCode?.toLowerCase().includes(q)
       )
     })
-  }, [data, search, selectedJob, selectedGroup])
+  }, [data, search, selectedGroup])
 
   const handleSelect = (item: CostCodeItem) => {
     onSelect(item)
@@ -147,7 +126,6 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
 
   const columns = [
     { title: 'Subject', key: 'subject', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.subjectCode} — ${r.subjectName}` },
-    { title: 'Job', key: 'job', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.jobCode} — ${r.jobName}` },
     { title: 'Group', key: 'group', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.groupCode} — ${r.groupName}` },
     { title: 'รหัสกลุ่มย่อย', dataIndex: 'subgroupCode', key: 'subgroupCode', width: 110 },
     { title: 'ชื่อกลุ่มย่อย', dataIndex: 'subgroupName', key: 'subgroupName', ellipsis: true },
@@ -187,21 +165,6 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
     >
       {/* ── filters ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 220px' }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Job Type</div>
-          <Select
-            placeholder="เลือก Job Type"
-            allowClear
-            showSearch
-            style={{ width: '100%' }}
-            options={jobOptions}
-            value={selectedJob ?? undefined}
-            filterOption={(input, option) =>
-              String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-            }
-            onChange={(v) => setSelectedJob(v ?? null)}
-          />
-        </div>
         <div style={{ flex: '1 1 220px' }}>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Group</div>
           <Select

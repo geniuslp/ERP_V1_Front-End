@@ -25,6 +25,9 @@ export interface POData {
   // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval.
   // poNo itself never changes; compose the "#R{n}" suffix from this instead.
   revisionRound?: number
+  // purchase_order.status (approval status, NOT status_receive) — drives the
+  // "DRAFT" print watermark only. Optional because older callers may not pass it.
+  status?: string
 }
 
 // Dev-only fixture — use for isolated preview/testing only, never as a silent
@@ -161,7 +164,10 @@ const CSS = `
     .po-page:last-child{page-break-after:avoid;}
     @page{size:A4 portrait;margin:0;}
   }
-  .po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;}
+  .po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
+  .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
+    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Sarabun',sans-serif;}
   .po-box-first{border-bottom:1px solid #000;}
   .po-box{border:1px solid #000;border-top:none;}
 
@@ -440,6 +446,7 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
         const rows = [...pageItems]
         return (
           <div key={pageIdx} className="po-page">
+            {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
             <POHeader data={data} pageNum={pageIdx+1} totalPages={totalPages}/>
             <POInfoBox data={data}/>
             {isLast?(

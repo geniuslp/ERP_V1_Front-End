@@ -101,6 +101,7 @@ const LocationPage: React.FC = () => {
       const errMsg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
+        (err?.response?.status === 409 ? 'ไม่สามารถลบได้ เนื่องจากสถานที่นี้ถูกใช้งานอยู่ในโครงการที่ยังไม่ปิด' : undefined) ||
         err?.message ||
         'ลบไม่สำเร็จ'
       message.error(errMsg)

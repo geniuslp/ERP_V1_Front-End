@@ -2,13 +2,10 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Button, Input, Space, Checkbox, message, Tooltip } from 'antd'
 import { PrinterOutlined, DownloadOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { QRCodeSVG } from 'qrcode.react'
-import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import { mockStockItems } from '@/utils/mockStockData'
-import type { StockItem } from '@/types/stock'
-
-const BASE_URL = (import.meta as any).env?.VITE_API_URL
+import { stockService } from '@/services/stock.service'
+import type { StockItem } from '@/types'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -21,21 +18,16 @@ const QRCodePage: React.FC = () => {
   const [data, setData] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
-  const [selectedKeys, setSelectedKeys] = useState<number[]>([])
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const res = await axios.get(`${BASE_URL}/stock/items`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: { search: search || undefined, is_active: true },
-      })
-      const raw = Array.isArray(res.data) ? res.data : res.data?.data
-      setData(Array.isArray(raw) ? raw : [])
-    } catch {
-      let filtered = mockStockItems.filter((s) => s.isActive)
-      if (search) filtered = filtered.filter((s) => s.itemCode.includes(search) || s.itemName.toLowerCase().includes(search.toLowerCase()))
-      setData(filtered)
+      const result = await stockService.listItems(accessToken!, { search: search || undefined, pageSize: 100 })
+      setData(result.items)
+    } catch (err: any) {
+      setData([])
+      message.error(err?.response?.data?.message || err?.message || 'Failed to load stock items')
     } finally {
       setLoading(false)
     }
@@ -66,13 +58,13 @@ const QRCodePage: React.FC = () => {
     if (selectedKeys.length === 0) { message.warning('Select items to print'); return }
     const selectedItems = data.filter((d) => selectedKeys.includes(d.id))
     const printContent = selectedItems.map((item) => {
-      const svg = document.getElementById(`qr-${item.itemCode}`)
+      const svg = document.getElementById(`qr-${item.matCode}`)
       if (!svg) return ''
       const svgData = btoa(new XMLSerializer().serializeToString(svg))
       return `
         <div style="display:inline-block;text-align:center;padding:12px;border:1px solid #e5e7eb;margin:8px;border-radius:8px;">
           <img src="data:image/svg+xml;base64,${svgData}" width="120" height="120" />
-          <div style="font-size:12px;font-weight:600;margin-top:4px;">${item.itemCode}</div>
+          <div style="font-size:12px;font-weight:600;margin-top:4px;">${item.matCode}</div>
           <div style="font-size:10px;color:#6b7280;">${item.itemName}</div>
         </div>
       `
@@ -105,7 +97,7 @@ const QRCodePage: React.FC = () => {
       title: 'QR Preview',
       key: 'qr',
       render: (_: any, record: StockItem) => (
-        <QRCodeSVG id={`qr-${record.itemCode}`} value={record.itemCode} size={80} level="M" />
+        <QRCodeSVG id={`qr-${record.matCode}`} value={record.matCode} size={80} level="M" />
       ),
     },
     {
@@ -115,7 +107,7 @@ const QRCodePage: React.FC = () => {
       render: (_: any, record: StockItem) => (
         <Space>
           <Tooltip title="Download PNG">
-            <Button size="small" icon={<DownloadOutlined />} onClick={() => downloadQR(record.itemCode)} />
+            <Button size="small" icon={<DownloadOutlined />} onClick={() => downloadQR(record.matCode)} />
           </Tooltip>
           <Tooltip title="Print">
             <Button

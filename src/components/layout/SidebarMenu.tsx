@@ -6,7 +6,7 @@ import {
   TeamOutlined, ApartmentOutlined, AppstoreOutlined, SafetyOutlined,
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
-  InboxOutlined,
+  InboxOutlined, RetweetOutlined, FundOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -73,6 +73,16 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_STOCK_GRN: <HistoryOutlined />,
   MENU_STOCK_REQUISITION: <ExportOutlined />,
   MENU_STOCK_REQUISITION_APPROVAL: <CheckOutlined />,
+  // Warehouse Stock Transfer module (ใบเบิกของ / ย้ายคลัง / ประวัติการเคลื่อนไหว). Menu rows
+  // are live in the DB; menu_path values (confirmed, must match the registered routes in
+  // App.tsx exactly since navigation below uses menu.menu_path, not a hardcoded string):
+  // MENU_WH_REQUISITION=/stock/wh-requisition, MENU_STOCK_WH_TRANSFER=/stock/wh-transfer,
+  // MENU_WH_REQUISITION_HISTORY=/stock/wh-requisition-history,
+  // MENU_STOCK_PROJECT_BALANCE=/stock/project-balance.
+  MENU_WH_REQUISITION: <ExportOutlined />,
+  MENU_STOCK_WH_TRANSFER: <RetweetOutlined />,
+  MENU_WH_REQUISITION_HISTORY: <HistoryOutlined />,
+  MENU_STOCK_PROJECT_BALANCE: <FundOutlined />,
 }
 
 interface VisibleMenuNode extends PermMenu {
@@ -135,6 +145,13 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
       })
       .filter((m): m is VisibleMenuNode => m !== null)
       .sort((a, b) => a.order - b.order)
+      // Frontend-only override: Memo must appear before PR regardless of the
+      // DB-configured `order` value (DB order not changed as part of this task).
+      .sort((a, b) => {
+        if (a.menu_code === 'MENU_MEMO' && b.menu_code === 'MENU_PR') return -1
+        if (a.menu_code === 'MENU_PR' && b.menu_code === 'MENU_MEMO') return 1
+        return 0
+      })
 
     // ── DEBUG (remove after diagnosis) ─────────────────────────────
     console.log('[sidebar-debug] final visibleMenuTree:', result.length, result.map((m) => m.menu_code))

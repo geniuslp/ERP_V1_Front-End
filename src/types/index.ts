@@ -51,6 +51,48 @@ export interface MenuConfig {
 // ─── PR ────────────────────────────────────────────────────────
 export type PRStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled'
 
+export type PROrderType = 'stock' | 'cost'
+
+export type PRType = 'PO_WO' | 'PO_ONLY' | 'WO_ONLY'
+
+export interface PRAttachment {
+  file_path: string
+  file_name: string
+  file_size: number
+  file_type: string
+}
+
+export interface CreatePRLineRequest {
+  line_no: number
+  mat_code: string
+  qty_requested: number
+  qty_to_order: number
+  cost_subgroup_id: number | null
+}
+
+export interface CreatePRRequest {
+  pr_no: string
+  pr_date: string
+  requested_by: number
+  created_by: number
+  location_text: string
+  warehouse_code?: string
+  required_date?: string
+  project_code?: string
+  order_type?: PROrderType
+  pr_type?: PRType
+  // purchase_request.job_code — document-level job classification
+  // (MP/ME/MS/MF/MG/MH), nullable.
+  job_code?: string
+  remarks?: string
+  status: 'DRAFT' | 'COMPLETED'
+  memo_id: number | null
+  lines: CreatePRLineRequest[]
+  attachments: PRAttachment[]
+}
+
+export interface UpdatePRRequest extends CreatePRRequest {}
+
 export interface PRItem {
   id: string
   description: string
@@ -122,6 +164,13 @@ export type MemoStatus =
   | 'po_created'
   | 'cancelled'
 
+export interface MemoAttachment {
+  filePath: string
+  fileName: string
+  fileSize: number
+  fileType: string
+}
+
 export interface Memo {
   id: string
   memoNo: string
@@ -132,10 +181,12 @@ export interface Memo {
   requestedById: string
   approverName?: string
   department?: string
+  deliveryLocation?: string
   note?: string
   items: MemoItem[]
   status: MemoStatus
   linkedPoIds?: string[]
+  attachments?: MemoAttachment[]
   createdAt: string
   updatedAt: string
 }
@@ -144,6 +195,7 @@ export interface MemoFormValues {
   title: string
   project_code?: string
   department?: string
+  delivery_location?: string
   note?: string
   items: Omit<MemoItem, 'id'>[]
 }
@@ -193,7 +245,7 @@ export interface StockItem {
   matCode: string
   itemName: string
   description?: string
-  categoryId: string
+  categoryId?: string
   categoryName?: string
   itemType: StockItemType
   trackingType: StockTrackingType

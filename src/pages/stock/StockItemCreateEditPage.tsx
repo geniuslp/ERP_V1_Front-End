@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Form, Input, Select, InputNumber, Button, Space, Row, Col, message, Divider } from 'antd'
+import { Card, Form, Input, Select, InputNumber, Button, Row, Col, message } from 'antd'
 import { useNavigate, useParams } from 'react-router-dom'
-import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import { mockStockItems } from '@/utils/mockStockData'
-import type { StockItem } from '@/types/stock'
-
-const BASE_URL = (import.meta as any).env?.VITE_API_URL
+import { stockService } from '@/services/stock.service'
+import type { StockCategory } from '@/types'
+import StockItemImageGallery from '@/components/stock/StockItemImageGallery'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -15,8 +13,6 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
   marginBottom: 16,
 }
-
-interface Category { id: number; name: string }
 
 const StockItemCreateEditPage: React.FC = () => {
   const navigate = useNavigate()
@@ -26,72 +22,73 @@ const StockItemCreateEditPage: React.FC = () => {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<StockCategory[]>([])
 
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/stock/categories`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        const list = await stockService.listCategories(accessToken!)
         setCategories(list)
       } catch {
-        setCategories([
-          { id: 1, name: 'Tools' },
-          { id: 2, name: 'Safety Equipment' },
-          { id: 3, name: 'Consumables' },
-        ])
+        setCategories([])
       }
     }
     fetchCategories()
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
-    if (!isEdit) return
+    if (!isEdit || !id) return
     const fetchItem = async () => {
       setLoading(true)
       try {
-        const res = await axios.get(`${BASE_URL}/stock/items/${id}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const item: StockItem = res.data?.data ?? res.data
+        const item = await stockService.getItem(accessToken!, id)
+        // Temporary runtime confirmation while verifying the fetch-shape fix — remove once confirmed in prod.
+        console.log('[StockItemCreateEditPage] loaded item:', item)
         form.setFieldsValue({
-          itemCode: item.itemCode,
+          matCode: item.matCode,
           itemName: item.itemName,
           description: item.description,
           itemType: item.itemType,
           trackingType: item.trackingType,
           unit: item.unit,
-          minQty: item.minQty,
+          unitCost: item.unitCost,
+          qty: item.qty,
           categoryId: item.categoryId,
         })
-      } catch {
-        const item = mockStockItems.find((s) => s.id === Number(id))
-        if (item) form.setFieldsValue(item)
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'Failed to load item')
       } finally {
         setLoading(false)
       }
     }
     fetchItem()
-  }, [id])
+  }, [id, isEdit, accessToken])
 
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
       setSaving(true)
-      if (isEdit) {
-        await axios.put(`${BASE_URL}/stock/items/${id}`, values, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        message.success('Item updated')
-      } else {
-        await axios.post(`${BASE_URL}/stock/items`, values, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        message.success('Item created')
+      const payload = {
+        matCode: values.matCode,
+        itemName: values.itemName,
+        description: values.description || undefined,
+        categoryId: values.categoryId,
+        itemType: values.itemType,
+        trackingType: values.trackingType,
+        unit: values.unit,
+        unitCost: values.unitCost ?? 0,
+        qty: values.qty ?? 0,
       }
-      navigate('/stock/items')
+      if (isEdit && id) {
+        const updated = await stockService.updateItem(accessToken!, id, payload)
+        console.log('[StockItemCreateEditPage] save response:', updated)
+        message.success('Item updated')
+        navigate('/stock/items')
+      } else {
+        const newItem = await stockService.createItem(accessToken!, payload)
+        message.success('Item created')
+        navigate(`/stock/items/${newItem.id}/edit`)
+      }
     } catch (err: any) {
       if (err?.errorFields) return
       message.error(err?.response?.data?.message || err?.message || 'Save failed')
@@ -114,10 +111,10 @@ const StockItemCreateEditPage: React.FC = () => {
       />
 
       <Card title="General Information" style={cardStyle} loading={loading}>
-        <Form form={form} layout="vertical" initialValues={{ trackingType: 'sku', minQty: 0 }}>
+        <Form form={form} layout="vertical" initialValues={{ trackingType: 'sku', unitCost: 0, qty: 0 }}>
           <Row gutter={16}>
             <Col xs={24} md={8}>
-              <Form.Item label="Item Code" name="itemCode" rules={[{ required: true, message: 'Item code is required' }]}>
+              <Form.Item label="Item Code" name="matCode" rules={[{ required: true, message: 'Item code is required' }]}>
                 <Input placeholder="e.g. STK-001" />
               </Form.Item>
             </Col>
@@ -135,8 +132,8 @@ const StockItemCreateEditPage: React.FC = () => {
               <Form.Item label="Item Type" name="itemType" rules={[{ required: true, message: 'Select item type' }]}>
                 <Select
                   options={[
-                    { value: 'returnable', label: 'Returnable' },
-                    { value: 'consumable', label: 'Consumable' },
+                    { value: 'RETURNABLE', label: 'Returnable' },
+                    { value: 'CONSUMABLE', label: 'Consumable' },
                   ]}
                 />
               </Form.Item>
@@ -158,7 +155,12 @@ const StockItemCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="Min Qty (Alert Threshold)" name="minQty">
+              <Form.Item label="Unit Cost" name="unitCost">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Qty" name="qty">
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -174,6 +176,12 @@ const StockItemCreateEditPage: React.FC = () => {
           </Row>
         </Form>
       </Card>
+
+      {isEdit && id && (
+        <Card style={cardStyle}>
+          <StockItemImageGallery itemId={Number(id)} />
+        </Card>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button onClick={() => navigate('/stock/items')}>Cancel</Button>

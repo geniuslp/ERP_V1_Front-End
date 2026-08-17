@@ -147,7 +147,10 @@ const POApprovalDetailPage: React.FC = () => {
     setPrinting(true)
     try {
       const res = await poApprovalService.getPrintData(accessToken, id)
-      setPrintData(res.data.data)
+      // Watermark trust source: the print-data endpoint's own status field
+      // isn't guaranteed present, but `po.status` (this page's own fetched
+      // detail) is already known-good — merge it in explicitly.
+      setPrintData({ ...res.data.data, status: po?.status })
     } catch (err: any) {
       message.error(
         err?.response?.data?.message ||
@@ -405,7 +408,6 @@ const POApprovalDetailPage: React.FC = () => {
           <Descriptions.Item label="วันที่ต้องการ">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{po.created_by_name}</Descriptions.Item>
           <Descriptions.Item label="เบอร์โทรสำนักงาน">{po.office_phone ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="แฟกซ์">{po.fax ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="พนักงานขาย">{po.sales_person ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="อีเมลติดต่อ">{po.contact_email ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="เบอร์โทรติดต่อ">{po.contact_phone ?? '-'}</Descriptions.Item>

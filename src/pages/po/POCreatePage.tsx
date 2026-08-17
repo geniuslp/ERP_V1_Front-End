@@ -69,6 +69,10 @@ const POCreatePage: React.FC = () => {
   // A direct nav to /po/:id/edit for an APPROVED PO with no reason stays locked.
   const editApprovedReason: string | undefined = (location.state as any)?.editApprovedReason
   const [form] = Form.useForm()
+  // Drives the conditional required-ness of PR Order (required only when
+  // order_type = 'cost') — re-renders reactively as the user changes the
+  // Select, same pattern as PR's own order_type-driven fields.
+  const orderType: 'stock' | 'cost' | undefined = Form.useWatch('order_type', form)
   const [poLoading, setPoLoading] = useState(false)
   const [poStatus, setPoStatus] = useState('')
   const [canEdit, setCanEdit] = useState(true)
@@ -376,6 +380,7 @@ const POCreatePage: React.FC = () => {
           deliveryLocation: raw.location_text ?? raw.delivery_address ?? undefined,
           warehouse_code: raw.warehouse_code ?? undefined,
           project_code: raw.project_code ?? undefined,
+          order_type: raw.order_type ?? 'stock',
           approver: raw.approver_id != null ? Number(raw.approver_id) : null,
           ref: raw.ref ?? null,
           paymentTerm: raw.payment_terms ?? undefined,
@@ -820,6 +825,7 @@ const POCreatePage: React.FC = () => {
           location_text: values.deliveryLocation,
           warehouse_code: values.warehouse_code || undefined,
           project_code: values.project_code || undefined,
+          order_type: values.order_type || undefined,
           requested_by: values.requestedBy ?? undefined,
           approver_id: values.approver ?? undefined,
           ref: values.ref || undefined,
@@ -993,7 +999,14 @@ const POCreatePage: React.FC = () => {
     setPrinting(true)
     try {
       const res = await poApprovalService.getPrintData(accessToken ?? '', savedPoId)
-      setPrintData(res.data.data)
+      // Watermark trust source: the print-data endpoint's own status field
+      // isn't guaranteed present, but `poStatus` (this page's own tracked
+      // status, set on edit-load) is already known-good — merge it in
+      // explicitly. Note: on a brand-new PO's first save+print in the same
+      // session, poStatus is still '' (only ever set via edit-load fetch),
+      // so the watermark won't show even though the record is really DRAFT
+      // — pre-existing gap in this page's state tracking, out of scope here.
+      setPrintData({ ...res.data.data, status: poStatus })
     } catch (err: any) {
       message.error(
         err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลสำหรับพิมพ์ไม่สำเร็จ'
@@ -1089,8 +1102,8 @@ const POCreatePage: React.FC = () => {
           type="info"
           showIcon
           style={{ marginBottom: 16, borderRadius: 8 }}
-          message={`กำลังสร้าง PO จากใบบันทึก: ${fromMemo.memoNo} — ${fromMemo.title}`}
-          description="ข้อมูลถูก pre-fill จากใบบันทึกแล้ว สามารถแก้ไขได้ก่อนบันทึก"
+          message={`กำลังสร้าง PO จากใบบันทึกขอซื้อ (Memo): ${fromMemo.memoNo} — ${fromMemo.title}`}
+          description="ข้อมูลถูก pre-fill จากใบบันทึกขอซื้อ (Memo) แล้ว สามารถแก้ไขได้ก่อนบันทึก"
         />
       )}
 
@@ -1104,360 +1117,350 @@ const POCreatePage: React.FC = () => {
             loading={poLoading}
           >
             <Form form={form} layout="vertical" disabled={isEdit && !canEdit}>
-              <Row gutter={16}>
+              <Row gutter={[40, 0]}>
 
-                {/* PO Number */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={
-                      <span style={{ ...labelStyle, color: '#cc0000', fontWeight: 600 }}>
-                        หมายเลข PO
-                      </span>
-                    }
-                    name="poNumber"
-                  >
-                    <Input
-                      disabled={isEdit}
-                      style={{ color: '#cc0000', fontWeight: 600 }}
-                      prefix={
-                        !isEdit && nextPoNumber ? (
-                          <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>
-                            ล่าสุด: <span style={{ color: '#cc0000' }}>{nextPoNumber}</span>
+                {/* ── Left column: PO identity + supplier/contact info ── */}
+                <Col xs={24} lg={12}>
+                  <Row gutter={16}>
+
+                    {/* PO Number */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={
+                          <span style={{ ...labelStyle, color: '#cc0000', fontWeight: 600 }}>
+                            หมายเลข PO
                           </span>
-                        ) : undefined
-                      }
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* Status */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>สถานะ</span>} name="status">
-                    <Input defaultValue="open" disabled />
-                  </Form.Item>
-                </Col>
-
-                {/* Date */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>วันที่</span>} name="date">
-                    <Input
-                      defaultValue={new Date().toLocaleDateString('th-TH', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
-                      disabled
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* ชื่อย่อบริษัท — auto-filled from supplier select */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={<span style={labelStyle}>ชื่อย่อบริษัท</span>}
-                    name="vendorCode"
-                  >
-                    <Input disabled />
-                  </Form.Item>
-                </Col>
-
-                {/* ชื่อบริษัท — supplier dropdown */}
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label={<span style={labelStyle}>ชื่อบริษัท</span>}
-                    name="supplier_code"
-                  >
-                    <Select
-                      showSearch
-                      placeholder="- เลือกผู้ขาย -"
-                      loading={suppliersLoading || supplierDetailLoading}
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={suppliers.map((s) => ({ value: s.supplier_code, label: s.supplier_name }))}
-                      onChange={handleSupplierChange}
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* เบอร์โทร */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>เบอร์โทร</span>} name="phone">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                {/* Fax */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>Fax</span>} name="fax">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                {/* พนักงานขาย */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>พนักงานขาย</span>} name="salesperson">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                {/* อีเมลล์ */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>อีเมลล์</span>} name="email">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                {/* เบอร์ติดต่อ */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>เบอร์ติดต่อ</span>} name="contactPhone">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                {/* เงื่อนไขชำระเงิน */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>เงื่อนไขชำระเงิน</span>} name="paymentTerm">
-                    <Select
-                      placeholder="เลือกเงื่อนไขการชำระเงิน"
-                      options={[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` }))}
-                      allowClear
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* ผู้ขอซื้อ */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={
-                      <span style={labelStyle}>
-                        ผู้ขอซื้อ {prDetailLoading && <span style={{ color: '#60a5fa', fontSize: 11 }}>(กำลังดึงจาก PR...)</span>}
-                      </span>
-                    }
-                    name="requestedBy"
-                    rules={[{ required: true, message: 'กรุณาเลือกผู้ขอซื้อ' }]}
-                  >
-                    <Select
-                      placeholder="- เลือกรายการ -"
-                      loading={usersLoading || prDetailLoading}
-                      showSearch
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      optionRender={(option) => (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <span>{option.data.label}</span>
-                          {option.data.dept && (
-                            <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
-                          )}
-                        </div>
-                      )}
-                      options={users}
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* สถานที่ส่งของ */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={<span style={labelStyle}>คลัง</span>}
-                    name="deliveryLocation"
-                    rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}
-                  >
-                    <Input placeholder="ระบุสถานที่ส่งของ" disabled={prDetailLoading} />
-                  </Form.Item>
-                </Col>
-
-                {/* คลังสินค้า */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={<span style={labelStyle}>คลังสินค้า</span>}
-                    name="warehouse_code"
-                  >
-                    <Select
-                      placeholder="- ไม่ระบุ -"
-                      loading={warehousesLoading || prDetailLoading}
-                      showSearch
-                      allowClear
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={warehouses}
-                    />
-                  </Form.Item>
-                </Col>
-
-                {/* รหัสงาน */}
-                <Col xs={24} md={6}>
-                  {/* Tooltip must wrap the whole Form.Item, not sit between
-                      Form.Item and Select — Form.Item clones its single direct
-                      child to inject `value`/`onChange`, so if Tooltip were
-                      that direct child, the injected value would land on
-                      Tooltip (which ignores it) and Select would never
-                      display the selected project. */}
-                  <Tooltip
-                    placement="right"
-                    title={
-                      selectedProjectCode && projectDetails[selectedProjectCode] ? (
-                        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                          <div>
-                            <span style={{ color: '#aaa' }}>โครงการ: </span>
-                            <span style={{ fontWeight: 600 }}>
-                              {projectDetails[selectedProjectCode].projectName}
-                            </span>
-                          </div>
-                          <div>
-                            <span style={{ color: '#aaa' }}>รหัสโครงการ: </span>
-                            <span style={{ fontWeight: 600 }}>{selectedProjectCode}</span>
-                          </div>
-                          {projectDetails[selectedProjectCode].budgetAmount !== undefined && (
-                            <div>
-                              <span style={{ color: '#aaa' }}>งบประมาณ: </span>
-                              <span style={{ fontWeight: 600 }}>
-                                {formatNumber(projectDetails[selectedProjectCode].budgetAmount!)} บาท
-                              </span>
-                            </div>
-                          )}
-                          {projectDetails[selectedProjectCode].spentAmount !== undefined && (
-                            <div>
-                              <span style={{ color: '#aaa' }}>ยอดใช้จ่ายไปแล้ว: </span>
-                              <span style={{ fontWeight: 600 }}>
-                                {formatNumber(projectDetails[selectedProjectCode].spentAmount!)} บาท
-                              </span>
-                            </div>
-                          )}
-                          {projectDetails[selectedProjectCode].remainingAmount !== undefined && (
-                            <div>
-                              <span style={{ color: '#aaa' }}>คงเหลือ: </span>
-                              <span
-                                style={{
-                                  fontWeight: 600,
-                                  color: projectDetails[selectedProjectCode].remainingAmount! < 0 ? '#dc2626' : undefined,
-                                }}
-                              >
-                                {formatNumber(projectDetails[selectedProjectCode].remainingAmount!)} บาท
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ) : null
-                    }
-                  >
-                    <Form.Item
-                      label={<span style={labelStyle}>รหัสงาน</span>}
-                      name="project_code"
-                    >
-                      <Select
-                        placeholder="- เลือกรายการ -"
-                        loading={projectsLoading || prDetailLoading}
-                        showSearch
-                        allowClear
-                        // Locked once a PR is linked — the project comes from that
-                        // PR and must stay in sync with it; clearing the PR
-                        // (selectedPrId back to null) unlocks it again.
-                        disabled={Boolean(selectedPrId)}
-                        filterOption={(input, option) =>
-                          String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                         }
-                        options={projects}
-                        onChange={(val) => setSelectedProjectCode(val ?? null)}
-                      />
-                    </Form.Item>
-                  </Tooltip>
-                </Col>
+                        name="poNumber"
+                      >
+                        <Input
+                          disabled={isEdit}
+                          style={{ color: '#cc0000', fontWeight: 600 }}
+                          prefix={
+                            !isEdit && nextPoNumber ? (
+                              <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>
+                                ล่าสุด: <span style={{ color: '#cc0000' }}>{nextPoNumber}</span>
+                              </span>
+                            ) : undefined
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
 
-                {/* ผู้อนุมัติ */}
-                <Col xs={24} md={6}>
-                  <Form.Item
-                    label={<span style={labelStyle}>ผู้อนุมัติ</span>}
-                    name="approver"
-                    rules={[{ required: true, message: 'กรุณาเลือกผู้อนุมัติ' }]}
-                  >
-                    <Select
-                      placeholder="- เลือกรายการ -"
-                      loading={approversLoading}
-                      showSearch
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      optionRender={(option) => (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <span>{option.data.label}</span>
-                          {option.data.dept && (
-                            <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
+                    {/* โครงการ */}
+                    <Col xs={24}>
+                      {/* Tooltip must wrap the whole Form.Item, not sit between
+                          Form.Item and Select — Form.Item clones its single direct
+                          child to inject `value`/`onChange`, so if Tooltip were
+                          that direct child, the injected value would land on
+                          Tooltip (which ignores it) and Select would never
+                          display the selected project. */}
+                      <Tooltip
+                        placement="right"
+                        title={
+                          selectedProjectCode && projectDetails[selectedProjectCode] ? (
+                            <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+                              <div>
+                                <span style={{ color: '#aaa' }}>โครงการ: </span>
+                                <span style={{ fontWeight: 600 }}>
+                                  {projectDetails[selectedProjectCode].projectName}
+                                </span>
+                              </div>
+                              <div>
+                                <span style={{ color: '#aaa' }}>รหัสโครงการ: </span>
+                                <span style={{ fontWeight: 600 }}>{selectedProjectCode}</span>
+                              </div>
+                              {projectDetails[selectedProjectCode].budgetAmount !== undefined && (
+                                <div>
+                                  <span style={{ color: '#aaa' }}>งบประมาณ: </span>
+                                  <span style={{ fontWeight: 600 }}>
+                                    {formatNumber(projectDetails[selectedProjectCode].budgetAmount!)} บาท
+                                  </span>
+                                </div>
+                              )}
+                              {projectDetails[selectedProjectCode].spentAmount !== undefined && (
+                                <div>
+                                  <span style={{ color: '#aaa' }}>ยอดใช้จ่ายไปแล้ว: </span>
+                                  <span style={{ fontWeight: 600 }}>
+                                    {formatNumber(projectDetails[selectedProjectCode].spentAmount!)} บาท
+                                  </span>
+                                </div>
+                              )}
+                              {projectDetails[selectedProjectCode].remainingAmount !== undefined && (
+                                <div>
+                                  <span style={{ color: '#aaa' }}>คงเหลือ: </span>
+                                  <span
+                                    style={{
+                                      fontWeight: 600,
+                                      color: projectDetails[selectedProjectCode].remainingAmount! < 0 ? '#dc2626' : undefined,
+                                    }}
+                                  >
+                                    {formatNumber(projectDetails[selectedProjectCode].remainingAmount!)} บาท
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : null
+                        }
+                      >
+                        <Form.Item
+                          label={<span style={labelStyle}>โครงการ</span>}
+                          name="project_code"
+                        >
+                          <Select
+                            placeholder="- เลือกรายการ -"
+                            loading={projectsLoading || prDetailLoading}
+                            showSearch
+                            allowClear
+                            // Locked once a PR is linked — the project comes from that
+                            // PR and must stay in sync with it; clearing the PR
+                            // (selectedPrId back to null) unlocks it again.
+                            disabled={Boolean(selectedPrId)}
+                            filterOption={(input, option) =>
+                              String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                            }
+                            options={projects}
+                            onChange={(val) => setSelectedProjectCode(val ?? null)}
+                          />
+                        </Form.Item>
+                      </Tooltip>
+                    </Col>
+
+                    {/* ผู้ขอซื้อ */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={
+                          <span style={labelStyle}>
+                            ผู้ขอซื้อ {prDetailLoading && <span style={{ color: '#60a5fa', fontSize: 11 }}>(กำลังดึงจาก PR...)</span>}
+                          </span>
+                        }
+                        name="requestedBy"
+                        rules={[{ required: true, message: 'กรุณาเลือกผู้ขอซื้อ' }]}
+                      >
+                        <Select
+                          placeholder="- เลือกรายการ -"
+                          loading={usersLoading || prDetailLoading}
+                          showSearch
+                          filterOption={(input, option) =>
+                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          optionRender={(option) => (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <span>{option.data.label}</span>
+                              {option.data.dept && (
+                                <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
+                              )}
+                            </div>
                           )}
-                        </div>
+                          options={users}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* สถานที่ส่งของ */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>สถานที่ส่งของ</span>}
+                        name="deliveryLocation"
+                        rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}
+                      >
+                        <Input placeholder="ระบุสถานที่ส่งของ" disabled={prDetailLoading} />
+                      </Form.Item>
+                    </Col>
+
+                    {/* กำหนดส่งของ */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>กำหนดส่งของ</span>} name="deliveryDate">
+                        <DatePicker style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+
+                    {/* ชื่อบริษัท — supplier dropdown */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>ชื่อบริษัท</span>}
+                        name="supplier_code"
+                      >
+                        <Select
+                          showSearch
+                          placeholder="- เลือกผู้ขาย -"
+                          loading={suppliersLoading || supplierDetailLoading}
+                          filterOption={(input, option) =>
+                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          options={suppliers.map((s) => ({ value: s.supplier_code, label: s.supplier_name }))}
+                          onChange={handleSupplierChange}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* พนักงานขาย */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>พนักงานขาย</span>} name="salesperson">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    {/* เบอร์ติดต่อ */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>เบอร์ติดต่อ</span>} name="contactPhone">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                  </Row>
+                </Col>
+
+                {/* ── Right column: purchasing workflow ── */}
+                <Col xs={24} lg={12}>
+                  <Row gutter={16}>
+
+                    {/* Date */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>วันที่</span>} name="date">
+                        <Input
+                          defaultValue={new Date().toLocaleDateString('th-TH', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                          })}
+                          disabled
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* PR Order */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>PR Order</span>}
+                        name="prOrder"
+                        rules={
+                          orderType === 'cost'
+                            ? [{ required: true, message: 'กรุณาเลือก PR Order เมื่อประเภทการสั่งซื้อเป็นโครงการ (Cost)' }]
+                            : []
+                        }
+                      >
+                        <Select
+                          showSearch
+                          allowClear
+                          placeholder="- เลือก PR Order (เฉพาะที่อนุมัติแล้ว) -"
+                          loading={prOptionsLoading}
+                          onChange={handlePrChange}
+                          onSelect={(val) => { if (val != null) handlePrSelect(val) }}
+                          filterOption={(input, option) => {
+                            const haystack = `${option?.pr_no ?? ''} ${option?.status ?? ''} ${option?.requested_by ?? ''}`.toLowerCase()
+                            return haystack.includes(input.toLowerCase())
+                          }}
+                          optionRender={(option) => (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <span>
+                                {option.data.pr_no}
+                                {option.data.requested_by ? ` — ${option.data.requested_by}` : ''}
+                              </span>
+                              <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>
+                                {option.data.pr_date ? dayjs(option.data.pr_date).format('DD-MM-YY') : ''}
+                                {option.data.status ? ` · ${option.data.status}` : ''}
+                              </span>
+                            </div>
+                          )}
+                          options={[
+                            ...prOptions,
+                            ...(prFromEditMode && !prOptions.some((p) => p.id === prFromEditMode.id)
+                              ? [prFromEditMode]
+                              : []),
+                          ].map((pr) => ({
+                            value: pr.id,
+                            label: pr.requested_by ? `${pr.pr_no} — ${pr.requested_by}` : pr.pr_no,
+                            pr_no: pr.pr_no,
+                            pr_date: pr.pr_date,
+                            status: pr.status,
+                            requested_by: pr.requested_by,
+                          }))}
+                        />
+                      </Form.Item>
+                      {selectedPrId && !prLocked && (
+                        <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => setPrModalOpen(true)}>
+                          เลือกรายการจาก PR
+                        </Button>
                       )}
-                      options={approvers}
-                    />
-                  </Form.Item>
-                </Col>
+                    </Col>
 
-                {/* วันที่อนุมัติ */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>วันที่อนุมัติ</span>} name="approvedDate">
-                    <Input disabled />
-                  </Form.Item>
-                </Col>
+                    {/* ประเภทการสั่งซื้อ */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>ประเภทการสั่งซื้อ</span>}
+                        name="order_type"
+                        initialValue="stock"
+                      >
+                        <Select
+                          placeholder="- เลือกประเภท -"
+                          allowClear
+                          options={[
+                            { value: 'stock', label: 'คลังสินค้า (Stock)' },
+                            { value: 'cost', label: 'โครงการ (Cost)' },
+                          ]}
+                        />
+                      </Form.Item>
+                    </Col>
 
-                {/* กำหนดส่งของ */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>กำหนดส่งของ</span>} name="deliveryDate">
-                    <DatePicker style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
+                    {/* ผู้อนุมัติ */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>ผู้อนุมัติ</span>}
+                        name="approver"
+                        rules={[{ required: true, message: 'กรุณาเลือกผู้อนุมัติ' }]}
+                      >
+                        <Select
+                          placeholder="- เลือกรายการ -"
+                          loading={approversLoading}
+                          showSearch
+                          filterOption={(input, option) =>
+                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          optionRender={(option) => (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <span>{option.data.label}</span>
+                              {option.data.dept && (
+                                <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
+                              )}
+                            </div>
+                          )}
+                          options={approvers}
+                        />
+                      </Form.Item>
+                    </Col>
 
-                {/* Ref */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>Ref</span>} name="ref">
-                    <Input />
-                  </Form.Item>
-                </Col>
+                    {/* Ref */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>Ref</span>} name="ref">
+                        <Input />
+                      </Form.Item>
+                    </Col>
 
-                {/* PR Order */}
-                <Col xs={24} md={6}>
-                  <Form.Item label={<span style={labelStyle}>PR Order</span>} name="prOrder">
-                    <Select
-                      showSearch
-                      allowClear
-                      placeholder="- เลือก PR Order (เฉพาะที่อนุมัติแล้ว) -"
-                      loading={prOptionsLoading}
-                      onChange={handlePrChange}
-                      onSelect={(val) => { if (val != null) handlePrSelect(val) }}
-                      filterOption={(input, option) => {
-                        const haystack = `${option?.pr_no ?? ''} ${option?.status ?? ''} ${option?.requested_by ?? ''}`.toLowerCase()
-                        return haystack.includes(input.toLowerCase())
-                      }}
-                      optionRender={(option) => (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <span>
-                            {option.data.pr_no}
-                            {option.data.requested_by ? ` — ${option.data.requested_by}` : ''}
-                          </span>
-                          <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>
-                            {option.data.pr_date ? dayjs(option.data.pr_date).format('DD-MM-YY') : ''}
-                            {option.data.status ? ` · ${option.data.status}` : ''}
-                          </span>
-                        </div>
-                      )}
-                      options={[
-                        ...prOptions,
-                        ...(prFromEditMode && !prOptions.some((p) => p.id === prFromEditMode.id)
-                          ? [prFromEditMode]
-                          : []),
-                      ].map((pr) => ({
-                        value: pr.id,
-                        label: pr.requested_by ? `${pr.pr_no} — ${pr.requested_by}` : pr.pr_no,
-                        pr_no: pr.pr_no,
-                        pr_date: pr.pr_date,
-                        status: pr.status,
-                        requested_by: pr.requested_by,
-                      }))}
-                    />
-                  </Form.Item>
-                  {selectedPrId && !prLocked && (
-                    <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => setPrModalOpen(true)}>
-                      เลือกรายการจาก PR
-                    </Button>
-                  )}
+                    {/* เบอร์โทร */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>เบอร์โทร</span>} name="phone">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    {/* อีเมลล์ */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>อีเมลล์</span>} name="email">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    {/* เงื่อนไขชำระเงิน */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>เงื่อนไขชำระเงิน</span>} name="paymentTerm">
+                        <Select
+                          placeholder="เลือกเงื่อนไขการชำระเงิน"
+                          options={[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` }))}
+                          allowClear
+                        />
+                      </Form.Item>
+                    </Col>
+
+                  </Row>
                 </Col>
 
               </Row>

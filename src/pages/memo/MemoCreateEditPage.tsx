@@ -211,6 +211,7 @@ const MemoCreateEditPage: React.FC = () => {
           project_code: memo.project_code ?? memo.projectCode,
           approver_id:  memo.approver_id ?? memo.approverId,
           department:   memo.department,
+          delivery_location: memo.delivery_location ?? memo.deliveryLocation,
           note:         memo.note,
         })
 
@@ -245,7 +246,7 @@ const MemoCreateEditPage: React.FC = () => {
           err?.response?.data?.message ||
           err?.response?.data?.error ||
           err?.message ||
-          'โหลดข้อมูลใบบันทึกไม่สำเร็จ'
+          'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
         )
       } finally {
         setLoading(false)
@@ -323,7 +324,7 @@ const MemoCreateEditPage: React.FC = () => {
 
   const handleSave = async (status?: 'DRAFT' | 'PENDING_APPROVAL') => {
     if (isEdit && !canEdit) {
-      message.warning('ไม่สามารถแก้ไขใบบันทึกนี้ได้')
+      message.warning('ไม่สามารถแก้ไขใบบันทึกขอซื้อ (Memo) นี้ได้')
       return
     }
 
@@ -374,6 +375,7 @@ const MemoCreateEditPage: React.FC = () => {
         project_code: values.project_code ?? undefined,
         approver_id:  values.approver_id,
         department:   values.department   ?? undefined,
+        delivery_location: values.delivery_location ?? undefined,
         note:         values.note         ?? undefined,
         lines: items.map((item, i) => ({
           line_no:     i + 1,
@@ -410,7 +412,7 @@ const MemoCreateEditPage: React.FC = () => {
             )
           }
         } else {
-          message.success('แก้ไขใบบันทึกสำเร็จ')
+          message.success('แก้ไขใบบันทึกขอซื้อ (Memo) สำเร็จ')
         }
       } else {
         res = await axios.post(`${BASE_URL}/memo`, payload, {
@@ -498,17 +500,17 @@ const MemoCreateEditPage: React.FC = () => {
   ]
 
   const lockedMessage = memoStatus === 'APPROVED'
-    ? 'ใบบันทึกนี้อนุมัติแล้ว — ไม่สามารถแก้ไขได้'
+    ? 'ใบบันทึกขอซื้อ (Memo) นี้อนุมัติแล้ว — ไม่สามารถแก้ไขได้'
     : memoStatus === 'PENDING_APPROVAL'
-    ? 'ใบบันทึกนี้อยู่ระหว่างรอการอนุมัติ — ไม่สามารถแก้ไขได้ในขณะนี้'
-    : 'ใบบันทึกนี้ถูกยกเลิกแล้ว — ไม่สามารถแก้ไขได้'
+    ? 'ใบบันทึกขอซื้อ (Memo) นี้อยู่ระหว่างรอการอนุมัติ — ไม่สามารถแก้ไขได้ในขณะนี้'
+    : 'ใบบันทึกขอซื้อ (Memo) นี้ถูกยกเลิกแล้ว — ไม่สามารถแก้ไขได้'
 
   return (
     <div>
       <PageHeader
-        title={isEdit ? 'แก้ไขใบบันทึก' : 'สร้างใบบันทึก'}
+        title={isEdit ? 'แก้ไขใบบันทึกขอซื้อ (Memo)' : 'สร้างใบบันทึกขอซื้อ (Memo)'}
         subtitle="บันทึกความต้องการจัดซื้อ"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึก' }, { title: isEdit ? 'แก้ไข' : 'สร้าง' }]}
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: isEdit ? 'แก้ไข' : 'สร้าง' }]}
         extra={null}
       />
 
@@ -526,7 +528,7 @@ const MemoCreateEditPage: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 16, borderRadius: 8 }}
-          message="ใบบันทึกนี้ถูกตีกลับ — แก้ไขแล้วกดบันทึกเพื่อส่งขออนุมัติใหม่"
+          message="ใบบันทึกขอซื้อ (Memo) นี้ถูกตีกลับ — แก้ไขแล้วกดบันทึกเพื่อส่งขออนุมัติใหม่"
         />
       )}
 
@@ -613,6 +615,11 @@ const MemoCreateEditPage: React.FC = () => {
                   allowClear
                   options={DEPARTMENT_OPTIONS}
                 />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="สถานที่ส่งของ" name="delivery_location">
+                <Input placeholder="ระบุสถานที่ส่งของ" maxLength={255} />
               </Form.Item>
             </Col>
             <Col xs={24}>

@@ -1,24 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal } from 'antd'
+import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal, Alert, Spin } from 'antd'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
   CloseOutlined,
-  FileTextOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  WarningOutlined,
 } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import PRItemsTable from '@/components/common/PRItemsTable'
 import MemoSidebarPanel from '@/pages/pr/components/MemoSidebarPanel'
+import PRPrint, { type PRData } from '@/pages/pr/PRPrint'
 import axios from 'axios'
-import type { User, Memo } from '@/types'
+import type { User, Memo, PROrderType, CreatePRRequest } from '@/types'
 import { useAppSelector } from '@/store'
 
 const MENU_CODE = 'MENU_PR_CREATE'
 
-// PR has no approval workflow and, once submitted, is never editable again
-// (see CLAUDE.md). This page is create-only — there is no edit mode.
+// Edit mode (route /pr/:id/edit): the PR was already COMPLETED and has been
+// reopened to DRAFT server-side (PUT /pr/:id/reopen, triggered from
+// PRDetailPage before navigating here). This page then behaves like create,
+// prefilled from GET /pr/:id, and saves via PUT /pr/:id instead of POST /pr.
+// Saving always keeps status DRAFT — the user must re-submit separately.
 
 interface AttachedFile {
   uid: string
@@ -40,6 +44,16 @@ interface UploadedFile {
   file_name: string
   file_size: number
   file_type: string
+}
+
+interface InitialLineItem {
+  mat_code: string
+  mat_name?: string
+  unit_name?: string
+  qty_requested: number
+  qty_to_order: number
+  cost_subgroup_id: number | null
+  cost_code_label?: string | null
 }
 
 /* ── responsive styles injected once ─────────────────────────────── */
@@ -104,13 +118,18 @@ const responsiveStyle = `
   }
 `
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+// Uploaded files are served as static assets off the API server root, not under /api/v1.
+const FILE_BASE_URL = BASE_URL.replace(/\/api\/v1\/?$/, '')
 
 const PRCreatePage: React.FC = () => {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const isEdit = Boolean(id)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [form] = Form.useForm()
   const attachmentsRef = useRef<AttachedFile[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [existingAttachments, setExistingAttachments] = useState<UploadedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -121,9 +140,17 @@ const PRCreatePage: React.FC = () => {
   const [warehousesLoading, setWarehousesLoading] = useState(false)
   const [prNumber, setPrNumber] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
+  const [initialLineItems, setInitialLineItems] = useState<InitialLineItem[] | undefined>(undefined)
   const [submitting, setSubmitting] = useState(false)
   const [memoOpen, setMemoOpen] = useState(false)
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null)
+  const [loadingExisting, setLoadingExisting] = useState(isEdit)
+  const [overOrderedLines, setOverOrderedLines] = useState<string[]>([])
+  // Remarks near the line items table — lifted up from PRItemsTable so it can
+  // be included in the submit payload.
+  const [remark, setRemark] = useState('')
+  const orderType: PROrderType | undefined = Form.useWatch('order_type', form)
+  const [printData, setPrintData] = useState<PRData | null>(null)
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -205,6 +232,7 @@ const PRCreatePage: React.FC = () => {
   }, [])
 
   useEffect(() => {
+    if (isEdit) return
     const fetchNextNumber = async () => {
       try {
         const res = await axios.get(`${BASE_URL}/pr/next-number`, {
@@ -216,12 +244,82 @@ const PRCreatePage: React.FC = () => {
       }
     }
     fetchNextNumber()
-  }, [])
+  }, [isEdit])
+
+  // Edit mode: load the reopened PR's header/lines and check for lines whose
+  // qty_requested was lowered below qty already ordered on an existing PO.
+  useEffect(() => {
+    if (!isEdit || !id) return
+    const fetchExisting = async () => {
+      setLoadingExisting(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/pr/${id}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = res.data?.data ?? res.data
+        setPrNumber(raw.pr_no ?? '')
+        form.setFieldsValue({
+          pr_date: raw.pr_date ? dayjs(raw.pr_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+          location_text: raw.location_text,
+          warehouse_code: raw.warehouse_code || undefined,
+          required_date: raw.required_date ? dayjs(raw.required_date) : undefined,
+          project_code: raw.project_code || undefined,
+          order_type: raw.order_type || undefined,
+          pr_type: raw.pr_type || 'PO_WO',
+          job_code: raw.job_code || undefined,
+          requested_by: raw.requester_id ?? raw.requested_by,
+        })
+        setRemark(raw.remarks ?? '')
+        setInitialLineItems(
+          (raw.lines ?? []).map((l: any) => ({
+            mat_code: l.mat_code,
+            mat_name: l.mat_name,
+            unit_name: l.unit_name,
+            qty_requested: l.qty_requested,
+            qty_to_order: l.qty_to_order,
+            cost_subgroup_id: l.cost_subgroup_id ?? null,
+            cost_code_label: l.cost_code
+              ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
+              : null,
+          }))
+        )
+        setExistingAttachments(
+          (raw.attachments ?? []).map((a: any) => ({
+            file_path: a.file_path,
+            file_name: a.file_name,
+            file_size: a.file_size,
+            file_type: a.file_type,
+          }))
+        )
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || 'โหลดข้อมูล PR ไม่สำเร็จ')
+      } finally {
+        setLoadingExisting(false)
+      }
+    }
+    const fetchOverOrdered = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/pr/${id}/lines-with-po-status`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = res.data?.data ?? res.data
+        const lines = raw?.lines ?? []
+        const overs = lines
+          .filter((l: any) => (l.qty_remaining ?? 0) < 0)
+          .map((l: any) => l.mat_code)
+        setOverOrderedLines(overs)
+      } catch {
+        // non-critical — skip the warning banner if this fails
+      }
+    }
+    fetchExisting()
+    fetchOverOrdered()
+  }, [isEdit, id])
 
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
     setSubmitting(true)
     try {
-      const { location_text, required_date, project_code, remarks, warehouse_code, requested_by } =
+      const { location_text, required_date, project_code, order_type, pr_type, job_code, warehouse_code, requested_by } =
         await form.validateFields()
 
       // 1. Upload newly-added files.
@@ -244,17 +342,22 @@ const PRCreatePage: React.FC = () => {
         })
       }
 
-      const payload = {
+      const payload: CreatePRRequest = {
         pr_no: prNumber,
         pr_date: dayjs().format('YYYY-MM-DD'),
         requested_by,
         created_by: requested_by,
         location_text,
-        warehouse_code: warehouse_code || undefined,
+        // Warehouse only applies when ordering against stock — dropped otherwise
+        // even if a stale value lingers in the (hidden) form field.
+        warehouse_code: order_type === 'stock' ? (warehouse_code || undefined) : undefined,
         required_date: required_date ? required_date.format('YYYY-MM-DD') : undefined,
         project_code,
-        remarks,
-        status,
+        order_type,
+        pr_type,
+        job_code,
+        remarks: remark,
+        status: isEdit ? 'DRAFT' : status,
         memo_id: selectedMemo?.id ? Number(selectedMemo.id) : null,
         lines: lineItems.map((item, i) => ({
           line_no: i + 1,
@@ -263,14 +366,25 @@ const PRCreatePage: React.FC = () => {
           qty_to_order: item.qty_to_order,
           cost_subgroup_id: item.cost_subgroup_id,
         })),
-        attachments: uploadedFiles,
+        attachments: [...existingAttachments, ...uploadedFiles],
       }
 
-      await axios.post(`${BASE_URL}/pr`, payload, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      message.success('บันทึก PR สำเร็จ')
-      navigate('/pr/status')
+      if (isEdit) {
+        await axios.put(`${BASE_URL}/pr/${id}`, payload, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        Modal.success({
+          title: 'บันทึกการแก้ไขสำเร็จ',
+          content: `PR ${prNumber} กลับสู่สถานะ "ร่าง" แล้ว กรุณากด "ส่งใบขอซื้อ" อีกครั้งเมื่อพร้อม เพื่อให้ใบขอซื้อนี้กลับมาสั่งซื้อได้ตามปกติ`,
+        })
+        navigate(`/pr/${id}`)
+      } else {
+        await axios.post(`${BASE_URL}/pr`, payload, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        message.success('บันทึก PR สำเร็จ')
+        navigate('/pr/status')
+      }
     } catch (err: any) {
       const shortages = err?.response?.data?.shortages
       if (Array.isArray(shortages) && shortages.length > 0) {
@@ -289,6 +403,39 @@ const PRCreatePage: React.FC = () => {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // Print the form's current (possibly unsaved) state — items come from
+  // PRItemsTable itself (see PRItemsTable's onPrint), since this page's own
+  // `lineItems` state only carries the submit-payload fields, not the
+  // display-only ones (description/unit/cost code label/per-line remark).
+  const handlePrintCurrent = (
+    items: { mat_code: string; description: string; unit: string; qty_requested: number; cost_code_label: string | null; remark: string }[],
+  ) => {
+    const values = form.getFieldsValue()
+    setPrintData({
+      prNo: prNumber,
+      prDate: dayjs().format('DD/MM/YYYY'),
+      projectDept: values.project_code ?? '',
+      vendor: '',
+      deliveryDate: values.required_date ? values.required_date.format('DD/MM/YYYY') : '',
+      deliveryTo: values.location_text ?? '',
+      remark,
+      orderType: values.order_type ?? '',
+      // This page's print button always previews the current unsaved/editing
+      // state — and saving from here always resets the record to DRAFT (see
+      // handleSubmit above), so the printed doc is DRAFT whenever this fires.
+      status: 'DRAFT',
+      items: items.map((it, i) => ({
+        no: String(i + 1),
+        costCode: it.cost_code_label ?? '',
+        matCode: it.mat_code,
+        desc: it.description,
+        qty: it.qty_requested,
+        unit: it.unit,
+        remark: it.remark,
+      })),
+    })
   }
 
   const addFiles = (files: FileList | null) => {
@@ -345,26 +492,43 @@ const PRCreatePage: React.FC = () => {
       <div style={{ flex: 1, overflow: 'auto', padding: 24, minWidth: 0, transition: 'all .25s ease' }}>
 
       <PageHeader
-        title="สร้างใบขอซื้อ"
-        subtitle="สร้างใบขอซื้อสินค้า/บริการเพื่อส่งอนุมัติ"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'สร้างใบขอซื้อ' }]}
-        extra={
-          <Button
-            icon={<FileTextOutlined />}
-            type={memoOpen ? 'primary' : 'default'}
-            onClick={() => setMemoOpen((v) => !v)}
-          >
-            Memo {memoOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
-          </Button>
-        }
+        title={isEdit ? `แก้ไขใบขอซื้อ ${prNumber}` : 'สร้างใบขอซื้อ'}
+        subtitle={isEdit ? 'แก้ไขใบขอซื้อที่ถูกเปิดกลับเป็นร่างชั่วคราว' : 'สร้างใบขอซื้อสินค้า/บริการเพื่อส่งอนุมัติ'}
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: isEdit ? 'แก้ไขใบขอซื้อ' : 'สร้างใบขอซื้อ' }]}
       />
 
       <div style={{ marginBottom: 16 }}>
-        <span style={{ color: '#999' }}>PR ล่าสุด : </span>
+        <span style={{ color: '#999' }}>{isEdit ? 'เลขที่ PR : ' : 'PR ล่าสุด : '}</span>
         <span style={{ color: 'red', fontWeight: 'bold', fontSize: 18 }}>{prNumber}</span>
       </div>
 
-      <Form form={form} layout="horizontal" initialValues={{ pr_date: dayjs().format('YYYY-MM-DD') }}>
+      {isEdit && (
+        <Alert
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          type="info"
+          showIcon
+          message="ใบขอซื้อนี้ถูกเปิดกลับเป็นสถานะ ร่าง (DRAFT) ชั่วคราวเพื่อแก้ไข"
+          description='แก้ไขข้อมูลด้านล่างแล้วกด "บันทึกการแก้ไข" — หลังบันทึก PR จะยังอยู่ในสถานะร่าง ต้องกด "ส่งใบขอซื้อ" อีกครั้งเพื่อให้กลับมาสั่งซื้อได้ตามปกติ'
+        />
+      )}
+
+      {isEdit && overOrderedLines.length > 0 && (
+        <Alert
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          message="รายการนี้สั่งซื้อไปแล้วเกินจำนวนที่ขอใหม่ กรุณาแก้ไข PO ที่เกี่ยวข้องด้วย"
+          description={`รหัสวัสดุที่ได้รับผลกระทบ: ${overOrderedLines.join(', ')}`}
+        />
+      )}
+
+      {loadingExisting ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
+          <Spin size="large" />
+        </div>
+      ) : (
+      <Form form={form} layout="horizontal" initialValues={{ pr_date: dayjs().format('YYYY-MM-DD'), pr_type: 'PO_WO' }}>
         <Card
           title={
             <div style={{ textAlign: 'center', color: '#1e3a8a', fontWeight: 700, fontSize: 15 }}>
@@ -385,41 +549,7 @@ const PRCreatePage: React.FC = () => {
                 </div>
               </div>
 
-              <Field label="วันที่">
-                <Form.Item name="pr_date" noStyle>
-                  <Input disabled style={{ color: '#374151' }} />
-                </Form.Item>
-              </Field>
-
-              <Field label="สถานที่ส่งของ" required>
-                <Form.Item name="location_text" noStyle rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}>
-                  <Input placeholder="ระบุสถานที่ส่งของ" style={{ width: '100%' }} />
-                </Form.Item>
-              </Field>
-
-              <Field label="คลังสินค้า">
-                <Form.Item name="warehouse_code" noStyle>
-                  <Select
-                    placeholder="- ไม่ระบุ -"
-                    style={{ width: '100%' }}
-                    loading={warehousesLoading}
-                    showSearch
-                    allowClear
-                    filterOption={(input, option) =>
-                      String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={warehouses}
-                  />
-                </Form.Item>
-              </Field>
-
-              <Field label="กำหนดส่งของ">
-                <Form.Item name="required_date" noStyle>
-                  <DatePicker style={{ width: '100%' }} />
-                </Form.Item>
-              </Field>
-
-              <Field label="รหัสงาน">
+              <Field label="โครงการ">
                 <Form.Item name="project_code" noStyle>
                   <Select
                     placeholder="- เลือกรายการ -"
@@ -441,42 +571,26 @@ const PRCreatePage: React.FC = () => {
                 )}
               </Field>
 
-              <Field label="Memo Reference">
-                <Input.Group compact style={{ display: 'flex' }}>
-                  <Input
-                    style={{ flex: 1, color: '#2563eb', fontWeight: 500 }}
-                    value={selectedMemo?.memoNo ?? ''}
-                    placeholder="— not selected"
-                    readOnly
-                  />
-                  <Tooltip title="Clear">
-                    <Button
-                      icon={<CloseOutlined />}
-                      disabled={!selectedMemo}
-                      onClick={() => {
-                        setSelectedMemo(null)
-                        form.setFieldValue('memo_id', undefined)
-                        form.setFieldValue('memo_no_ref', undefined)
-                      }}
-                    />
-                  </Tooltip>
-                </Input.Group>
-              </Field>
-
-              <Field label="หมายเหตุ" alignTop>
-                <Form.Item name="remarks" noStyle>
-                  <Input.TextArea
-                    rows={3}
-                    placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+              <Field label="ประเภท Job">
+                <Form.Item name="job_code" noStyle>
+                  <Select
+                    placeholder="- เลือกรายการ -"
+                    style={{ width: '100%' }}
+                    allowClear
+                    showSearch
+                    filterOption={(input, option) =>
+                      String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={[
+                      { value: 'MP', label: 'MP - Metal Structure' },
+                      { value: 'ME', label: 'ME - Electrical system work' },
+                      { value: 'MS', label: 'MS - Sanitary System' },
+                      { value: 'MF', label: 'MF - Fire Protection' },
+                      { value: 'MG', label: 'MG - GAS System' },
+                      { value: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room' },
+                    ]}
                   />
                 </Form.Item>
-              </Field>
-            </Col>
-
-            {/* ── Right column ── */}
-            <Col xs={24} lg={12}>
-              <Field label="สถานะ">
-                <Input defaultValue="open" disabled />
               </Field>
 
               <Field label="ผู้ขอซื้อ" required>
@@ -512,9 +626,165 @@ const PRCreatePage: React.FC = () => {
                 </Form.Item>
               </Field>
 
+              <Field label="ประเภทการสั่งซื้อ">
+                <Form.Item name="order_type" noStyle>
+                  <Select
+                    placeholder="- เลือกประเภท -"
+                    style={{ width: '100%' }}
+                    allowClear
+                    options={[
+                      { value: 'stock', label: 'คลังสินค้า (Stock)' },
+                      { value: 'cost', label: 'โครงการ (Cost)' },
+                    ]}
+                  />
+                </Form.Item>
+              </Field>
+
+              <Field label="ประเภทใบขอซื้อ">
+                <Form.Item name="pr_type" noStyle>
+                  <Select
+                    placeholder="- เลือกประเภท -"
+                    style={{ width: '100%' }}
+                    options={[
+                      { value: 'PO_WO', label: 'PO/WO' },
+                      { value: 'PO_ONLY', label: 'PO Only' },
+                      { value: 'WO_ONLY', label: 'WO Only' },
+                    ]}
+                  />
+                </Form.Item>
+              </Field>
+
+              {orderType === 'stock' && (
+                <Field label="คลังสินค้า">
+                  <Form.Item name="warehouse_code" noStyle>
+                    <Select
+                      placeholder="- ไม่ระบุ -"
+                      style={{ width: '100%' }}
+                      loading={warehousesLoading}
+                      showSearch
+                      allowClear
+                      filterOption={(input, option) =>
+                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={warehouses}
+                    />
+                  </Form.Item>
+                </Field>
+              )}
+
+              <Field label="สถานที่ส่งของ" required>
+                <Form.Item name="location_text" noStyle rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}>
+                  <Input
+                    placeholder="ระบุสถานที่ส่งของ"
+                    style={{ width: '100%' }}
+                    disabled={!!selectedMemo}
+                  />
+                </Form.Item>
+                {selectedMemo && (
+                  <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 4 }}>
+                    ล็อกตามสถานที่ส่งของของ Memo ที่เลือก — ล้าง Memo Reference เพื่อแก้ไข
+                  </div>
+                )}
+              </Field>
+
+              <Field label="กำหนดส่งของ">
+                <Form.Item name="required_date" noStyle>
+                  <DatePicker style={{ width: '100%' }} />
+                </Form.Item>
+              </Field>
+            </Col>
+
+            {/* ── Right column ── */}
+            <Col xs={24} lg={12}>
+              <Field label="วันที่">
+                <Form.Item name="pr_date" noStyle>
+                  <Input disabled style={{ color: '#374151' }} />
+                </Form.Item>
+              </Field>
+
               {/* Approval no longer happens on PR — it happens via Memo instead
                   (memo.status: DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / CANCELLED).
                   The approver is now selected on the Memo, not here. */}
+
+              <Field label="Memo Reference" alignTop>
+                <div
+                  onClick={() => setMemoOpen(true)}
+                  title="คลิกเพื่อเลือก Memo"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    border: `1.5px dashed ${selectedMemo ? '#bfdbfe' : '#93c5fd'}`,
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                    background: selectedMemo ? '#f8faff' : '#eff6ff',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: 1,
+                      color: selectedMemo ? '#2563eb' : '#60a5fa',
+                      fontWeight: selectedMemo ? 500 : 400,
+                      fontSize: 13,
+                    }}
+                  >
+                    {selectedMemo?.memoNo ?? 'คลิกเพื่อเลือก Memo'}
+                  </span>
+                  <Tooltip title="Clear">
+                    <Button
+                      size="small"
+                      icon={<CloseOutlined />}
+                      disabled={!selectedMemo}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedMemo(null)
+                        form.setFieldValue('memo_id', undefined)
+                        form.setFieldValue('memo_no_ref', undefined)
+                      }}
+                    />
+                  </Tooltip>
+                </div>
+
+                {selectedMemo && selectedMemo.attachments && selectedMemo.attachments.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: '#60a5fa', marginBottom: 4 }}>
+                      ไฟล์แนบจาก Memo
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {selectedMemo.attachments.map((f) => (
+                        <a
+                          key={f.filePath}
+                          href={`${FILE_BASE_URL}/${f.filePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            background: '#f0f5ff',
+                            border: '0.5px solid #bfdbfe',
+                            borderRadius: 6,
+                            padding: '3px 8px',
+                            fontSize: 12,
+                            color: '#1e40af',
+                            maxWidth: 240,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <span
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}
+                            title={f.fileName}
+                          >
+                            {f.fileName}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Field>
 
               {/* File upload */}
               <Field label="แนบไฟล์" alignTop>
@@ -558,6 +828,36 @@ const PRCreatePage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Existing attachments (edit mode) */}
+                {existingAttachments.length > 0 && (
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {existingAttachments.map((f) => (
+                      <div
+                        key={f.file_path}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          background: '#f3f4f6',
+                          border: '0.5px solid #d1d5db',
+                          borderRadius: 6,
+                          padding: '3px 8px',
+                          fontSize: 12,
+                          color: '#374151',
+                          maxWidth: 240,
+                        }}
+                      >
+                        <span
+                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}
+                          title={f.file_name}
+                        >
+                          {f.file_name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* File pills */}
                 {attachedFiles.length > 0 && (
@@ -607,39 +907,60 @@ const PRCreatePage: React.FC = () => {
         </Card>
 
         <PRItemsTable
-          onBack={() => navigate('/pr/status')}
+          onBack={() => navigate(isEdit ? `/pr/${id}` : '/pr/status')}
           onItemsChange={setLineItems}
+          initialItems={initialLineItems}
+          remark={remark}
+          onRemarkChange={setRemark}
+          onPrint={handlePrintCurrent}
         />
 
         {/* ── Action bar ── */}
         <Card style={{ ...cardStyle, marginTop: 16 }}>
           <div className="pr-action-bar">
             <Space wrap>
-              <PermissionButton
-                menuCode={MENU_CODE}
-                action="write"
-                icon={<SaveOutlined />}
-                loading={submitting}
-                disabled={submitting}
-                onClick={() => handleSubmit('DRAFT')}
-              >
-                บันทึกร่าง
-              </PermissionButton>
-              <PermissionButton
-                menuCode={MENU_CODE}
-                action="write"
-                type="primary"
-                icon={<SendOutlined />}
-                loading={submitting}
-                disabled={submitting}
-                onClick={() => handleSubmit('COMPLETED')}
-              >
-                ส่งใบขอซื้อ
-              </PermissionButton>
+              {isEdit ? (
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action="write"
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={submitting}
+                  disabled={submitting}
+                  onClick={() => handleSubmit('DRAFT')}
+                >
+                  บันทึกการแก้ไข
+                </PermissionButton>
+              ) : (
+                <>
+                  <PermissionButton
+                    menuCode={MENU_CODE}
+                    action="write"
+                    icon={<SaveOutlined />}
+                    loading={submitting}
+                    disabled={submitting}
+                    onClick={() => handleSubmit('DRAFT')}
+                  >
+                    บันทึกร่าง
+                  </PermissionButton>
+                  <PermissionButton
+                    menuCode={MENU_CODE}
+                    action="write"
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={submitting}
+                    disabled={submitting}
+                    onClick={() => handleSubmit('COMPLETED')}
+                  >
+                    ส่งใบขอซื้อ
+                  </PermissionButton>
+                </>
+              )}
             </Space>
           </div>
         </Card>
       </Form>
+      )}
       </div>
 
       {/* ── Right: Memo Sidebar ── */}
@@ -651,9 +972,22 @@ const PRCreatePage: React.FC = () => {
           form.setFieldValue('memo_id', memo.id)
           form.setFieldValue('memo_no_ref', memo.memoNo)
           form.setFieldValue('project_code', (memo as any).projectCode ?? (memo as any).project_code)
+          if (memo.deliveryLocation) {
+            form.setFieldValue('location_text', memo.deliveryLocation)
+          }
           setSelectedMemo(memo)
         }}
       />
+
+      {printData && (
+        <PRPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
+      )}
     </div>
   )
 }

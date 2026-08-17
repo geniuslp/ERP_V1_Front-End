@@ -247,9 +247,15 @@ const POLineItemsPage: React.FC = () => {
       render: (v: string) => v?.slice(0, 10) ?? '-',
     },
     {
-      title: 'ผู้ขาย',
+      title: 'ร้านค้า/ผู้ขาย',
       dataIndex: 'supplier_name',
       key: 'supplier_name',
+      render: (v?: string) => v || '-',
+    },
+    {
+      title: 'เบอร์ติดต่อ',
+      dataIndex: 'contact_phone',
+      key: 'contact_phone',
       render: (v?: string) => v || '-',
     },
     { title: 'ผู้ขอซื้อ', dataIndex: 'requested_by', key: 'requested_by' },
@@ -270,16 +276,6 @@ const POLineItemsPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_v: unknown, r) => <POApprovalStatusTag status={r.status} />,
-    },
-    {
-      // PO's real after-discount total — comes straight from the backend
-      // group object, not summed from `lines` (which may be filtered down
-      // to only matching mat_code/job_code rows).
-      title: 'มูลค่ารวม',
-      dataIndex: 'amount',
-      key: 'amount',
-      align: 'right',
-      render: (v: number) => v?.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
     },
   ]
 
@@ -333,8 +329,10 @@ const POLineItemsPage: React.FC = () => {
         subtitle="รายการสินค้าที่สั่งซื้อทั้งหมด แยกตามบรรทัด"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบสั่งซื้อ' }, { title: 'รายการ PO' }]}
       />
-      <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+      <Card
+        style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)', marginBottom: 16 }}
+      >
+        <Row gutter={[16, 16]}>
           <Col xs={24} md={6}>
             <RangePicker
               value={dateRange as any}
@@ -405,32 +403,41 @@ const POLineItemsPage: React.FC = () => {
               style={{ width: '100%' }}
             />
           </Col>
-          <Col xs={24} md={3}>
-            <Space>
-              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading} />
-              <Button icon={<ReloadOutlined />} onClick={handleClear} />
-            </Space>
-          </Col>
         </Row>
 
+        <Row justify="end" style={{ marginTop: 16 }}>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={handleClear}>
+              ล้างค่า
+            </Button>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>
+              ค้นหา
+            </Button>
+          </Space>
+        </Row>
+      </Card>
+
+      <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
         <Table
+          className="po-line-items-table"
           rowKey={(r, idx) => `${r.po_no}-${idx}`}
+          rowClassName="po-line-items-parent-row"
           loading={loading}
           dataSource={items}
           columns={columns}
-          size="small"
+          size="middle"
           scroll={{ x: 'max-content' }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           expandable={{
             expandedRowRender: (record) => (
               <Table
+                className="po-line-items-nested-table"
                 rowKey={(l, idx) => `${record.po_no}-${l.mat_code}-${idx}`}
                 dataSource={record.lines}
                 columns={lineColumns}
                 size="small"
                 pagination={false}
                 locale={{ emptyText: 'ไม่พบรายการสินค้า' }}
-                style={{ background: '#fff' }}
               />
             ),
             rowExpandable: (record) => (record.lines?.length ?? 0) > 0,

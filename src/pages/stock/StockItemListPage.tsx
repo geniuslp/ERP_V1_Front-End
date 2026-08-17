@@ -430,7 +430,7 @@ const StockItemListPage: React.FC = () => {
                       <div style={{ marginTop: 2, fontSize: 13, color: '#1f2937' }}>{item.item_name}</div>
                       <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         <Tag style={{ fontSize: 11 }}>{item.unit}</Tag>
-                        {item.category_name && <Tag style={{ fontSize: 11 }}>{item.category_name}</Tag>}
+                        <Tag style={{ fontSize: 11 }}>{item.category_name ?? '-'}</Tag>
                         <Tag color={item.item_type === 'RETURNABLE' ? 'blue' : 'orange'} style={{ fontSize: 11 }}>
                           {item.item_type === 'RETURNABLE' ? 'Returnable' : 'Consumable'}
                         </Tag>
