@@ -22,6 +22,12 @@ export interface POData {
   items: POItem[]
   extraDiscAmt: number; shippingAmt: number; remark: string
   useDiscount: boolean; useVat: boolean; useWht: boolean
+  // Header-level authoritative amounts from GET /po/:id/print-data — po.vat_amount/
+  // wht_amount/total_amount/net_amount. vatAmt replaces the old (broken) per-line
+  // vatPct summation, since VAT has no per-line column anywhere in the real schema
+  // (unlike WHT, which genuinely is per-line via wht_rate). totalAmt/netAmt are the
+  // backend's authoritative totals, preferred over client-recomputed ones to avoid drift.
+  vatAmt?: number; whtAmt?: number; totalAmt?: number; netAmt?: number
   // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval.
   // poNo itself never changes; compose the "#R{n}" suffix from this instead.
   revisionRound?: number
@@ -138,15 +144,26 @@ function thaiBahtText(amount:number):string {
 }
 
 function calcSummary(data:POData) {
-  const subtotal = data.items.reduce((s,it)=>s+lineAmt(it),0)
-  const totalVat = data.useVat ? data.items.reduce((s,it)=>s+lineVat(it),0) : 0
+  // Same drift-avoidance as netPay below — prefer the backend's authoritative
+  // pre-discount/VAT/WHT total_amount over summing possibly-paginated/rounded
+  // client-side line amounts, falling back for responses/mock data without it.
+  const subtotal = data.totalAmt ?? data.items.reduce((s,it)=>s+lineAmt(it),0)
+  // VAT has no per-line column in the real schema (unlike WHT below) — the old
+  // per-line vatPct sum always defaulted to 0. Use the backend's authoritative
+  // header-level vat_amount instead, same useX-flag-gated pattern as discount.
+  const totalVat = data.useVat ? (data.vatAmt ?? 0) : 0
   const disc = data.useDiscount ? data.extraDiscAmt : 0
   const afterDisc = subtotal - disc
   const whtRates = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   const whtRate = whtRates.length>0 ? whtRates[0] : 0
   const totalWht = data.useWht ? afterDisc*whtRate/100 : 0
   const grand = afterDisc + totalVat + data.shippingAmt
-  return { subtotal, totalVat, totalWht, disc, afterDisc, grand, netPay: grand-totalWht }
+  // Prefer the backend's authoritative net_amount when present, so the printed
+  // total can never drift from what's actually stored/approved on the PO —
+  // fall back to the client-recomputed figure for older responses/mock data
+  // that don't carry netAmt yet.
+  const netPay = data.netAmt ?? (grand - totalWht)
+  return { subtotal, totalVat, totalWht, disc, afterDisc, grand, netPay }
 }
 
 const MM_TO_PX = 96/25.4

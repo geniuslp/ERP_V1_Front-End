@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import type { Material } from '@/types'
@@ -391,6 +392,7 @@ const readFileAsRows = (file: File, groups: GroupRaw[]): Promise<ParsedRow[]> =>
 
 // ── main page ────────────────────────────────────────────────────
 const MaterialPage: React.FC = () => {
+  const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<MaterialRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -558,6 +560,19 @@ const MaterialPage: React.FC = () => {
       title: 'Status', dataIndex: 'isActive', width: 90,
       render: (v: boolean) => (
         <Tag color={v ? 'success' : 'error'} style={{ borderRadius: 20, fontSize: 13 }}>{v ? 'ใช้งาน' : 'ปิด'}</Tag>
+      ),
+    },
+    {
+      title: '', key: 'action', width: 90, fixed: 'right' as const,
+      render: (_: unknown, r: MaterialRecord) => (
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          disabled={!r.materialCode}
+          onClick={(e) => { e.stopPropagation(); navigate(`/master/materials/${encodeURIComponent(r.materialCode)}/edit`) }}
+        >
+          รายละเอียด
+        </Button>
       ),
     },
   ]
@@ -763,6 +778,10 @@ const MaterialPage: React.FC = () => {
                 responsive: true,
               }}
               rowKey="key" scroll={{ x: 1100 }}
+              onRow={(r: MaterialRecord) => ({
+                onClick: () => { if (r.materialCode) navigate(`/master/materials/${encodeURIComponent(r.materialCode)}/edit`) },
+                style: { cursor: r.materialCode ? 'pointer' : undefined },
+              })}
             />
           </div>
         </div>

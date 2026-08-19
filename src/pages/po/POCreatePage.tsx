@@ -21,6 +21,7 @@ import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
+import { PO_WORK_TYPE_LABEL } from '@/types/po'
 
 const MENU_CODE = 'MENU_PO_CREATE'
 
@@ -121,6 +122,12 @@ const POCreatePage: React.FC = () => {
   const [prModalOpen, setPrModalOpen] = useState(false)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous double-submit guard — `submitting` (state) only flips after
+  // form.validateFields() resolves, which is async, so a fast double-click or
+  // an Enter-key + click combo can fire handleSubmit twice before the button
+  // ever re-renders as disabled. A ref updates synchronously on the first
+  // call, so the second concurrent call sees it immediately and no-ops.
+  const submittingRef = useRef(false)
 
   const [taxOpen, setTaxOpen] = useState(false)
   const [useDisc, setUseDisc] = useState(false)
@@ -381,6 +388,7 @@ const POCreatePage: React.FC = () => {
           warehouse_code: raw.warehouse_code ?? undefined,
           project_code: raw.project_code ?? undefined,
           order_type: raw.order_type ?? 'stock',
+          work_type: raw.work_type ?? undefined,
           approver: raw.approver_id != null ? Number(raw.approver_id) : null,
           ref: raw.ref ?? null,
           paymentTerm: raw.payment_terms ?? undefined,
@@ -487,9 +495,6 @@ const POCreatePage: React.FC = () => {
             // already has its own explicit type.
             disc_type: l.disc_type ?? (raw.discount_type === 'amt' ? 'amt' : 'pct'),
             wht_rate: l.wht_rate ?? undefined,
-            cost_subgroup_id: l.cost_subgroup_id ?? null,
-            job_code: l.job_code ?? null,
-            job_name: l.job_name ?? undefined,
           }))
         )
       } catch (err: any) {
@@ -741,13 +746,6 @@ const POCreatePage: React.FC = () => {
           qty: l.qty_remaining,
           unit_price: l.selected_unit_price ?? 0,
           is_from_pr: true,
-          // Carried over from the PR line so the read-only cost-code cell in
-          // POItemsTable shows the right value immediately, without waiting on
-          // a save+reload — backend independently re-copies cost_subgroup_id
-          // from the PR line server-side regardless of what's sent here.
-          cost_subgroup_id: l.cost_subgroup_id ?? null,
-          job_code: l.job_code ?? null,
-          job_name: l.job_name ?? undefined,
         })),
       ]
       return combined.map((item, idx) => ({ ...item, no: idx + 1 }))
@@ -770,11 +768,20 @@ const POCreatePage: React.FC = () => {
   }
 
   const handleSubmit = async (status: 'DRAFT' | 'PENDING_APPROVAL') => {
+    // Guard first, synchronously — see submittingRef declaration for why this
+    // can't just rely on the `submitting` state / disabled button prop.
+    if (submittingRef.current) return
+    submittingRef.current = true
+
     if (isEdit && !canEdit) {
       message.warning('ไม่สามารถแก้ไขใบสั่งซื้อนี้ได้')
+      submittingRef.current = false
       return
     }
-    if (!validateItems()) return
+    if (!validateItems()) {
+      submittingRef.current = false
+      return
+    }
 
     try {
       await form.validateFields()
@@ -784,12 +791,14 @@ const POCreatePage: React.FC = () => {
       if (firstField?.name) {
         form.scrollToField(firstField.name, { behavior: 'smooth', block: 'center' })
       }
+      submittingRef.current = false
       return
     }
 
     const values = form.getFieldsValue()
     if (!values.supplier_code) {
       message.warning('กรุณาเลือกผู้ขาย (Supplier)')
+      submittingRef.current = false
       return
     }
 
@@ -826,6 +835,7 @@ const POCreatePage: React.FC = () => {
           warehouse_code: values.warehouse_code || undefined,
           project_code: values.project_code || undefined,
           order_type: values.order_type || undefined,
+          work_type: values.work_type || undefined,
           requested_by: values.requestedBy ?? undefined,
           approver_id: values.approver ?? undefined,
           ref: values.ref || undefined,
@@ -863,11 +873,6 @@ const POCreatePage: React.FC = () => {
             disc_type: item.disc_type ?? discType,
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
-            // PR-sourced lines already inherit cost_subgroup_id server-side from
-            // the source PR line — the picker for those rows is locked read-only
-            // (see POItemsTable), so sending it here just round-trips the same
-            // value already shown. Manual lines send whatever was picked/cleared.
-            cost_subgroup_id: item.cost_subgroup_id ?? null,
           })),
 
           // NOTE: CreatePORequest (the same struct both POST /po and PUT /po/:id
@@ -967,6 +972,7 @@ const POCreatePage: React.FC = () => {
         }
       } finally {
         setSubmitting(false)
+        submittingRef.current = false
       }
     }
 
@@ -981,6 +987,10 @@ const POCreatePage: React.FC = () => {
             <div>มูลค่ารวม: ฿ {total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</div>
           </div>
         ),
+        // Modal.confirm doesn't run doSubmit (and therefore never resets the
+        // ref) unless the user clicks ยืนยันส่ง — clear it on cancel/close too,
+        // otherwise a cancelled confirm permanently locks out further submits.
+        onCancel: () => { submittingRef.current = false },
         okText: 'ยืนยันส่ง',
         cancelText: 'ยกเลิก',
         onOk: doSubmit,
@@ -1397,6 +1407,20 @@ const POCreatePage: React.FC = () => {
                             { value: 'stock', label: 'คลังสินค้า (Stock)' },
                             { value: 'cost', label: 'โครงการ (Cost)' },
                           ]}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* ประเภทงาน */}
+                    <Col xs={24}>
+                      <Form.Item
+                        label={<span style={labelStyle}>ประเภทงาน</span>}
+                        name="work_type"
+                      >
+                        <Select
+                          placeholder="- เลือกประเภทงาน -"
+                          allowClear
+                          options={Object.entries(PO_WORK_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
                         />
                       </Form.Item>
                     </Col>

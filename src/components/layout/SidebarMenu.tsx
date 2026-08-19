@@ -6,7 +6,7 @@ import {
   TeamOutlined, ApartmentOutlined, AppstoreOutlined, SafetyOutlined,
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
-  InboxOutlined, RetweetOutlined, FundOutlined,
+  InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -30,6 +30,8 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_MEMO: <FileTextOutlined />,
   MENU_PR: <FileTextOutlined />,
   MENU_PO: <ShoppingCartOutlined />,
+  // icon_name on MENU_WO in the DB is FileProtectOutlined per the WO module spec.
+  MENU_WO: <FileProtectOutlined />,
   MENU_MASTER: <AppstoreOutlined />,
   MENU_ADMIN: <SafetyOutlined />,
   MENU_STOCK: <AppstoreOutlined />,
@@ -49,6 +51,9 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PO_APPROVAL: <CheckCircleOutlined />,
   MENU_PO_LINE_ITEMS: <SearchOutlined />,
   MENU_PO_MY: <UserOutlined />,
+  MENU_WO_LIST: <SearchOutlined />,
+  MENU_WO_CREATE: <PlusOutlined />,
+  MENU_WO_APPROVAL: <CheckCircleOutlined />,
   MENU_SYSTEM_CONFIG: <SettingOutlined />,
   MENU_SYSTEM_USERS: <TeamOutlined />,
   MENU_SYSTEM_ROLES: <ApartmentOutlined />,

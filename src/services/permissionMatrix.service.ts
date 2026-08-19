@@ -109,25 +109,38 @@ export const permissionMatrixService = {
     const res = await axios.get(`${BASE_URL}/menus`, { headers: authHeader(token) })
     const raw: any[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? [])
 
+    // parent_id/id can arrive as strings (e.g. Postgres bigint serialized over JSON) —
+    // buildModuleGroups groups menus with strict `===` on these fields, so a numeric
+    // id on one row and a string id on another silently breaks grouping with no error.
+    // Coerce both to Number at the source so every consumer compares like-for-like.
+    const normalizeId = (v: unknown): number | null =>
+      v === null || v === undefined ? null : Number(v)
+
     const flat: PermMenu[] = []
     for (const item of raw) {
+      if (import.meta.env.DEV && String(item.menu_code).startsWith('MENU_WO')) {
+        console.log(`[getMenus] ${item.menu_code} raw parent_id:`, item.parent_id, 'typeof:', typeof item.parent_id, '| raw id:', item.id, 'typeof:', typeof item.id)
+      }
       flat.push({
-        id: item.id,
+        id: normalizeId(item.id)!,
         menu_code: item.menu_code,
         menu_name: item.menu_name,
         menu_path: item.menu_path,
-        parent_id: item.parent_id,
+        parent_id: normalizeId(item.parent_id),
         order: item.sort_order ?? 0,
         is_active: item.is_active ?? true,
       })
       if (Array.isArray(item.children)) {
         for (const child of item.children) {
+          if (import.meta.env.DEV && String(child.menu_code).startsWith('MENU_WO')) {
+            console.log(`[getMenus] ${child.menu_code} raw parent_id:`, child.parent_id, 'typeof:', typeof child.parent_id, '| raw id:', child.id, 'typeof:', typeof child.id)
+          }
           flat.push({
-            id: child.id,
+            id: normalizeId(child.id)!,
             menu_code: child.menu_code,
             menu_name: child.menu_name,
             menu_path: child.menu_path,
-            parent_id: child.parent_id,
+            parent_id: normalizeId(child.parent_id),
             order: child.sort_order ?? 0,
             is_active: child.is_active ?? true,
           })

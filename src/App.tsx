@@ -30,6 +30,10 @@ const POLineItemsPage = lazy(() => import('@/pages/po/POLineItemsPage'))
 const POMyListPage = lazy(() => import('@/pages/po/POMyListPage'))
 const POApprovalListPage = lazy(() => import('@/pages/po/POApprovalListPage'))
 const POApprovalDetailPage = lazy(() => import('@/pages/po/POApprovalDetailPage'))
+const WorkOrderListPage = lazy(() => import('@/pages/workOrder/WorkOrderListPage'))
+const WorkOrderCreatePage = lazy(() => import('@/pages/workOrder/WorkOrderCreatePage'))
+const WorkOrderDetailPage = lazy(() => import('@/pages/workOrder/WorkOrderDetailPage'))
+const WorkOrderApprovalListPage = lazy(() => import('@/pages/workOrder/WorkOrderApprovalListPage'))
 const SystemConfigPage = lazy(() => import('@/pages/system/SystemConfigPage'))
 const UsersPage = lazy(() => import('@/pages/system/UsersPage'))
 const RolesPage = lazy(() => import('@/pages/system/RolesPage'))
@@ -37,6 +41,7 @@ const MenusPage = lazy(() => import('@/pages/system/MenusPage'))
 const PermissionsPage = lazy(() => import('@/pages/system/PermissionsPage'))
 const GroupPage = lazy(() => import('@/pages/master/GroupPage'))
 const MaterialPage = lazy(() => import('@/pages/master/MaterialPage'))
+const MaterialDetailPage = lazy(() => import('@/pages/master/MaterialDetailPage'))
 const CostCodePage = lazy(() => import('@/pages/master/CostCodePage'))
 const LocationPage = lazy(() => import('@/pages/master/LocationPage'))
 const SupplierPage = lazy(() => import('@/pages/master/SupplierPage'))
@@ -136,8 +141,29 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/po/approval" element={<POApprovalListPage />} />
               <Route path="/po/approval/:id" element={<POApprovalDetailPage />} />
+              <Route path="/work-order/list" element={
+                <RequirePermission menuCode="MENU_WO_LIST" action="read"><WorkOrderListPage /></RequirePermission>
+              } />
+              <Route path="/work-order/create" element={
+                <RequirePermission menuCode="MENU_WO_CREATE" action="write"><WorkOrderCreatePage key="wo-create" /></RequirePermission>
+              } />
+              <Route path="/work-order/:id/edit" element={
+                <RequirePermission menuCode="MENU_WO_CREATE" action="write"><WorkOrderCreatePage key="wo-edit" /></RequirePermission>
+              } />
+              <Route path="/work-order/approval" element={
+                <RequirePermission menuCode="MENU_WO_APPROVAL" action="read"><WorkOrderApprovalListPage /></RequirePermission>
+              } />
+              {/* Placed after /work-order/create and /work-order/approval so those
+                  static segments aren't captured as :id, per CLAUDE.md's route
+                  registration-order rule (static routes before dynamic ones). */}
+              <Route path="/work-order/:id" element={
+                <RequirePermission menuCode="MENU_WO_LIST" action="read"><WorkOrderDetailPage /></RequirePermission>
+              } />
+              {/* /work-order/:id/print intentionally not registered yet — WorkOrderPrintView
+                  is paused pending work_order_print_reference.html. */}
               <Route path="/master/groups" element={<GroupPage />} />
               <Route path="/master/materials" element={<MaterialPage />} />
+              <Route path="/master/materials/:code/edit" element={<MaterialDetailPage />} />
               <Route path="/master/cost-code" element={<CostCodePage />} />
               <Route path="/master/location" element={<LocationPage />} />
               <Route path="/master/supplier" element={<SupplierPage />} />

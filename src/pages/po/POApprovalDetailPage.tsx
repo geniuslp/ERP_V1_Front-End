@@ -15,6 +15,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import type { PODetail, PODetailResponse, POLine } from '@/types/po'
+import { PO_WORK_TYPE_LABEL } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
@@ -386,6 +387,12 @@ const POApprovalDetailPage: React.FC = () => {
           </Descriptions.Item>
           <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
           <Descriptions.Item label="รหัส Supplier">{po.supplier_code}</Descriptions.Item>
+          <Descriptions.Item label="ประเภทการสั่งซื้อ">
+            {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="ประเภทงาน">
+            {po.work_type ? (PO_WORK_TYPE_LABEL[po.work_type] ?? po.work_type) : '-'}
+          </Descriptions.Item>
           <Descriptions.Item label="เงื่อนไขการชำระ">{po.payment_terms ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.location_text ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="คลัง">{po.warehouse_code ?? '-'}</Descriptions.Item>

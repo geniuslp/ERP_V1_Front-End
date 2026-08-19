@@ -132,6 +132,23 @@ export interface PODetail {
   revision_round?: number
   // purchase_order.order_type — same 'stock'/'cost' domain as PR's order_type.
   order_type?: 'stock' | 'cost'
+  // purchase_order.work_type — header-level "ประเภทงาน", replaces the old
+  // per-line cost_subgroup_id/job_code selection for PO (backend-confirmed
+  // this session). PO-only; PR's line-level cost code is untouched.
+  work_type?: POWorkType | null
+}
+
+// ⚠️ P/E/S/F/G/H — no "M" prefix, confirmed against backend's work_type CHECK
+// constraint this session.
+export type POWorkType = 'P' | 'E' | 'S' | 'F' | 'G' | 'H'
+
+export const PO_WORK_TYPE_LABEL: Record<POWorkType, string> = {
+  P: 'Metal Structure',
+  E: 'Electrical system work',
+  S: 'Sanitary System',
+  F: 'Fire Protection',
+  G: 'GAS System',
+  H: 'HVAC / BAS / Clean Room-Cold Room',
 }
 
 export interface POLineItem {
@@ -148,11 +165,6 @@ export interface POLineItem {
   disc?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: 1 | 3 | 5 | null
-  // Set via CostCodeSelectionModal — job_code/job_name are derived display
-  // labels resolved from cost_subgroup_id, not independently editable.
-  cost_subgroup_id?: number | null
-  job_code?: string | null
-  job_name?: string
 }
 
 export interface AvailablePR {

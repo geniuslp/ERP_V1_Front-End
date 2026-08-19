@@ -21,7 +21,7 @@ export interface PermMenu {
 }
 
 export interface RoleMenuPermission {
-  id?: number
+  id?: number | null
   role_id: number
   menu_id: number
   can_read: boolean

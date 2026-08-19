@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Table, Space, Input, Select, Tag, Upload, Typography, Button, message, Descriptions, Modal } from 'antd'
+import { Card, Table, Space, Input, Select, Tag, Upload, Typography, Button, message, Modal } from 'antd'
 import type { UploadProps } from 'antd'
 import { InboxOutlined, CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SaveOutlined, DownloadOutlined, ExclamationCircleFilled } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
@@ -55,11 +55,14 @@ interface LocalParsedRow {
 
 type MergedPreviewRow = BulkPreviewRow & { unit?: string; qty?: string; unitCost?: string }
 
-const statusTag = (status: BulkPreviewRow['status']) => {
-  if (status === 'ok') return <Tag color="success">พร้อมนำเข้า</Tag>
-  if (status === 'name_mismatch') return <Tag color="warning">ชื่อไม่ตรง</Tag>
-  return <Tag color="error">ไม่พบรหัสวัสดุ</Tag>
-}
+// Collapsed to a 2-way ok/code_not_found distinction on the frontend —
+// name_mismatch is dropped entirely; the user now visually compares "Item
+// Name" (file) against "วัสดุและ Spec" (database) themselves instead of the
+// system pre-judging a match. If the backend's `status` field still returns
+// a 3-way value including 'name_mismatch', it's ignored here — `code_found`
+// (a plain boolean, always 2-way) is the only thing driving this tag.
+const statusTag = (codeFound: boolean) =>
+  codeFound ? <Tag color="success">พร้อมนำเข้า</Tag> : <Tag color="error">ไม่พบรหัสวัสดุ</Tag>
 
 // Local, cosmetic-only parse used solely to pull unit/qty/cost for display in the
 // preview table — the backend preview endpoint doesn't echo these back, only
@@ -132,7 +135,6 @@ const StockListPage: React.FC = () => {
   const [previewRows, setPreviewRows] = useState<MergedPreviewRow[] | null>(null)
   const [previewSummary, setPreviewSummary] = useState<BulkPreviewSummary | null>(null)
   const [previewFilter, setPreviewFilter] = useState<'all' | 'ok' | 'errors'>('all')
-  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   const fetchItems = useCallback(async () => {
@@ -245,7 +247,6 @@ const StockListPage: React.FC = () => {
         })
         setPreviewRows(merged)
         setPreviewSummary(result.summary)
-        setExpandedRowKeys(merged.filter((r) => r.status !== 'ok').map((r) => r.row_no))
         setPendingFile(file)
       } catch (err: any) {
         const errMsg =
@@ -266,7 +267,6 @@ const StockListPage: React.FC = () => {
     setPreviewRows(null)
     setPreviewSummary(null)
     setPreviewFilter('all')
-    setExpandedRowKeys([])
     setPendingFile(null)
   }
 
@@ -294,12 +294,12 @@ const StockListPage: React.FC = () => {
   }
 
   const handleConfirmImport = () => {
-    const problemCount = previewRows?.filter((r) => r.status !== 'ok').length ?? 0
+    const problemCount = previewRows?.filter((r) => !r.code_found).length ?? 0
     if (problemCount > 0) {
       Modal.confirm({
         title: 'นำเข้าต่อหรือไม่?',
         icon: <ExclamationCircleFilled style={{ color: '#d97706' }} />,
-        content: `พบ ${problemCount} รายการที่มีปัญหา (ไม่พบรหัสวัสดุ หรือ ชื่อไม่ตรง) ต้องการนำเข้าต่อหรือไม่?`,
+        content: `พบ ${problemCount} รายการที่ไม่พบรหัสวัสดุ ต้องการนำเข้าต่อหรือไม่?`,
         okText: 'นำเข้าต่อ',
         cancelText: 'ยกเลิก',
         onOk: doConfirmImport,
@@ -492,14 +492,14 @@ const StockListPage: React.FC = () => {
                   style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
                   onClick={() => setPreviewFilter('ok')}
                 >
-                  พร้อมนำเข้า: {previewSummary.ok}
+                  พร้อมนำเข้า: {previewRows.filter((r) => r.code_found).length}
                 </Tag>
                 <Tag
                   color={previewFilter === 'errors' ? 'red' : 'default'}
                   style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
                   onClick={() => setPreviewFilter('errors')}
                 >
-                  มีปัญหา: {previewSummary.code_not_found + previewSummary.name_mismatch}
+                  มีปัญหา: {previewRows.filter((r) => !r.code_found).length}
                 </Tag>
               </Space>
             )}
@@ -508,82 +508,58 @@ const StockListPage: React.FC = () => {
               rowKey="row_no"
               loading={previewLoading}
               dataSource={previewRows.filter((r) => {
-                if (previewFilter === 'ok') return r.status === 'ok'
-                if (previewFilter === 'errors') return r.status !== 'ok'
+                if (previewFilter === 'ok') return r.code_found
+                if (previewFilter === 'errors') return !r.code_found
                 return true
               })}
               pagination={{ pageSize: 20 }}
-              scroll={{ x: 700 }}
+              scroll={{ x: 900 }}
               onRow={(r) => ({
-                style: r.status === 'ok' ? undefined : { background: 'rgba(220,38,38,0.08)' },
+                style: r.code_found ? undefined : { background: 'rgba(220,38,38,0.08)' },
               })}
-              expandable={{
-                expandedRowKeys,
-                onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as React.Key[]),
-                expandedRowRender: (r: MergedPreviewRow) => (
-                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 12, color: '#6b7280' }}>
-                        จากไฟล์ (From File)
-                      </Text>
-                      <Descriptions column={1} size="small" bordered>
-                        <Descriptions.Item label="ชื่อ Item">{r.file_name || '—'}</Descriptions.Item>
-                        <Descriptions.Item label="รหัสวัสดุ">{r.mat_code || '—'}</Descriptions.Item>
-                        {r.unit && <Descriptions.Item label="หน่วยนับ">{r.unit}</Descriptions.Item>}
-                        {(r.qty || r.unitCost) && (
-                          <Descriptions.Item label="จำนวน / ราคาต้นทุน">
-                            {[r.qty, r.unitCost].filter(Boolean).join(' / ')}
-                          </Descriptions.Item>
-                        )}
-                      </Descriptions>
-                    </div>
-                    <div style={{ flex: '1 1 280px', minWidth: 280 }}>
-                      <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 12, color: '#6b7280' }}>
-                        จาก Master (From Database)
-                      </Text>
-                      {r.master ? (
-                        <Descriptions column={2} size="small" bordered>
-                          <Descriptions.Item label="รหัสวัสดุ">{r.master.mat_code || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="กลุ่ม">{r.master.group_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="กลุ่มย่อย">{r.master.subgroup_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="ชื่อวัสดุ">{r.master.mat_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="Spec">{r.master.spec_description || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="ยี่ห้อ">{r.master.brand_name || '—'}</Descriptions.Item>
-                          <Descriptions.Item label="หน่วยนับ">{r.master.unit_name || '—'}</Descriptions.Item>
-                        </Descriptions>
-                      ) : (
-                        <Text type="secondary">ไม่พบข้อมูลในระบบ</Text>
-                      )}
-                    </div>
-                  </div>
-                ),
-              }}
               columns={[
                 { title: 'แถวที่', dataIndex: 'row_no', key: 'row_no', width: 80 },
                 {
-                  title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code', width: 260,
-                  render: (v: string, r: MergedPreviewRow) => {
-                    const masterCode = r.master?.mat_code ?? null
-                    const codeMismatch = r.code_found && masterCode != null && masterCode !== v
-                    return (
-                      <div style={codeMismatch ? { background: 'rgba(220,38,38,0.08)', borderRadius: 4, padding: '2px 4px' } : undefined}>
-                        <div style={{ fontSize: 13 }}>
-                          รหัสจากไฟล์: {v || <Text type="danger">—</Text>}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-                          รหัสใน Master: {masterCode ?? '— ไม่พบ —'}
-                        </div>
-                      </div>
-                    )
-                  },
-                },
-                {
-                  title: 'ชื่อ Item', dataIndex: 'file_name', key: 'file_name', ellipsis: true,
+                  title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code', width: 180,
                   render: (v: string) => v || <Text type="danger">—</Text>,
                 },
                 {
-                  title: 'สถานะ', dataIndex: 'status', key: 'status', width: 150,
-                  render: (status: BulkPreviewRow['status']) => statusTag(status),
+                  // Purely from the file, independent of any database match —
+                  // sits next to "วัสดุและ Spec" so the user can visually
+                  // compare the two instead of the system pre-judging a match.
+                  title: 'Item Name', dataIndex: 'file_name', key: 'file_name', ellipsis: true,
+                  render: (v: string) => v || <Text type="danger">—</Text>,
+                },
+                {
+                  title: 'วัสดุและ Spec', key: 'name_spec', ellipsis: true,
+                  render: (_: unknown, r: MergedPreviewRow) => {
+                    // code_found means master data exists — show the verified
+                    // master name+spec, since the point of this column is
+                    // what the item actually IS per the system of record.
+                    // Only fall back to the file's own name when there's no
+                    // master match to show at all.
+                    if (r.code_found && r.master) {
+                      const text = [r.master.mat_name, r.master.spec_description].filter(Boolean).join(' — ')
+                      return text || <Text type="danger">—</Text>
+                    }
+                    return r.file_name || <Text type="danger">—</Text>
+                  },
+                },
+                {
+                  title: 'หน่วยนับ', dataIndex: 'unit', key: 'unit', width: 100,
+                  render: (v?: string) => v || <Text type="secondary">—</Text>,
+                },
+                {
+                  title: 'จำนวน', dataIndex: 'qty', key: 'qty', width: 100, align: 'right' as const,
+                  render: (v?: string) => v || <Text type="secondary">—</Text>,
+                },
+                {
+                  title: 'ราคาต้นทุน', dataIndex: 'unitCost', key: 'unitCost', width: 120, align: 'right' as const,
+                  render: (v?: string) => v || <Text type="secondary">—</Text>,
+                },
+                {
+                  title: 'สถานะ', dataIndex: 'code_found', key: 'status', width: 150,
+                  render: (_: unknown, r: MergedPreviewRow) => statusTag(r.code_found),
                 },
               ]}
             />

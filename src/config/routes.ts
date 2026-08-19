@@ -28,6 +28,7 @@ export const ROUTES = {
     ROOT: '/master',
     GROUPS: '/master/groups',
     MATERIALS: '/master/materials',
+    MATERIALS_EDIT: '/master/materials/:code/edit',
     COST_CODE: '/master/cost-code',
     LOCATION: '/master/location',
     SUPPLIER: '/master/supplier',

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>หนังสือสั่งจ้าง (Work Order)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0f2d5e; --navy-light:#1a3f7a; --primary-700:#1d4ed8; --primary-600:#2563eb;
+    --primary-50:#eff6ff; --primary-100:#dbeafe; --bg:#f0f5ff;
+    --success:#16a34a; --warning:#d97706; --error:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:'IBM Plex Sans Thai','IBM Plex Sans',sans-serif;
+    background:var(--bg); margin:0; padding:24px; color:#1e293b;
+  }
+  h1,h2,.title-font{font-family:'Sarabun',sans-serif;}
+
+  /* ---------- top bar ---------- */
+  .toolbar{
+    max-width:900px;margin:0 auto 16px;display:flex;gap:10px;align-items:center;
+    justify-content:space-between;
+  }
+  .toolbar h1{font-size:20px;color:var(--navy);margin:0;font-weight:700;}
+  .btn{
+    border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;
+    cursor:pointer;font-family:inherit;
+  }
+  .btn-primary{background:linear-gradient(135deg,var(--primary-600),var(--primary-700));color:#fff;
+    box-shadow:0 4px 16px rgba(37,99,235,.35);}
+  .btn-ghost{background:#fff;border:1px solid var(--primary-100);color:var(--primary-700);}
+
+  /* ---------- form card ---------- */
+  .card{
+    max-width:900px;margin:0 auto 20px;background:#fff;border-radius:12px;
+    box-shadow:0 2px 12px rgba(15,45,94,.08);padding:24px;
+  }
+  .section-title{
+    font-family:'Sarabun',sans-serif;font-weight:700;color:var(--primary-700);
+    font-size:15px;margin:22px 0 12px;padding-left:10px;border-left:4px solid var(--primary-600);
+  }
+  .section-title:first-child{margin-top:0;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 18px;}
+  .grid.g1{grid-template-columns:1fr;}
+  .grid.g3{grid-template-columns:repeat(3,1fr);}
+  .field label{
+    display:block;font-size:12.5px;font-weight:600;color:#475569;margin-bottom:5px;
+  }
+  .field input, .field select, .field textarea{
+    width:100%;border:1px solid var(--primary-100);border-radius:8px;padding:9px 11px;
+    font-size:14px;font-family:inherit;background:#fff;color:#1e293b;
+  }
+  .field textarea{resize:vertical;min-height:56px;}
+  .field input:focus,.field select:focus,.field textarea:focus{
+    outline:none;border-color:var(--primary-600);box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  }
+  .radio-row{display:flex;gap:18px;align-items:center;padding-top:6px;}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500;color:#334155;}
+  .hint{font-size:11.5px;color:#94a3b8;margin-top:3px;}
+
+  /* ---------- print sheet ---------- */
+  #printSheet{display:none;}
+  .sheet{
+    max-width:900px;margin:0 auto;background:#fff;padding:26px 34px;
+    box-shadow:0 2px 12px rgba(15,45,94,.08);border-radius:6px;
+    font-family:'IBM Plex Sans Thai',sans-serif;font-size:13px;color:#111;line-height:1.55;
+  }
+  .sheet-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
+  .logo-box{border:2px solid #000;padding:8px 14px;font-weight:700;font-size:13px;line-height:1.3;}
+  .logo-box small{display:block;font-weight:400;font-size:11px;}
+  .doc-title{
+    text-align:center;font-family:'Sarabun',sans-serif;font-weight:700;font-size:20px;
+    border:2px solid #b91c1c;color:#b91c1c;padding:4px 22px;display:inline-block;
+  }
+  .doc-meta{text-align:right;font-size:12.5px;}
+  .doc-meta div{margin-bottom:2px;}
+  .party-line{
+    background:#fef9c3;padding:6px 8px;margin:10px 0 14px;font-weight:600;font-size:13px;
+    border-top:2px solid #b91c1c;border-bottom:2px solid #b91c1c;
+  }
+  table.wo-table{width:100%;border-collapse:collapse;}
+  table.wo-table td{vertical-align:top;padding:5px 4px;font-size:13px;}
+  td.wo-no{width:26px;font-weight:600;}
+  td.wo-label{width:190px;font-weight:600;white-space:nowrap;}
+  td.wo-colon{width:14px;}
+  td.wo-value{}
+  .sub{padding-left:20px;font-size:12.5px;}
+  .strike-line{border-bottom:1px dotted #999;display:inline-block;min-width:120px;}
+  .cost-code{margin-top:10px;font-size:12.5px;color:#334155;}
+  .sign-table{width:100%;border-collapse:collapse;margin-top:22px;}
+  .sign-table td{
+    border:1px solid #999;text-align:center;font-size:11.5px;padding:26px 6px 8px;vertical-align:bottom;
+  }
+  .sign-table .cap{font-weight:600;display:block;margin-top:4px;}
+  .print-actions{max-width:900px;margin:12px auto;display:flex;justify-content:center;gap:10px;}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .toolbar,.card,.print-actions{display:none !important;}
+    #printSheet{display:block;}
+    .sheet{box-shadow:none;border-radius:0;max-width:100%;padding:14mm;}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>📋 หนังสือสั่งจ้าง (Work Order) — บันทึกข้อมูล</h1>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-ghost" onclick="fillSample()">โหลดตัวอย่างจากภาพ</button>
+    <button class="btn btn-primary" onclick="showPrint()">🖨️ สร้างเอกสารพิมพ์</button>
+  </div>
+</div>
+
+<!-- ===================== FORM (data entry) ===================== -->
+<div class="card" id="formCard">
+  <div class="section-title">ข้อมูลเอกสาร</div>
+  <div class="grid g3">
+    <div class="field"><label>เลขที่ (WO No.)</label><input id="wo_no" placeholder="เช่น W0202607001"></div>
+    <div class="field"><label>วันที่</label><input id="wo_date" type="date"></div>
+    <div class="field"><label>อ้างอิงสัญญา</label><input id="ref_no" placeholder="เช่น Q2604/R2"></div>
+  </div>
+
+  <div class="section-title">1–2. ผู้ว่าจ้าง / ผู้รับจ้าง</div>
+  <div class="grid">
+    <div class="field"><label>ผู้ว่าจ้าง (เจ้าของโครงการ)</label><input id="employer_name" placeholder="บริษัท ...จำกัด"></div>
+    <div class="field"><label>ชื่อโครงการ / ขอบเขตงาน</label><input id="project_scope_text" placeholder="ออกแบบ ตกแต่ง และปรับปรุงโรงงาน..."></div>
+    <div class="field"><label>ผู้รับจ้าง / ผู้ให้เช่า</label><input id="supplier_name" placeholder="บริษัท ...จำกัด (Master supplier)"></div>
+    <div class="field"><label>ผู้ควบคุมงาน (ผู้ติดต่อ)</label><input id="contact_person" placeholder="ชื่อ-นามสกุล"></div>
+    <div class="field" style="grid-column:1/-1;"><label>ที่อยู่ตามหนังสือรับรอง</label><input id="supplier_address"></div>
+    <div class="field"><label>โทรศัพท์ติดต่อได้ที่</label><input id="supplier_phone" placeholder="08X-XXX-XXXX"></div>
+  </div>
+
+  <div class="section-title">3–5. ประเภทสัญญา / งานระบบ / ลักษณะงาน</div>
+  <div class="grid g3">
+    <div class="field">
+      <label>สัญญานี้เป็นสัญญา</label>
+      <select id="contract_type">
+        <option value="LABOR_MATERIAL">ทั้งค่าแรง และค่าของ</option>
+        <option value="LABOR_ONLY">ค่าแรงอย่างเดียว</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>งานระบบ</label>
+      <select id="work_system">
+        <option value="P">P — Metal Structure</option>
+        <option value="E">E — Electrical System</option>
+        <option value="S">S — Sanitary</option>
+      </select>
+    </div>
+    <div class="field"><label>ลักษณะของสัญญา</label><input id="contract_description" placeholder="เช่น RENOVATION FAC-S 1 & 2"></div>
+  </div>
+
+  <div class="section-title">6. มูลค่าสัญญา</div>
+  <div class="grid g3">
+    <div class="field"><label>มูลค่าสัญญา (ไม่รวม VAT) บาท</label><input id="contract_amount" type="number" step="0.01" placeholder="3700000"></div>
+    <div class="field"><label>VAT (%)</label><input id="vat_rate" type="number" step="0.01" value="7"></div>
+    <div class="field"><label>หัก ณ ที่จ่าย ค่าบริการ (%)</label><input id="wht_rate" type="number" step="0.01" value="3"></div>
+  </div>
+
+  <div class="section-title">7. เงื่อนไขการจ่ายเงิน</div>
+  <div class="grid g3">
+    <div class="field"><label>7.1 เงินล่วงหน้า (%)</label><input id="advance_pct" type="number" step="0.01" placeholder="15"></div>
+    <div class="field"><label>จำนวนเงินล่วงหน้า (บาท)</label><input id="advance_amount" type="number" step="0.01" placeholder="550000"></div>
+    <div class="field"><label>7.3 หักเงินประกันผลงาน (%)</label><input id="retention_pct" type="number" step="0.01" value="5"></div>
+    <div class="field"><label>7.4 หักคืนเงินล่วงหน้า (%)</label><input id="advance_deduct_pct" type="number" step="0.01" value="0"></div>
+    <div class="field" style="grid-column:span 2;"><label>7.2 เงินงวดสัญญา (รายละเอียด)</label><input id="progress_payment_note" placeholder="เช่น แบ่งจ่าย 3 งวด งวดละ..."></div>
+    <div class="field" style="grid-column:1/-1;"><label>7.5 หักอื่นๆ</label><input id="other_deduction_note" placeholder="ไม่มี / ระบุ"></div>
+  </div>
+
+  <div class="section-title">8. ระยะเวลาสัญญา</div>
+  <div class="grid g3">
+    <div class="field"><label>เริ่มสัญญา</label><input id="start_date" type="date"></div>
+    <div class="field"><label>ระยะเวลา (วัน)</label><input id="duration_days" type="number" placeholder="120"></div>
+    <div class="field"><label>สิ้นสุดสัญญา</label><input id="end_date" type="date"></div>
+    <div class="field"><label>8.1 เบี้ยปรับ (% ต่อวัน)</label><input id="penalty_pct_per_day" type="number" step="0.01" value="1"></div>
+    <div class="field"><label>8.2 ประกันผลงาน (ปี)</label><input id="warranty_years" type="number" value="1"></div>
+    <div class="field"><label>Cost Code</label><input id="cost_code" placeholder="ระบุ Cost Code"></div>
+  </div>
+
+  <div class="section-title">10. เงื่อนไขอื่นๆ / หมายเหตุ</div>
+  <div class="grid g1">
+    <div class="field"><textarea id="other_terms" placeholder="ระบุเงื่อนไขเพิ่มเติม (ถ้ามี)"></textarea></div>
+  </div>
+
+  <div class="section-title">ผู้เกี่ยวข้อง (สำหรับพิมพ์ท้ายเอกสาร)</div>
+  <div class="grid">
+    <div class="field"><label>ผู้จัดทำ / ผู้กรอกเอกสาร</label><input id="entered_by_name" placeholder="ชื่อผู้กรอก"></div>
+    <div class="field"><label>วันที่จัดทำ</label><input id="entered_date" type="date"></div>
+  </div>
+</div>
+
+<!-- ===================== PRINT SHEET ===================== -->
+<div id="printSheet">
+  <div class="print-actions">
+    <button class="btn btn-ghost" onclick="showForm()">← กลับไปแก้ไข</button>
+    <button class="btn btn-primary" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+  </div>
+
+  <div class="sheet" id="sheetContent">
+    <div class="sheet-head">
+      <div class="logo-box">LOGO GENIUS<br><small>ENGINEERING</small><br><small>ต้นฉบับสัญญา</small></div>
+      <div><span class="doc-title">หนังสือสั่งจ้าง</span></div>
+      <div class="doc-meta">
+        <div>เลขที่ : <b><span id="p_wo_no">-</span></b></div>
+        <div>วันที่ : <b><span id="p_wo_date">-</span></b></div>
+      </div>
+    </div>
+
+    <div class="party-line">
+      ผู้รับจ้าง สัญญาว่าจะทำหมายบรรดาสิ่งที่ระบุไปตามที่แนบท้ายสัญญา &nbsp;&nbsp; บริษัท <span id="p_supplier_name">-</span> ผู้รับจ้าง
+    </div>
+
+    <table class="wo-table">
+      <tr><td class="wo-no">1.</td><td class="wo-label">เจ้าของโครงการ</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_employer">-</td></tr>
+      <tr><td></td><td class="wo-label">ชื่อโครงการ</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_scope">-</td></tr>
+
+      <tr><td class="wo-no">2.</td><td class="wo-label">ผู้รับจ้าง / ผู้ให้เช่า</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_supplier2">-</td></tr>
+      <tr><td></td><td class="wo-label">ผู้ควบคุมงาน</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_contact">-</td></tr>
+      <tr><td></td><td class="wo-label">ที่อยู่ตามหนังสือรับรอง</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_address">-</td></tr>
+      <tr><td></td><td class="wo-label">โทรศัพท์ติดต่อได้ที่</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_phone">-</td></tr>
+
+      <tr><td class="wo-no">3.</td><td class="wo-label">สัญญานี้เป็นสัญญา</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_contract_type">-</td></tr>
+      <tr><td class="wo-no">4.</td><td class="wo-label">งานระบบ</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_work_system">-</td></tr>
+      <tr><td class="wo-no">5.</td><td class="wo-label">ลักษณะของสัญญา</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_desc">-</td></tr>
+
+      <tr><td class="wo-no">6.</td><td class="wo-label">มูลค่าสัญญา (ไม่รวม VAT)</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_amount">-</td></tr>
+
+      <tr><td class="wo-no">7.</td><td class="wo-label">เงื่อนไขการจ่ายเงิน</td><td class="wo-colon">:</td>
+          <td class="wo-value">กำหนดจ่ายตามงวดงาน</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">
+          7.1 เงินล่วงหน้า <span id="p_advance_pct">-</span>% (<span id="p_advance_amt">-</span> บาท)</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">7.2 เงินงวดสัญญา : <span id="p_progress">-</span></td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">7.3 หักเงินประกันผลงาน <span id="p_retention">-</span>%</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">7.4 หักคืนเงินล่วงหน้า <span id="p_advdeduct">-</span>%</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">7.5 หักอื่นๆ : <span id="p_otherded">-</span></td></tr>
+
+      <tr><td class="wo-no">8.</td><td class="wo-label">ระยะเวลาสัญญา</td><td class="wo-colon">:</td>
+          <td class="wo-value">เริ่ม <span id="p_start">-</span> ถึง <span id="p_end">-</span> (<span id="p_duration">-</span> วัน)</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">8.1 เบี้ยปรับ <span id="p_penalty">-</span>% ต่อวัน</td></tr>
+      <tr><td></td><td colspan="2"></td><td class="sub">8.2 ประกันผลงาน <span id="p_warranty">-</span> ปี</td></tr>
+
+      <tr><td class="wo-no">9.</td><td class="wo-label">อ้างอิงสัญญา</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_ref">-</td></tr>
+      <tr><td class="wo-no">10.</td><td class="wo-label">เงื่อนไขอื่นๆ ระบุเพิ่มเติม</td><td class="wo-colon">:</td>
+          <td class="wo-value" id="p_terms">-</td></tr>
+    </table>
+
+    <div class="cost-code">( Cost Code : <span id="p_cost_code">-</span> )</div>
+
+    <table class="sign-table">
+      <tr>
+        <td style="width:25%;"><span class="cap">ผู้จัดทำ / ผู้กรอกเอกสาร<br><span id="p_entered_name" style="font-weight:400"></span><br><span id="p_entered_date" style="font-weight:400"></span></span></td>
+        <td style="width:25%;"><span class="cap">ส่วนหัวงาน<br>SECTION HEAD</span></td>
+        <td style="width:25%;"><span class="cap">ผู้มีอำนาจลงนาม<br>AUTHORIZED SIGNATURE</span></td>
+        <td style="width:25%;"><span class="cap">ผู้รับเหมาช่วง<br>SUBCONTRACTOR</span></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<script>
+function val(id){ return document.getElementById(id).value || '-'; }
+function num(id){
+  const v = document.getElementById(id).value;
+  if(!v) return '-';
+  return Number(v).toLocaleString('th-TH', {minimumFractionDigits:0, maximumFractionDigits:2});
+}
+function thDate(id){
+  const v = document.getElementById(id).value;
+  if(!v) return '-';
+  const d = new Date(v+'T00:00:00');
+  const months=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return d.getDate()+' '+months[d.getMonth()]+' '+(d.getFullYear()+543);
+}
+const contractTypeLabel = {LABOR_MATERIAL:'ทั้งค่าแรง และค่าของ', LABOR_ONLY:'ค่าแรงอย่างเดียว'};
+const workSystemLabel = {P:'P : METAL STRUCTURE', E:'E : ELECTRICAL S.', S:'S : SANITARY'};
+
+function showPrint(){
+  document.getElementById('p_wo_no').textContent = val('wo_no');
+  document.getElementById('p_wo_date').textContent = thDate('wo_date');
+  document.getElementById('p_supplier_name').textContent = val('supplier_name');
+  document.getElementById('p_employer').textContent = val('employer_name');
+  document.getElementById('p_scope').textContent = val('project_scope_text');
+  document.getElementById('p_supplier2').textContent = val('supplier_name');
+  document.getElementById('p_contact').textContent = val('contact_person');
+  document.getElementById('p_address').textContent = val('supplier_address');
+  document.getElementById('p_phone').textContent = val('supplier_phone');
+  document.getElementById('p_contract_type').textContent = contractTypeLabel[document.getElementById('contract_type').value];
+  document.getElementById('p_work_system').textContent = workSystemLabel[document.getElementById('work_system').value];
+  document.getElementById('p_desc').textContent = val('contract_description');
+  document.getElementById('p_amount').textContent = num('contract_amount')+' บาท  (VAT '+val('vat_rate')+'%, หัก ณ ที่จ่าย '+val('wht_rate')+'%)';
+  document.getElementById('p_advance_pct').textContent = val('advance_pct');
+  document.getElementById('p_advance_amt').textContent = num('advance_amount');
+  document.getElementById('p_progress').textContent = val('progress_payment_note');
+  document.getElementById('p_retention').textContent = val('retention_pct');
+  document.getElementById('p_advdeduct').textContent = val('advance_deduct_pct');
+  document.getElementById('p_otherded').textContent = val('other_deduction_note');
+  document.getElementById('p_start').textContent = thDate('start_date');
+  document.getElementById('p_end').textContent = thDate('end_date');
+  document.getElementById('p_duration').textContent = val('duration_days');
+  document.getElementById('p_penalty').textContent = val('penalty_pct_per_day');
+  document.getElementById('p_warranty').textContent = val('warranty_years');
+  document.getElementById('p_ref').textContent = val('ref_no');
+  document.getElementById('p_terms').textContent = val('other_terms');
+  document.getElementById('p_cost_code').textContent = val('cost_code');
+  document.getElementById('p_entered_name').textContent = val('entered_by_name');
+  document.getElementById('p_entered_date').textContent = thDate('entered_date');
+
+  document.getElementById('formCard').style.display='none';
+  document.querySelector('.toolbar').style.display='none';
+  document.getElementById('printSheet').style.display='block';
+}
+function showForm(){
+  document.getElementById('printSheet').style.display='none';
+  document.getElementById('formCard').style.display='block';
+  document.querySelector('.toolbar').style.display='flex';
+}
+function fillSample(){
+  document.getElementById('wo_no').value='W0202607001';
+  document.getElementById('wo_date').value='2026-07-22';
+  document.getElementById('ref_no').value='Q2604/R2';
+  document.getElementById('employer_name').value='บริษัท ไซเปียส เอนจิเนียริ่ง (คันทรีนิวย่า) จำกัด';
+  document.getElementById('project_scope_text').value='ออกแบบ ตกแต่ง และปรับปรุงโรงงานอาคาร 1 และ 2';
+  document.getElementById('supplier_name').value='บริษัท พี.คอน เอ็นจิเนียริ่ง กรุ๊ป จำกัด';
+  document.getElementById('contact_person').value='นาย ปณิธิ ศิริอุดม';
+  document.getElementById('supplier_phone').value='085-920-8512';
+  document.getElementById('contract_type').value='LABOR_MATERIAL';
+  document.getElementById('work_system').value='P';
+  document.getElementById('contract_description').value='RENOVATION FAC-S 1 & 2';
+  document.getElementById('contract_amount').value='3700000';
+  document.getElementById('vat_rate').value='7';
+  document.getElementById('wht_rate').value='3';
+  document.getElementById('advance_pct').value='15';
+  document.getElementById('advance_amount').value='550000';
+  document.getElementById('retention_pct').value='5';
+  document.getElementById('advance_deduct_pct').value='0';
+  document.getElementById('other_deduction_note').value='ไม่มี';
+  document.getElementById('start_date').value='2026-08-03';
+  document.getElementById('duration_days').value='120';
+  document.getElementById('penalty_pct_per_day').value='1';
+  document.getElementById('warranty_years').value='1';
+}
+</script>
+</body>
+</html>
