@@ -2,78 +2,81 @@ import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, type DiscType } from '@/utils/poCalc'
-import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
 
-export interface POItem {
+// Renamed from PO's own POItem/POData to WOPOItem/WOPOData (mechanical
+// identifier rename only — no shape/layout change) since the fields now hold
+// WO's own data, not PO's. See field-by-field mapping notes below on each field.
+export interface WOPOItem {
   no: string; code?: string; desc: string; subDesc?: string
   qty: number; unit: string; pricePerUnit: number
   // `disc` is the raw number entered on the line; its unit (percent vs baht)
   // is given by `discType` — never assume percent.
   disc: number; discType?: DiscType; vatPct: number; whtPct: number
 }
-export interface POData {
-  poNo: string; poDate: string; prNo: string; deliveryDate: string
+export interface WOPOData {
+  // po_no/po_date → wo_no/wo_date (task-specified swap).
+  poNo: string; poDate: string
+  // PO's prNo/quotationNo have no WO equivalent (WO has no PR or quotation
+  // concept) — flagged per the task's explicit instruction rather than
+  // guessed. Repurposed to WO's closest actual fields instead of leaving
+  // them meaningless: prNo → ref_no (WO's own reference no.), quotationNo →
+  // contract_description (WO's "ลักษณะของสัญญา" — the closest available
+  // descriptive field).
+  prNo: string
+  deliveryDate: string
+  // PO's `project`/`job` map cleanly enough: project → project_scope_text,
+  // job → the P/E/S work_system label.
   project: string; deliveryPlace: string; job: string
   contractDelivery: string; quotationNo: string; tel: string
+  // PO's single `supplier` box only ever represents ONE counterparty (the
+  // external party — PO's own company is the buyer, shown in the fixed
+  // header). WO's employer (ผู้ว่าจ้าง) is the same Genius Engineering entity
+  // already shown in the header (see the WO_STANDARD party-line's own
+  // wording), NOT a second box-level party — so `supplier` here holds WO's
+  // ผู้รับจ้าง (contractor) fields, and employer_name has no natural slot in
+  // this box. Flagged: employer_name is placed in the `termOfPayment` slot
+  // (relabeled "Employer :" in POInfoBox below) since none of PO's other 4
+  // box rows fit it without being misleading.
   supplier: { name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string }
-  items: POItem[]
-  extraDiscAmt: number; shippingAmt: number; remark: string
+  items: WOPOItem[]
+  // PO's extraDiscAmt is a separate HEADER-level override discount on top of
+  // per-line discounts (subtotal already nets per-line disc via lineAmt).
+  // WO has no such separate header-level discount field — only per-line
+  // discount + a use_discount toggle — so this is always 0 for WO (flagged;
+  // not a data-loss bug, WO's per-line discounts already reduce `subtotal`
+  // the same way PO's per-line discounts do).
+  extraDiscAmt: number
+  // WO has no shipping/transport concept at all — always 0, so the "ค่าขนส่ง"
+  // row simply never renders (flagged, not applicable to WO).
+  shippingAmt: number
+  remark: string
   useDiscount: boolean; useVat: boolean; useWht: boolean
-  // Header-level authoritative amounts from GET /po/:id/print-data — po.vat_amount/
-  // wht_amount/total_amount/net_amount. vatAmt replaces the old (broken) per-line
-  // vatPct summation, since VAT has no per-line column anywhere in the real schema
-  // (unlike WHT, which genuinely is per-line via wht_rate). totalAmt/netAmt are the
-  // backend's authoritative totals, preferred over client-recomputed ones to avoid drift.
+  // PO's vatAmt/whtAmt/totalAmt/netAmt come from a backend print-data endpoint
+  // WO doesn't have — always left undefined for WO, so calcSummary's fallback
+  // branches (client-computed from items) are what actually run. One
+  // necessary (non-cosmetic) fix was required here: PO's `totalVat` formula
+  // reads `data.vatAmt ?? 0` with NO client-side fallback computation at all
+  // (unlike totalAmt/netAmt, which do have real fallbacks) — for WO this
+  // would silently show ฿0.00 VAT even with useVat on. Fixed in calcSummary
+  // below to compute 7% client-side, matching how WO's own WOItemsTable
+  // already computes VAT.
   vatAmt?: number; whtAmt?: number; totalAmt?: number; netAmt?: number
-  // COUNT of po_edit_log rows — 0 if never edited-and-resent for re-approval.
-  // poNo itself never changes; compose the "#R{n}" suffix from this instead.
+  // WO has no revision/edit-log concept on this print template — always
+  // undefined, so formatPoNoWithRevision's "#R{n}" suffix logic never
+  // triggers (harmless, matches "no revision" behavior).
   revisionRound?: number
-  // purchase_order.status (approval status, NOT status_receive) — drives the
-  // "DRAFT" print watermark only. Optional because older callers may not pass it.
   status?: string
 }
 
-// Dev-only fixture — use for isolated preview/testing only, never as a silent
-// production fallback. Real usage must always pass real `data` from the API.
-export const MOCK_DATA: POData = {
-  poNo:'FACS-6906-0001', poDate:'15/06/2026', prNo:'PR6906-0001',
-  deliveryDate:'25/06/2569', project:'GNS-033', deliveryPlace:'โรงงานนครปฐม',
-  job:'CIVIL-01', contractDelivery:'ภายใน 14 วัน', quotationNo:'QT-2568-0042', tel:'02-805-6820',
-  supplier:{ name:'บริษัท เหล็กไทย จำกัด', address1:'99/9 ถนนพระราม 2 แขวงบางมด',
-    address2:'เขตจอมทอง กรุงเทพฯ 10150', termOfPayment:'Credit 30 Days', contact:'คุณสมชาย , 081-234-5678' },
-  items:[
-    {no:'1',code:'1001001',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.',subDesc:'มาตรฐาน JIS G3101 SS400',qty:40,unit:'เส้น',pricePerUnit:239,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'2',code:'1001002',desc:'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.',subDesc:'Zone A อาคาร 2',qty:10,unit:'เส้น',pricePerUnit:298,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'3',code:'1001003',desc:'Flat Bar Steel (เหล็กแบน) 50×5mm×6M.',subDesc:'สี Primer สีแดง 1 ชั้น',qty:8,unit:'เส้น',pricePerUnit:310,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'4',code:'1001004',desc:'Round Bar Steel (เหล็กกลม) Dia 16mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:220,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'5',code:'1001005',desc:'Round Bar Steel (เหล็กกลม) Dia 20mm×6M.',subDesc:'ส่วนลดพิเศษ GNS-033',qty:10,unit:'เส้น',pricePerUnit:340,disc:5,discType:'pct',vatPct:7,whtPct:3},
-    {no:'6',code:'1001006',desc:'Steel Plate (เหล็กแผ่น) 4mm×1,200×2,400mm.',subDesc:'',qty:5,unit:'แผ่น',pricePerUnit:1850,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'7',code:'1001007',desc:'Steel Plate (เหล็กแผ่น) 6mm×1,200×2,400mm.',subDesc:'Drawing No. STR-06-Rev2',qty:5,unit:'แผ่น',pricePerUnit:2700,disc:0,discType:'pct',vatPct:7,whtPct:3},
-    {no:'8',code:'1001008',desc:'Square Tube Steel (เหล็กท่อสี่เหลี่ยม) 50×50×2mm×6M.',subDesc:'ระบุ Heat No.',qty:6,unit:'เส้น',pricePerUnit:430,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'9',code:'1001009',desc:'Channel Steel (เหล็กรางน้ำ) 100×50×5mm×6M.',subDesc:'Purlin Zone B',qty:12,unit:'เส้น',pricePerUnit:1240,disc:0,discType:'pct',vatPct:7,whtPct:3},
-    {no:'10',code:'1001010',desc:'I-Beam Steel (เหล็กไอ) 150×75×7mm×6M.',subDesc:'Main Beam Drawing STR-15',qty:6,unit:'เส้น',pricePerUnit:4500,disc:500,discType:'amt',vatPct:7,whtPct:3},
-    {no:'11',code:'1001011',desc:'Welding Rod (ลวดเชื่อม) AWS E6013 Ø3.2mm.',subDesc:'',qty:50,unit:'กก.',pricePerUnit:85,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'12',code:'1001012',desc:'Galvanized Sheet 0.5mm×1,200×2,400mm.',subDesc:'Zone C หุ้มผนัง',qty:30,unit:'แผ่น',pricePerUnit:420,disc:2,discType:'pct',vatPct:7,whtPct:3},
-    {no:'13',code:'1001013',desc:'Channel Steel (เหล็กรางน้ำ) 75×40×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:8,unit:'เส้น',pricePerUnit:890,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'14',code:'1001014',desc:'I-Beam Steel (เหล็กไอ) 100×50×5mm×6M.',subDesc:'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',qty:4,unit:'เส้น',pricePerUnit:2100,disc:0,discType:'pct',vatPct:7,whtPct:0},
-    {no:'15',code:'1001015',desc:'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×5mm×6M.',subDesc:'',qty:20,unit:'เส้น',pricePerUnit:378,disc:0,discType:'pct',vatPct:7,whtPct:0},
-   
-  ],
-  extraDiscAmt:500, shippingAmt:0,
-  remark:'1. การส่งสินค้า และการวางบิล จะต้องแนบใบสั่งซื้อทุกครั้ง\n2. บริษัทฯ จะรับวางบิลค่าสินค้าหรือค่าบริการ เมื่อได้รับสินค้าถูกต้องตามใบสั่งซื้อเท่านั้น\n3. กรุณาระบุเลขที่ PO ในใบส่งสินค้าทุกครั้ง',
-  useDiscount:true, useVat:true, useWht:true,
-}
-
-// The print view's `data` prop comes straight from GET /po/:id/print-data,
-// not from the live form's state — its per-line fields (disc/discType) and
+// The print view's `data` prop comes straight from GET /work-order/:id, not
 // header flags (useDiscount/useVat/useWht) may be missing, null, or absent
 // depending on backend response shape. calcDisc has no null-guards (the
 // live form always feeds it clean numbers), so normalize at this call site
 // before anything touches the shared calc function.
-function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
+function normalizeItem(raw: Partial<WOPOItem> & Record<string, any>): WOPOItem {
   return {
     no: raw.no ?? '',
     code: raw.code,
@@ -89,7 +92,7 @@ function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
   }
 }
 
-function normalizeData(raw: POData): POData {
+function normalizeData(raw: WOPOData): WOPOData {
   return {
     ...raw,
     items: (raw.items ?? []).map(normalizeItem),
@@ -101,9 +104,9 @@ function normalizeData(raw: POData): POData {
   }
 }
 
-const lineAmt = (it:POItem) => { const b=it.qty*it.pricePerUnit; return b-calcDisc(b,it.disc,it.discType??'pct') }
-const lineVat = (it:POItem) => lineAmt(it)*it.vatPct/100
-const lineWht = (it:POItem) => lineAmt(it)*it.whtPct/100
+const lineAmt = (it:WOPOItem) => { const b=it.qty*it.pricePerUnit; return b-calcDisc(b,it.disc,it.discType??'pct') }
+const lineVat = (it:WOPOItem) => lineAmt(it)*it.vatPct/100
+const lineWht = (it:WOPOItem) => lineAmt(it)*it.whtPct/100
 const thb = (n:number) => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})
 
 const THAI_NUM = ['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า']
@@ -143,17 +146,20 @@ function thaiBahtText(amount:number):string {
   return bahtWords+satangWords
 }
 
-function calcSummary(data:POData) {
+function calcSummary(data:WOPOData) {
   // Same drift-avoidance as netPay below — prefer the backend's authoritative
   // pre-discount/VAT/WHT total_amount over summing possibly-paginated/rounded
   // client-side line amounts, falling back for responses/mock data without it.
   const subtotal = data.totalAmt ?? data.items.reduce((s,it)=>s+lineAmt(it),0)
-  // VAT has no per-line column in the real schema (unlike WHT below) — the old
-  // per-line vatPct sum always defaulted to 0. Use the backend's authoritative
-  // header-level vat_amount instead, same useX-flag-gated pattern as discount.
-  const totalVat = data.useVat ? (data.vatAmt ?? 0) : 0
   const disc = data.useDiscount ? data.extraDiscAmt : 0
   const afterDisc = subtotal - disc
+  // PO prefers the backend's authoritative header-level vat_amount here with
+  // no client-side fallback — WO has no such backend field (data.vatAmt is
+  // always undefined), so that formula would silently show ฿0.00 VAT even
+  // with useVat on. This is the one necessary (non-cosmetic) calc fix:
+  // compute the flat 7% client-side from afterDisc, same as WOItemsTable's
+  // own calcTotals already does on the create form.
+  const totalVat = data.useVat ? (data.vatAmt ?? afterDisc * 0.07) : 0
   const whtRates = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   const whtRate = whtRates.length>0 ? whtRates[0] : 0
   const totalWht = data.useWht ? afterDisc*whtRate/100 : 0
@@ -171,17 +177,17 @@ const PAGE_H_MM = 275
 const BOTTOM_BUFFER_MM = 8
 
 const CSS = `
-  .po-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
+  .wo-po-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
     position:fixed; top:-9999px; left:-9999px; visibility:hidden; }
-  .po-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  .wo-po-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   @media print {
-    body>*:not(.po-portal){display:none !important;}
-    .po-portal{position:static !important;visibility:visible !important;}
-    .po-page{page-break-after:always;}
-    .po-page:last-child{page-break-after:avoid;}
+    body>*:not(.wo-po-portal){display:none !important;}
+    .wo-po-portal{position:static !important;visibility:visible !important;}
+    .wo-po-page{page-break-after:always;}
+    .wo-po-page:last-child{page-break-after:avoid;}
     @page{size:A4 portrait;margin:0;}
   }
-  .po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
+  .wo-po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
     font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Sarabun',sans-serif;}
@@ -223,7 +229,11 @@ const AUTH_COLS = [
   {label:'Supply Chain Department',sublabel:'Supply Chain Department'},
   {label:'Section Head',sublabel:'Section Head'},
   {label:'Authorized Signature',sublabel:'Authorized Signature'},
-  {label:'Supplier Signature',sublabel:'Supplier Signature'},
+  // Only this 4th column's label changed — WO has "ผู้รับเหมาช่วง" (subcontractor),
+  // which PO's own 4-column signature row doesn't have. Rest of AUTH_COLS and
+  // all of the surrounding auth-col/auth-head/auth-body/auth-date structure
+  // below is untouched.
+  {label:'ผู้รับเหมาช่วง (Subcontractor)',sublabel:'ผู้รับเหมาช่วง (Subcontractor)'},
 ]
 
 const FillerTr = () => (
@@ -245,7 +255,7 @@ const TABLE_HEAD = (
   </tr></thead>
 )
 
-const POHeader = ({data,pageNum,totalPages}:{data:POData;pageNum:number;totalPages:number}) => (
+const POHeader = ({data,pageNum,totalPages}:{data:WOPOData;pageNum:number;totalPages:number}) => (
   <div className="po-box-first" style={{display:'flex',alignItems:'flex-start',minHeight:'26mm'}}>
     <div style={{width:'auto',flexShrink:0,display:'flex',alignItems:'flex-start',gap:8,padding:'4px 0px'}}>
              <img
@@ -272,42 +282,33 @@ const POHeader = ({data,pageNum,totalPages}:{data:POData;pageNum:number;totalPag
     <div style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',alignItems:'flex-end',padding:'2px 8px 4px 8px'}}>
       <div style={{fontSize:'7.5pt',color:'#444'}}>Page {pageNum}/{totalPages}</div>
       <div style={{textAlign:'right'}}>
-        <div style={{fontSize:'18pt',fontWeight:700,color:BK,lineHeight:1.1,marginTop:'4px'}}>PURCHASE ORDER</div>
-        <div style={{fontSize:'13pt',fontWeight:600,color:BK,marginTop:'6px'}}>ใบสั่งซื้อ</div>
+        <div style={{fontSize:'18pt',fontWeight:700,color:BK,lineHeight:1.1,marginTop:'4px'}}>WORK ORDER</div>
+        <div style={{fontSize:'13pt',fontWeight:600,color:BK,marginTop:'6px'}}>หนังสือสั่งจ้าง</div>
       </div>
     </div>
   </div>
 )
 
-const POInfoBox = ({data}:{data:POData}) => (
+// Trimmed to exactly 3 fields per task: ผู้รับจ้าง (supplier_name), WO No.,
+// Currency. PO's original print never rendered a currency field of its own
+// (no `currency` on POData, nothing in PurchaseOrderPrint's info box) and WO
+// has no currency field either — "THB" here is a fixed constant, matching
+// how PO would display it if it had one at all.
+const CURRENCY = 'THB'
+
+const POInfoBox = ({data}:{data:WOPOData}) => (
   <div className="po-box" style={{display:'flex',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
     <div style={{width:'50%',borderRight:'1px solid #000',padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
-      <div><b>Supplier :</b>&nbsp;{data.supplier.name}</div>
-      <div style={{display:'flex'}}><span style={{whiteSpace:'nowrap'}}><b>Address :&nbsp;</b></span><span>{data.supplier.address1}</span></div>
-      {data.supplier.address2&&<div style={{paddingLeft:52}}>{data.supplier.address2}</div>}
-      {data.supplier.address3&&<div style={{paddingLeft:52}}>{data.supplier.address3}</div>}
-      <div><b>Term of Payment :</b>&nbsp;{data.supplier.termOfPayment}</div>
-      <div><b>Contact :</b>&nbsp;{data.supplier.contact}</div>
+      <div><b>ผู้รับจ้าง :</b>&nbsp;{data.supplier.name}</div>
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
-      <div style={{display:'flex',gap:8}}>
-        <span><b>Po No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
-        <span style={{marginLeft:'auto'}}><b>Date Doc. :</b>&nbsp;{data.poDate}</span>
-      </div>
-      <div><b>PR No. :</b>&nbsp;{data.prNo}</div>
-      <div><b>Quotation No. :</b>&nbsp;{data.quotationNo}</div>
-      <div style={{display:'flex',gap:8}}>
-        <b>Project Code :</b>&nbsp;{data.project}
-        
-      </div>
-      <div style={{display:'flex',gap:8}}>
-        <b>Job Type :</b>&nbsp;{data.job}
-      </div>
+      <div><b>WO No :</b>&nbsp;{data.poNo}</div>
+      <div><b>Currency :</b>&nbsp;{CURRENCY}</div>
     </div>
   </div>
 )
 
-const ItemRow = ({row}:{row:POItem}) => (
+const ItemRow = ({row}:{row:WOPOItem}) => (
   <tr>
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
@@ -323,7 +324,7 @@ const ItemRow = ({row}:{row:POItem}) => (
   </tr>
 )
 
-const POFooter = ({data}:{data:POData}) => {
+const POFooter = ({data}:{data:WOPOData}) => {
   const s = calcSummary(data)
   const vatPcts = [...new Set(data.items.filter(i=>i.vatPct>0).map(i=>i.vatPct))]
   const whtPcts = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
@@ -334,10 +335,6 @@ const POFooter = ({data}:{data:POData}) => {
           <div style={{flex:1,padding:'4px 8px',borderRight:'1px solid #000',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div style={{fontWeight:700,marginBottom:2}}>หมายเหตุ / Remark</div>
             {data.remark.split('\n').map((l,i)=><div key={i} style={{lineHeight:'1.2'}}>{l}</div>)}
-            <div style={{marginTop:4,lineHeight:'1.2'}}>
-              <div><b>Delivery Date :</b>&nbsp;{data.deliveryDate}&nbsp;&nbsp;<b>Delivery Place :</b>&nbsp;{data.deliveryPlace}</div>
-              <div><b>Contract Delivery :</b>&nbsp;{data.contractDelivery}&nbsp;&nbsp;<b>TEL :</b>&nbsp;{data.tel}</div>
-            </div>
           </div>
           <div style={{width:'69.50mm',display:'flex',flexDirection:'column',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row"><span className="sum-l">Subtotal</span><span className="sum-v">{thb(s.subtotal)}</span></div>
@@ -383,14 +380,15 @@ const POFooter = ({data}:{data:POData}) => {
   )
 }
 
-const EMPTY_ROW: POItem = {no:'',code:'',desc:'',qty:0,unit:'',pricePerUnit:0,disc:0,discType:'pct',vatPct:0,whtPct:0}
+const EMPTY_ROW: WOPOItem = {no:'',code:'',desc:'',qty:0,unit:'',pricePerUnit:0,disc:0,discType:'pct',vatPct:0,whtPct:0}
 
-interface Props { data: POData; onReady?: () => void }
+interface Props { data: WOPOData; onReady?: () => void }
 
-const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
-  // rawData is whatever GET /po/:id/print-data returned — normalize once,
-  // here, so every downstream read of `data` sees complete, correctly-typed
-  // fields regardless of backend response shape.
+// Renamed from PO's PurchaseOrderPrint (mechanical rename, matches filename).
+const WorkOrderPrintPOStyle: React.FC<Props> = ({ data: rawData, onReady }) => {
+  // rawData now comes from the WOPOData mapper (see mapWorkOrderToPOStyle in
+  // WorkOrderPrintView.tsx) fed by GET /work-order/:id — same normalize-once
+  // pattern PO uses, just a different upstream data source.
   const data = normalizeData(rawData)
   const refHeader = useRef<HTMLDivElement>(null)
   const refInfo   = useRef<HTMLDivElement>(null)
@@ -398,14 +396,16 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   const refRow    = useRef<HTMLTableRowElement>(null)
   const refThead  = useRef<HTMLTableSectionElement>(null)
 
-  const [pages,    setPages]    = useState<POItem[][]|null>(null)
+  const [pages,    setPages]    = useState<WOPOItem[][]|null>(null)
   const [rowsLast, setRowsLast] = useState(10)
 
   useEffect(()=>{
     const s = document.createElement('style')
-    s.id='po-style'; s.textContent=CSS
+    // Own id (not PO's "po-style") so the two print views can never collide
+    // if somehow mounted at the same time.
+    s.id='wo-po-style'; s.textContent=CSS
     document.head.appendChild(s)
-    return ()=>{ document.getElementById('po-style')?.remove() }
+    return ()=>{ document.getElementById('wo-po-style')?.remove() }
   },[])
 
   useEffect(()=>{
@@ -420,8 +420,8 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
     const fixed = hMm+iMm+tMm
     const rOther = Math.floor((PAGE_H_MM-BOTTOM_BUFFER_MM-fixed)/rMm)
     const rLast  = Math.floor((PAGE_H_MM-BOTTOM_BUFFER_MM-fixed-fMm)/rMm)
-    console.log(`[PO] h:${hMm.toFixed(1)} i:${iMm.toFixed(1)} f:${fMm.toFixed(1)} t:${tMm.toFixed(1)} r:${rMm.toFixed(1)} → other:${rOther} last:${rLast}`)
-    const result:POItem[][] = []
+    console.log(`[WO-PO] h:${hMm.toFixed(1)} i:${iMm.toFixed(1)} f:${fMm.toFixed(1)} t:${tMm.toFixed(1)} r:${rMm.toFixed(1)} → other:${rOther} last:${rLast}`)
+    const result:WOPOItem[][] = []
     let idx=0
     while(idx<data.items.length){
       const last = idx+rOther>=data.items.length
@@ -442,8 +442,8 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   if(pages===null){
     return ReactDOM.createPortal(
-      <div className="po-portal">
-        <div className="po-page" style={{visibility:'hidden'}}>
+      <div className="wo-po-portal">
+        <div className="wo-po-page" style={{visibility:'hidden'}}>
           <div ref={refHeader}><POHeader data={data} pageNum={1} totalPages={1}/></div>
           <div ref={refInfo}><POInfoBox data={data}/></div>
           <table className="po-tbl">{TABLE_COLS}
@@ -461,12 +461,12 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const totalPages = pages.length
   return ReactDOM.createPortal(
-    <div className="po-portal">
+    <div className="wo-po-portal">
       {pages.map((pageItems,pageIdx)=>{
         const isLast = pageIdx===totalPages-1
         const rows = [...pageItems]
         return (
-          <div key={pageIdx} className="po-page">
+          <div key={pageIdx} className="wo-po-page">
             {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
             <POHeader data={data} pageNum={pageIdx+1} totalPages={totalPages}/>
             <POInfoBox data={data}/>
@@ -496,4 +496,4 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   )
 }
 
-export default PurchaseOrderPrint
+export default WorkOrderPrintPOStyle

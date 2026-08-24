@@ -25,9 +25,18 @@ interface Props {
   onClose: () => void
   onConfirm: (items: Material[]) => void
   showStockLookup?: boolean
+  /**
+   * Project scope for a per-project stock_on_hand hint (project_stock, never
+   * warehouse stock) — passed straight through to GET /master/allMaterial's
+   * own project_code param. Mutually exclusive in practice with
+   * showStockLookup (which shows warehouse stock via a different endpoint);
+   * when both are unset no stock hint renders at all. Read-only reference
+   * only, per CLAUDE.md — never implies a stock deduction.
+   */
+  projectCode?: string
 }
 
-const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false }) => {
+const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false, projectCode }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const screens = useBreakpoint()
   const isMobile = screens.md === false
@@ -168,6 +177,7 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
             q: search || undefined,
             subgroup_id: selectedSubgroup ?? undefined,
             mat_name_id: selectedMatName ?? undefined,
+            project_code: projectCode || undefined,
           },
         })
         const list: Material[] = Array.isArray(res.data) ? res.data : res.data?.data ?? []
@@ -189,7 +199,7 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
     }
 
     fetchData()
-  }, [page, search, selectedSubgroup, selectedMatName, open, accessToken])
+  }, [page, search, selectedSubgroup, selectedMatName, open, accessToken, projectCode])
 
   const handleConfirm = () => {
     onConfirm(selectedRows)
@@ -223,6 +233,11 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
                 {lookup && lookup !== 'loading' && !lookup.found && (
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>ไม่มีในระบบ Stock</span>
                 )}
+              </div>
+            )}
+            {projectCode && (
+              <div style={{ marginTop: 2, fontSize: 11, color: '#93c5fd' }}>
+                Stock อ้างอิงในโครงการ: {Number(r.stock_on_hand ?? 0).toLocaleString('th-TH')} {r.unit_name}
               </div>
             )}
           </div>
@@ -408,6 +423,11 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
                   {lookup && lookup !== 'loading' && !lookup.found && (
                     <span style={{ fontSize: 11, color: '#9ca3af' }}>ไม่มีในระบบ Stock</span>
                   )}
+                </div>
+              )}
+              {projectCode && (
+                <div style={{ marginTop: 6, fontSize: 11, color: '#93c5fd' }}>
+                  Stock อ้างอิงในโครงการ: {Number(row.stock_on_hand ?? 0).toLocaleString('th-TH')} {row.unit_name}
                 </div>
               )}
             </div>

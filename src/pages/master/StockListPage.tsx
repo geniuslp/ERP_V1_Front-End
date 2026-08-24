@@ -248,6 +248,14 @@ const StockListPage: React.FC = () => {
         setPreviewRows(merged)
         setPreviewSummary(result.summary)
         setPendingFile(file)
+
+        const notFound = merged.filter((r) => !r.code_found)
+        if (notFound.length > 0) {
+          console.log(
+            `[Import Preview] ${notFound.length} mat_code(s) not found in material_code:`,
+            notFound.map((r) => ({ row_no: r.row_no, mat_code: r.mat_code, file_name: r.file_name })),
+          )
+        }
       } catch (err: any) {
         const errMsg =
           err?.response?.data?.message ||
@@ -533,16 +541,14 @@ const StockListPage: React.FC = () => {
                 {
                   title: 'วัสดุและ Spec', key: 'name_spec', ellipsis: true,
                   render: (_: unknown, r: MergedPreviewRow) => {
-                    // code_found means master data exists — show the verified
-                    // master name+spec, since the point of this column is
-                    // what the item actually IS per the system of record.
-                    // Only fall back to the file's own name when there's no
-                    // master match to show at all.
+                    // This column represents DATABASE data only — show master
+                    // name+spec when matched, otherwise a plain dash. Never fall
+                    // back to file_name; that belongs to the "Item Name" column.
                     if (r.code_found && r.master) {
                       const text = [r.master.mat_name, r.master.spec_description].filter(Boolean).join(' — ')
                       return text || <Text type="danger">—</Text>
                     }
-                    return r.file_name || <Text type="danger">—</Text>
+                    return <Text type="secondary">-</Text>
                   },
                 },
                 {

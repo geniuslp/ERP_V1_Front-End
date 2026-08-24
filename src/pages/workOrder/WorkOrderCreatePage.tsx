@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
-  Card, Form, Input, InputNumber, DatePicker, Select, Radio, Button, Row, Col, message, Spin,
+  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, message, Spin,
 } from 'antd'
 import { SaveOutlined, SendOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -8,10 +8,13 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
+import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
+import WOItemsTable, { type WOLineItem } from '@/components/workOrder/WOItemsTable'
+import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
-import type { WorkOrderPayload } from '@/types/workOrder'
+import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 
 // Fixed option list per the paper form — 7.1 เงินล่วงหน้า and 7.4 หักคืนเงินล่วงหน้า
@@ -19,6 +22,18 @@ import { numberToThaiText } from '@/utils/thaiBahtText'
 const ADVANCE_PCT_OPTIONS = [5, 10, 15, 20, 30, 50].map((v) => ({ value: v, label: `${v}%` }))
 const RETENTION_PCT_OPTIONS = [5, 10].map((v) => ({ value: v, label: `${v}%` }))
 const CONTRACT_DESCRIPTION_OPTIONS = Object.entries(WO_CONTRACT_DESCRIPTION_LABEL).map(([value, label]) => ({ value, label }))
+
+// สำนักงาน / สาขา — plain array so adding a 5th/6th branch later is a one-line
+// change here, no scattered conditionals elsewhere. Flag back if there are more
+// branch codes to add — this is the list as given.
+const BRANCH_OPTIONS: { value: string; label: string }[] = [
+  { value: 'HO', label: 'สำนักงานใหญ่' },
+  { value: 'FAC-S', label: 'สำนักงานศาลายา' },
+  { value: 'FAC-P', label: 'สำนักงานปราจีนบุรี' },
+  { value: 'BO', label: 'สำนักงานบางบ่อ' },
+]
+const BRANCH_LABEL: Record<string, string> = Object.fromEntries(BRANCH_OPTIONS.map((o) => [o.value, o.label]))
+const composeEmployerName = (branch: string) => `บริษัท จีเนียส เอนจิเนียริง (${BRANCH_LABEL[branch]}) จำกัด`
 
 const MENU_CODE = 'MENU_WO_CREATE'
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -58,6 +73,31 @@ const WorkOrderCreatePage: React.FC = () => {
   const updateContractAmountText = (v: number | null) => {
     setContractAmountText(v ? numberToThaiText(v) : '')
   }
+
+  // สำนักงาน / สาขา — frontend-only convenience state, not a Form field (so it
+  // never leaks into buildPayload's `form.getFieldsValue()` spread and isn't
+  // submitted to the backend). Only drives auto-filling employer_name, which
+  // stays the actual submitted/schema field. employer_name becomes read-only
+  // once derived this way — flagging that default per the task; happy to make
+  // it an editable override instead if that's not the right call.
+  const [employerBranch, setEmployerBranch] = useState<string | undefined>(undefined)
+  const handleBranchChange = (branch: string) => {
+    setEmployerBranch(branch)
+    form.setFieldValue('employer_name', composeEmployerName(branch))
+  }
+
+  // Cost-code line items — full editable table (WOItemsTable), mirroring PO's
+  // POItemsTable + TaxSidebarPanel exactly (per explicit instruction to reuse
+  // rather than rebuild): items are frontend-only row state, stripped down to
+  // WorkOrderLine's submit shape in buildPayload; discount/VAT/WHT are the
+  // same header-level toggle flags + per-line values PO uses, not new fields
+  // invented independently.
+  const [items, setItems] = useState<WOLineItem[]>([])
+  const [taxOpen, setTaxOpen] = useState(false)
+  const [useDisc, setUseDisc] = useState(false)
+  const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
+  const [useVat, setUseVat] = useState(false)
+  const [useWht, setUseWht] = useState(false)
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -112,6 +152,32 @@ const WorkOrderCreatePage: React.FC = () => {
           start_date: wo.start_date ? dayjs(wo.start_date) : undefined,
           end_date: wo.end_date ? dayjs(wo.end_date) : undefined,
         })
+        // Backend only returns the raw cost_code per line, not subgroup names —
+        // display falls back to the code itself (cost_code_label stays null).
+        setItems((wo.lines ?? []).map((l, i) => ({
+          key: `existing-${i}-${l.cost_code}`,
+          no: i + 1,
+          cost_code: l.cost_code,
+          cost_code_label: l.cost_code,
+          description: l.description ?? '',
+          qty: l.qty,
+          unit_price: l.unit_price,
+          disc: l.disc ?? 0,
+          disc_type: l.disc_type ?? 'pct',
+          wht_rate: (l.wht_rate as 1 | 3 | 5 | null) ?? null,
+        })))
+        setUseDisc(Boolean(wo.use_discount))
+        setDiscType(wo.discount_type === 'amt' ? 'amt' : 'pct')
+        setUseVat(Boolean(wo.use_vat))
+        setUseWht(Boolean(wo.use_wht))
+        // employer_branch doesn't exist on the backend — best-effort reverse
+        // match against the composed template so the dropdown reflects an
+        // existing record's branch when possible; older/manually-edited
+        // employer_name values that don't match any template just leave the
+        // dropdown empty (the read-only employer_name field still shows the
+        // real stored value regardless).
+        const matchedBranch = BRANCH_OPTIONS.find((o) => composeEmployerName(o.value) === wo.employer_name)?.value
+        setEmployerBranch(matchedBranch)
         updateContractAmountText(wo.contract_amount ?? null)
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
@@ -156,6 +222,35 @@ const WorkOrderCreatePage: React.FC = () => {
       start_date: v.start_date ? dayjs(v.start_date).format('YYYY-MM-DD') : undefined,
       end_date: v.end_date ? dayjs(v.end_date).format('YYYY-MM-DD') : undefined,
       status: submitForApproval ? 'PENDING_APPROVAL' : 'DRAFT',
+
+      // Backend requires supplier_name non-empty (CreateWorkOrderRequest.SupplierName),
+      // but the form only has a Form.Item for supplier_code (the Select's value) — there
+      // is no supplier_name Form field, so `...v` above never carries it. Explicit
+      // override, same reason as the `lines` override below.
+      supplier_name: suppliers.find((s) => s.supplier_code === v.supplier_code)?.supplier_name,
+
+      // ── Tax (flat — mirrors POCreatePage's buildPayload exactly) ──
+      use_discount: useDisc,
+      discount_type: discType,
+      use_vat: useVat,
+      use_wht: useWht,
+
+      // ── Lines ── explicit override (not just relying on the `...v` spread)
+      // since edit-mode's initial form.setFieldsValue({ ...wo }) call put the
+      // fetched record's raw `lines` straight into the antd form store too —
+      // this is the source of truth instead.
+      lines: items.map((item, i): WorkOrderLine => ({
+        line_no: i + 1,
+        cost_code: item.cost_code,
+        description: item.description || undefined,
+        qty: item.qty,
+        unit_price: item.unit_price,
+        // erp-api's WorkOrderLineInput json key is `disc`, not `discount` (PO's
+        // shape) — see WorkOrderLine's doc comment in types/workOrder.ts.
+        disc: item.disc ?? 0,
+        disc_type: item.disc_type ?? discType,
+        wht_rate: useWht ? (item.wht_rate ?? 3) : null,
+      })),
     }
   }
 
@@ -164,6 +259,13 @@ const WorkOrderCreatePage: React.FC = () => {
       await form.validateFields()
     } catch {
       message.warning('กรุณากรอกข้อมูลให้ครบถ้วน')
+      return
+    }
+    // items is plain React state, not a Form field, so its own "at least 1
+    // line" requirement (same as the old cost_codes multi-select's rule)
+    // needs a manual check here rather than a Form.Item validator.
+    if (items.length === 0) {
+      message.warning('กรุณาเพิ่มรายการ Cost Code อย่างน้อย 1 รายการ')
       return
     }
     setSaving(true)
@@ -197,6 +299,38 @@ const WorkOrderCreatePage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: isEdit ? 'แก้ไข' : 'สร้าง' }]}
         extra={
           <div style={{ display: 'flex', gap: 8 }}>
+            {/* TODO: this button is temporarily shown unconditionally (on both
+                blank new forms and existing records) purely to unblock visual
+                review of the print button + template picker + both print
+                templates. Restore the real gate — only show once an existing
+                record is loaded, i.e. `isEdit && id` — in a follow-up once the
+                visual design is confirmed. When there's no saved `id` yet, it
+                prints/previews straight from the current in-memory form state
+                (formData) instead of fetching — no save-first requirement for
+                now (see WorkOrderPrintTrigger's handleConfirm). */}
+            <WorkOrderPrintTrigger
+              id={id}
+              getFormData={() => ({
+                ...form.getFieldsValue(true),
+                // items/tax flags are plain React state now (not Form fields,
+                // see buildPayload), so the unsaved-preview path needs them
+                // merged in explicitly — form.getFieldsValue() alone won't see them.
+                use_discount: useDisc,
+                discount_type: discType,
+                use_vat: useVat,
+                use_wht: useWht,
+                lines: items.map((item, i): WorkOrderLine => ({
+                  line_no: i + 1,
+                  cost_code: item.cost_code,
+                  description: item.description || undefined,
+                  qty: item.qty,
+                  unit_price: item.unit_price,
+                  disc: item.disc ?? 0,
+                  disc_type: item.disc_type ?? discType,
+                  wht_rate: useWht ? (item.wht_rate ?? 3) : null,
+                })),
+              })}
+            />
             <PermissionButton
               menuCode={MENU_CODE}
               action="write"
@@ -225,7 +359,7 @@ const WorkOrderCreatePage: React.FC = () => {
         form={form}
         layout="vertical"
         initialValues={{
-          contract_type: 'LABOR_AND_MATERIAL',
+          contract_type: 'LABOR_MATERIAL',
           work_system: 'P',
           vat_rate: 7,
           wht_rate: 3,
@@ -251,11 +385,16 @@ const WorkOrderCreatePage: React.FC = () => {
           </Row>
         </Card>
 
-        <Card title="ผู้ว่าจ้าง / ผู้รับจ้าง" style={cardStyle}>
+        <Card title="สำนักงาน / สาขา" style={cardStyle}>
           <Row gutter={16}>
             <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>ผู้ว่าจ้าง</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาระบุผู้ว่าจ้าง' }]}>
-                <Input placeholder="ชื่อบริษัท/หน่วยงานผู้ว่าจ้าง" />
+              <Form.Item label={<span style={labelStyle}>สำนักงาน / สาขา</span>}>
+                <Select
+                  placeholder="เลือกสำนักงาน / สาขา"
+                  options={BRANCH_OPTIONS}
+                  value={employerBranch}
+                  onChange={handleBranchChange}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -270,6 +409,16 @@ const WorkOrderCreatePage: React.FC = () => {
                 }
               >
                 <Input placeholder="ชื่อโครงการ / ขอบเขตงาน" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        <Card title="ผู้ว่าจ้าง / ผู้รับจ้าง" style={cardStyle}>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item label={<span style={labelStyle}>ผู้ว่าจ้าง</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาเลือกสำนักงาน / สาขา' }]}>
+                <Input disabled placeholder="เลือกสำนักงาน / สาขาด้านบนก่อน" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -306,10 +455,12 @@ const WorkOrderCreatePage: React.FC = () => {
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item label={<span style={labelStyle}>ลักษณะสัญญา</span>} name="contract_type">
-                <Radio.Group>
-                  <Radio value="LABOR_AND_MATERIAL">ทั้งค่าแรงและค่าของ</Radio>
-                  <Radio value="LABOR_ONLY">ค่าแรงอย่างเดียว</Radio>
-                </Radio.Group>
+                <Select
+                  options={[
+                    { value: 'LABOR_MATERIAL', label: 'ทั้งค่าแรง และค่าของ' },
+                    { value: 'LABOR_ONLY', label: 'ค่าแรงอย่างเดียว' },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -436,11 +587,6 @@ const WorkOrderCreatePage: React.FC = () => {
 
         <Card title="อื่นๆ" style={cardStyle}>
           <Row gutter={16}>
-            <Col xs={24} md={8}>
-              <Form.Item label={<span style={labelStyle}>Cost Code</span>} name="cost_code">
-                <Input />
-              </Form.Item>
-            </Col>
             <Col xs={24}>
               <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms">
                 <Input.TextArea rows={3} />
@@ -449,6 +595,43 @@ const WorkOrderCreatePage: React.FC = () => {
           </Row>
         </Card>
       </Form>
+
+      {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
+          create page uses (table + collapsible tax sidebar side by side),
+          reused exactly rather than rebuilt. Lives outside the antd <Form>
+          since `items` is plain React state, same pattern as POCreatePage. */}
+      <Card
+        title={<span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>รายการ Cost Code</span>}
+        style={cardStyle}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div style={{ display: 'flex', overflow: 'hidden' }}>
+          <div style={{ flex: 1, minWidth: 0, padding: 24 }}>
+            <WOItemsTable
+              items={items}
+              onChange={setItems}
+              taxOpen={taxOpen}
+              onTaxToggle={() => setTaxOpen((v) => !v)}
+              useDisc={useDisc}
+              discType={discType}
+              useVat={useVat}
+              useWht={useWht}
+            />
+          </div>
+          <TaxSidebarPanel
+            open={taxOpen}
+            onClose={() => setTaxOpen(false)}
+            useDisc={useDisc}
+            onUseDiscChange={setUseDisc}
+            discType={discType}
+            onDiscTypeChange={setDiscType}
+            useVat={useVat}
+            onUseVatChange={setUseVat}
+            useWht={useWht}
+            onUseWhtChange={setUseWht}
+          />
+        </div>
+      </Card>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button onClick={() => navigate('/work-order/list')}>ยกเลิก</Button>

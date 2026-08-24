@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Select, DatePicker, Input, Button, Space, Tag } from 'antd'
+import { Card, Table, Select, DatePicker, Input, Button, Space, Tag, Tabs, Badge } from 'antd'
 import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -29,6 +29,18 @@ interface Props {
   detailPathPrefix: string
   fromLabel: string
   toLabel: string
+  // Adds a "รอตรวจสอบ/ยืนยันแล้ว/ยกเลิก/ทั้งหมด" tab bar above the table, defaulting to the
+  // "รอตรวจสอบ" (DRAFT) tab so warehouse staff land straight on what needs their action.
+  showReviewTabs?: boolean
+}
+
+type ReviewTabKey = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'ALL'
+
+const TAB_STATUS: Record<ReviewTabKey, string | undefined> = {
+  PENDING: 'DRAFT',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+  ALL: undefined,
 }
 
 const resolveFromTo = (r: StockTransferListItem): { from: string; to: string } => ({
@@ -38,6 +50,7 @@ const resolveFromTo = (r: StockTransferListItem): { from: string; to: string } =
 
 const StockTransferListView: React.FC<Props> = ({
   transferType, menuCode, title, subtitle, createLabel, breadcrumbLabel, createPath, detailPathPrefix, fromLabel, toLabel,
+  showReviewTabs,
 }) => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -53,13 +66,17 @@ const StockTransferListView: React.FC<Props> = ({
   const [warehouseFilter, setWarehouseFilter] = useState<string | undefined>()
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
 
-  const fetchList = async (nextPage = page) => {
+  const [reviewTab, setReviewTab] = useState<ReviewTabKey>(showReviewTabs ? 'PENDING' : 'ALL')
+  const [pendingCount, setPendingCount] = useState(0)
+
+  const fetchList = async (nextPage = page, tab: ReviewTabKey = reviewTab) => {
     if (!accessToken) return
     setLoading(true)
     try {
+      const effectiveStatus = showReviewTabs ? TAB_STATUS[tab] : statusFilter
       const result = await stockTransferService.list(accessToken, {
         transferType,
-        status: statusFilter,
+        status: effectiveStatus,
         fromWarehouseCode: warehouseFilter,
         search: search || undefined,
         dateFrom: dateRange ? dateRange[0].format('YYYY-MM-DD') : undefined,
@@ -70,12 +87,28 @@ const StockTransferListView: React.FC<Props> = ({
       setData(result.items)
       setTotal(result.total)
       setPage(nextPage)
+      if (showReviewTabs && tab === 'PENDING') setPendingCount(result.total)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchList(1) }, [transferType])
+  useEffect(() => { fetchList(1, reviewTab) }, [transferType])
+
+  // Keep the "รอตรวจสอบ" badge count fresh even while viewing another tab.
+  useEffect(() => {
+    if (!showReviewTabs || !accessToken || reviewTab === 'PENDING') return
+    stockTransferService
+      .list(accessToken, { transferType, status: 'DRAFT', page: 1, pageSize: 1 })
+      .then((res) => setPendingCount(res.total))
+      .catch(() => {})
+  }, [showReviewTabs, accessToken, transferType, reviewTab])
+
+  const handleTabChange = (key: string) => {
+    const tab = key as ReviewTabKey
+    setReviewTab(tab)
+    fetchList(1, tab)
+  }
 
   const handleReset = () => {
     setSearch('')
@@ -124,7 +157,17 @@ const StockTransferListView: React.FC<Props> = ({
       title: '',
       key: 'action',
       render: (_: unknown, record: StockTransferListItem) => (
-        <Button size="small" onClick={() => navigate(`${detailPathPrefix}/${record.transfer_id}`)}>ดูรายละเอียด</Button>
+        showReviewTabs && reviewTab === 'PENDING' ? (
+          <Button
+            size="small"
+            type="primary"
+            onClick={() => navigate(`${detailPathPrefix}/${record.transfer_id}`)}
+          >
+            ตรวจสอบ
+          </Button>
+        ) : (
+          <Button size="small" onClick={() => navigate(`${detailPathPrefix}/${record.transfer_id}`)}>ดูรายละเอียด</Button>
+        )
       ),
     },
   ]
@@ -150,6 +193,26 @@ const StockTransferListView: React.FC<Props> = ({
       />
 
       <Card style={cardStyle}>
+        {showReviewTabs && (
+          <Tabs
+            activeKey={reviewTab}
+            onChange={handleTabChange}
+            items={[
+              {
+                key: 'PENDING',
+                label: (
+                  <Space size={6}>
+                    <span>รอตรวจสอบ</span>
+                    {pendingCount > 0 && <Badge count={pendingCount} overflowCount={999} color="#faad14" />}
+                  </Space>
+                ),
+              },
+              { key: 'CONFIRMED', label: 'ยืนยันแล้ว' },
+              { key: 'CANCELLED', label: 'ยกเลิก' },
+              { key: 'ALL', label: 'ทั้งหมด' },
+            ]}
+          />
+        )}
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
           <Input
             placeholder="ค้นหาเลขที่เอกสาร"
@@ -159,18 +222,20 @@ const StockTransferListView: React.FC<Props> = ({
             style={{ width: 200 }}
             allowClear
           />
-          <Select
-            placeholder="สถานะ"
-            allowClear
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 160 }}
-            options={[
-              { value: 'DRAFT', label: 'ร่าง' },
-              { value: 'CONFIRMED', label: 'ยืนยันแล้ว' },
-              { value: 'CANCELLED', label: 'ยกเลิก' },
-            ]}
-          />
+          {!showReviewTabs && (
+            <Select
+              placeholder="สถานะ"
+              allowClear
+              value={statusFilter}
+              onChange={setStatusFilter}
+              style={{ width: 160 }}
+              options={[
+                { value: 'DRAFT', label: 'ร่าง' },
+                { value: 'CONFIRMED', label: 'ยืนยันแล้ว' },
+                { value: 'CANCELLED', label: 'ยกเลิก' },
+              ]}
+            />
+          )}
           <Input
             placeholder="รหัสคลัง"
             value={warehouseFilter}

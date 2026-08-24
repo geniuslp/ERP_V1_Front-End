@@ -563,7 +563,8 @@ const MaterialPage: React.FC = () => {
       ),
     },
     {
-      title: '', key: 'action', width: 90, fixed: 'right' as const,
+      title: '', key: 'action', width: 140, fixed: 'right' as const,
+      onCell: () => ({ style: { paddingRight: 24 } }),
       render: (_: unknown, r: MaterialRecord) => (
         <Button
           size="small"
@@ -777,7 +778,7 @@ const MaterialPage: React.FC = () => {
                 onChange: (p) => setPage(p),
                 responsive: true,
               }}
-              rowKey="key" scroll={{ x: 1100 }}
+              rowKey="key" scroll={{ x: 1150 }}
               onRow={(r: MaterialRecord) => ({
                 onClick: () => { if (r.materialCode) navigate(`/master/materials/${encodeURIComponent(r.materialCode)}/edit`) },
                 style: { cursor: r.materialCode ? 'pointer' : undefined },

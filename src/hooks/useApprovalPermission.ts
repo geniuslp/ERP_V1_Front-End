@@ -4,7 +4,7 @@ import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-export type ApprovalDocType = 'PO' | 'MEMO'
+export type ApprovalDocType = 'PO' | 'MEMO' | 'PETTY_CASH'
 
 interface UseApprovalPermissionResult {
   canApprove: boolean

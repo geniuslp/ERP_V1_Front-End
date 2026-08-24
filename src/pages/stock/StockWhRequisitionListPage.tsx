@@ -13,6 +13,7 @@ const StockWhRequisitionListPage: React.FC = () => (
     detailPathPrefix="/stock/wh-requisition"
     fromLabel="คลัง"
     toLabel="โครงการ"
+    showReviewTabs
   />
 )
 

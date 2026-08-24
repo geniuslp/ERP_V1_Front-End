@@ -1,6 +1,6 @@
 export type WOStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
-export type WOContractType = 'LABOR_AND_MATERIAL' | 'LABOR_ONLY'
+export type WOContractType = 'LABOR_MATERIAL' | 'LABOR_ONLY'
 
 // P/E/S per the paper form's "งานระบบ" field — code meaning not yet confirmed by
 // backend/CLAUDE.md beyond the letters themselves; labels below are a best-guess
@@ -31,6 +31,25 @@ export const WO_CONTRACT_DESCRIPTION_LABEL: Record<WOContractDescriptionType, st
   MAINTENANCE: 'งานบำรุงรักษา',
   INSTALLATION: 'งานติดตั้ง',
   DEMOLITION: 'งานรื้อถอน',
+}
+
+// Submit-payload shape for one cost-code line item — mostly mirrors PO's line
+// submit shape (mat_code/qty_ordered/unit_price/disc_type/wht_rate in
+// POCreatePage's buildPayload) with cost_code standing in for mat_code, EXCEPT
+// the discount field: WorkOrderLineInput (erp-api models.go) uses json key
+// `disc`, not `discount` like PO's CreatePOLine — a genuine backend
+// inconsistency between the two modules, not something to "fix" by renaming
+// the Go struct. Silently dropped every WO line discount pre-fix since Go
+// ignores unrecognized JSON keys instead of erroring.
+export interface WorkOrderLine {
+  line_no: number
+  cost_code: string
+  description?: string
+  qty: number
+  unit_price: number
+  disc?: number
+  disc_type?: 'pct' | 'amt'
+  wht_rate?: number | null
 }
 
 export interface WOListItem {
@@ -82,7 +101,14 @@ export interface WorkOrder {
   penalty_pct_per_day?: number
   warranty_years?: number
 
-  cost_code?: string
+  // ── Cost-code line items (mirrors PO's use_discount/discount_type/use_vat/
+  // use_wht header flags + per-line discount/wht_rate — see WorkOrderLine) ──
+  use_discount?: boolean
+  discount_type?: 'pct' | 'amt'
+  use_vat?: boolean
+  use_wht?: boolean
+  lines?: WorkOrderLine[]
+
   other_terms?: string
 
   status: WOStatus

@@ -34,6 +34,10 @@ const WorkOrderListPage = lazy(() => import('@/pages/workOrder/WorkOrderListPage
 const WorkOrderCreatePage = lazy(() => import('@/pages/workOrder/WorkOrderCreatePage'))
 const WorkOrderDetailPage = lazy(() => import('@/pages/workOrder/WorkOrderDetailPage'))
 const WorkOrderApprovalListPage = lazy(() => import('@/pages/workOrder/WorkOrderApprovalListPage'))
+const PettyCashListPage = lazy(() => import('@/pages/petty-cash/PettyCashListPage'))
+const PettyCashCreatePage = lazy(() => import('@/pages/petty-cash/PettyCashCreatePage'))
+const PettyCashDetailPage = lazy(() => import('@/pages/petty-cash/PettyCashDetailPage'))
+const PettyCashApprovalListPage = lazy(() => import('@/pages/petty-cash/PettyCashApprovalListPage'))
 const SystemConfigPage = lazy(() => import('@/pages/system/SystemConfigPage'))
 const UsersPage = lazy(() => import('@/pages/system/UsersPage'))
 const RolesPage = lazy(() => import('@/pages/system/RolesPage'))
@@ -74,11 +78,15 @@ const MaterialRequisitionDetailPage = lazy(() => import('@/pages/stock/MaterialR
 const StockWhRequisitionListPage = lazy(() => import('@/pages/stock/StockWhRequisitionListPage'))
 const StockWhRequisitionCreatePage = lazy(() => import('@/pages/stock/StockWhRequisitionCreatePage'))
 const StockWhRequisitionDetailPage = lazy(() => import('@/pages/stock/StockWhRequisitionDetailPage'))
+const StockWhRequisitionApprovalListPage = lazy(() => import('@/pages/stock/StockWhRequisitionApprovalListPage'))
+const StockWhRequisitionApprovalDetailPage = lazy(() => import('@/pages/stock/StockWhRequisitionApprovalDetailPage'))
 const StockWhTransferListPage = lazy(() => import('@/pages/stock/StockWhTransferListPage'))
 const StockWhTransferCreatePage = lazy(() => import('@/pages/stock/StockWhTransferCreatePage'))
 const StockWhTransferDetailPage = lazy(() => import('@/pages/stock/StockWhTransferDetailPage'))
 const StockMovementHistoryPage = lazy(() => import('@/pages/stock/StockMovementHistoryPage'))
 const ProjectStockBalancePage = lazy(() => import('@/pages/stock/ProjectStockBalancePage'))
+const FinancePaymentsPage = lazy(() => import('@/pages/finance/FinancePaymentsPage'))
+const FinancePaymentDetailPage = lazy(() => import('@/pages/finance/FinancePaymentDetailPage'))
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -161,6 +169,26 @@ const AppRoutes: React.FC = () => (
               } />
               {/* /work-order/:id/print intentionally not registered yet — WorkOrderPrintView
                   is paused pending work_order_print_reference.html. */}
+
+              {/* Petty cash requisition (ใบเบิกเงินสดย่อย) — static routes (/create,
+                  /approval) registered before the dynamic /:id and /:id/edit routes,
+                  per CLAUDE.md's route registration-order rule. */}
+              <Route path="/petty-cash/create" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_CREATE" action="write"><PettyCashCreatePage key="petty-cash-create" /></RequirePermission>
+              } />
+              <Route path="/petty-cash/approval" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_APPROVAL" action="read"><PettyCashApprovalListPage /></RequirePermission>
+              } />
+              <Route path="/petty-cash/:id/edit" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_CREATE" action="update"><PettyCashCreatePage key="petty-cash-edit" /></RequirePermission>
+              } />
+              <Route path="/petty-cash/:id" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_LIST" action="read"><PettyCashDetailPage /></RequirePermission>
+              } />
+              <Route path="/petty-cash" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_LIST" action="read"><PettyCashListPage /></RequirePermission>
+              } />
+
               <Route path="/master/groups" element={<GroupPage />} />
               <Route path="/master/materials" element={<MaterialPage />} />
               <Route path="/master/materials/:code/edit" element={<MaterialDetailPage />} />
@@ -217,6 +245,14 @@ const AppRoutes: React.FC = () => (
               <Route path="/stock/wh-requisition" element={
                 <RequirePermission menuCode="MENU_WH_REQUISITION" action="read"><StockWhRequisitionListPage /></RequirePermission>
               } />
+              {/* Dedicated review/approve entry point, separate from /stock/wh-requisition above.
+                  Path confirmed against menu.menu_path for MENU_WH_REQUISITION_APPROVAL. */}
+              <Route path="/stock/wh-requisition-approval/:id" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION_APPROVAL" action="read"><StockWhRequisitionApprovalDetailPage /></RequirePermission>
+              } />
+              <Route path="/stock/wh-requisition-approval" element={
+                <RequirePermission menuCode="MENU_WH_REQUISITION_APPROVAL" action="read"><StockWhRequisitionApprovalListPage /></RequirePermission>
+              } />
               <Route path="/stock/wh-transfer/create" element={
                 <RequirePermission menuCode="MENU_STOCK_WH_TRANSFER" action="write"><StockWhTransferCreatePage /></RequirePermission>
               } />
@@ -235,6 +271,12 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/stock/project-balance" element={
                 <RequirePermission menuCode="MENU_STOCK_PROJECT_BALANCE" action="read"><ProjectStockBalancePage /></RequirePermission>
+              } />
+              <Route path="/finance/payments" element={
+                <RequirePermission menuCode="MENU_FINANCE_PAYMENTS" action="read"><FinancePaymentsPage /></RequirePermission>
+              } />
+              <Route path="/finance/payments/:docType/:docId" element={
+                <RequirePermission menuCode="MENU_FINANCE_PAYMENTS" action="read"><FinancePaymentDetailPage /></RequirePermission>
               } />
               <Route path="/system/config" element={
                 <RequireRole roleCode="ADMIN_CENTER"><SystemConfigPage /></RequireRole>

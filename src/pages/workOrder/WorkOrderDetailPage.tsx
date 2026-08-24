@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin } from 'antd'
+import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin, Table } from 'antd'
 import { EditOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -9,7 +9,8 @@ import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
-import type { WorkOrder } from '@/types/workOrder'
+import type { WorkOrder, WorkOrderLine } from '@/types/workOrder'
+import { calcDisc } from '@/utils/poCalc'
 
 const MENU_CODE = 'MENU_WO_APPROVAL'
 
@@ -101,8 +102,6 @@ const WorkOrderDetailPage: React.FC = () => {
         extra={
           <Space>
             <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
-            {/* "พิมพ์เอกสาร" button intentionally omitted — WorkOrderPrintView is paused
-                pending work_order_print_reference.html; re-add once that route exists. */}
             {wo.status === 'DRAFT' && (
               <PermissionButton menuCode="MENU_WO_CREATE" action="write" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${wo.id}/edit`)}>
                 แก้ไข
@@ -198,9 +197,76 @@ const WorkOrderDetailPage: React.FC = () => {
         </Descriptions>
       </Card>
 
+      <Card title="รายการ Cost Code" style={cardStyle}>
+        <Table
+          rowKey={(_, i) => String(i)}
+          dataSource={wo.lines ?? []}
+          pagination={false}
+          size="small"
+          locale={{ emptyText: '—' }}
+          columns={[
+            { title: 'ลำดับ', dataIndex: 'line_no', width: 70 },
+            { title: 'Cost Code', dataIndex: 'cost_code', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
+            { title: 'รายละเอียด', dataIndex: 'description', render: (v?: string) => v || '—' },
+            { title: 'จำนวน', dataIndex: 'qty', width: 90, align: 'center' as const },
+            { title: 'ราคา/หน่วย', dataIndex: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => money(v) },
+            { title: 'มูลค่า', key: 'amount', width: 120, align: 'right' as const, render: (_: unknown, r: WorkOrderLine) => money(r.qty * r.unit_price) },
+          ]}
+          summary={() => {
+            let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
+            ;(wo.lines ?? []).forEach((r) => {
+              const rowDiscType = r.disc_type ?? 'pct'
+              const lineAmt = r.qty * r.unit_price
+              subtotal += lineAmt
+              const d = wo.use_discount ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
+              const af = lineAmt - d
+              totalDisc += d
+              totalVat += wo.use_vat ? af * 0.07 : 0
+              totalWht += wo.use_wht ? af * ((r.wht_rate ?? 3) / 100) : 0
+            })
+            const net = subtotal - totalDisc + totalVat - totalWht
+            return (
+              <Table.Summary fixed="bottom">
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} colSpan={6} align="right">
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 240 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>ยอดรวมก่อนลด</span>
+                        <span style={{ fontSize: 12 }}>฿ {money(subtotal)}</span>
+                      </div>
+                      {wo.use_discount && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
+                          <span style={{ fontSize: 12, color: '#22c55e' }}>- ฿ {money(totalDisc)}</span>
+                        </div>
+                      )}
+                      {wo.use_vat && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>VAT 7%</span>
+                          <span style={{ fontSize: 12, color: '#ca8a04' }}>+ ฿ {money(totalVat)}</span>
+                        </div>
+                      )}
+                      {wo.use_wht && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>WHT</span>
+                          <span style={{ fontSize: 12, color: '#dc2626' }}>- ฿ {money(totalWht)}</span>
+                        </div>
+                      )}
+                      <div style={{ borderTop: '0.5px solid #dbeafe', width: '100%', marginTop: 4, paddingTop: 6, display: 'flex', justifyContent: 'space-between', gap: 48 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>ยอดรวมสุทธิ</span>
+                        <span style={{ fontSize: 15, fontWeight: 500, color: '#1e40af' }}>฿ {money(net)}</span>
+                      </div>
+                    </div>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              </Table.Summary>
+            )
+          }}
+        />
+      </Card>
+
       <Card title="อื่นๆ" style={cardStyle}>
         <Descriptions bordered column={2} size="small">
-          <Descriptions.Item label="Cost Code">{wo.cost_code || '—'}</Descriptions.Item>
           <Descriptions.Item label="เงื่อนไขอื่นๆ" span={2}>{wo.other_terms || '—'}</Descriptions.Item>
         </Descriptions>
       </Card>

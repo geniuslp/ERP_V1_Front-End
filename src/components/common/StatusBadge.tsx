@@ -10,6 +10,14 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   sent: { color: 'blue', label: 'ส่งแล้ว' },
   partial: { color: 'cyan', label: 'รับบางส่วน' },
   completed: { color: 'green', label: 'เสร็จสิ้น' },
+
+  // Petty cash requisition (ใบเบิกเงินสดย่อย) — DRAFT | PENDING_APPROVAL | APPROVED |
+  // REJECTED | CANCELLED, same semantic colors as PO's equivalent statuses.
+  DRAFT: { color: 'default', label: 'ร่าง' },
+  PENDING_APPROVAL: { color: 'orange', label: 'รออนุมัติ' },
+  APPROVED: { color: 'green', label: 'อนุมัติแล้ว' },
+  REJECTED: { color: 'red', label: 'ปฏิเสธ' },
+  CANCELLED: { color: 'default', label: 'ยกเลิก' },
 }
 
 interface StatusBadgeProps {

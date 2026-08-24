@@ -27,7 +27,7 @@ const DEPARTMENT_OPTIONS = [
   { value: 'HO', label: 'HO — สำนักงานใหญ่' },
   { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
   { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
-  { value: 'BO', label: 'BO' },
+  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
 ]
 
 const cardStyle: React.CSSProperties = {

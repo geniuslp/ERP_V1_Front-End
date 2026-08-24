@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
+  DollarOutlined, WalletOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -36,6 +37,8 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_ADMIN: <SafetyOutlined />,
   MENU_STOCK: <AppstoreOutlined />,
   MENU_SYSTEM: <SettingOutlined />,
+  MENU_FINANCE: <DollarOutlined />,
+  MENU_PETTY_CASH: <WalletOutlined />,
 }
 
 const subIconMap: Record<string, React.ReactNode> = {
@@ -85,9 +88,15 @@ const subIconMap: Record<string, React.ReactNode> = {
   // MENU_WH_REQUISITION_HISTORY=/stock/wh-requisition-history,
   // MENU_STOCK_PROJECT_BALANCE=/stock/project-balance.
   MENU_WH_REQUISITION: <ExportOutlined />,
+  MENU_WH_REQUISITION_APPROVAL: <CheckOutlined />,
   MENU_STOCK_WH_TRANSFER: <RetweetOutlined />,
   MENU_WH_REQUISITION_HISTORY: <HistoryOutlined />,
   MENU_STOCK_PROJECT_BALANCE: <FundOutlined />,
+  // MENU_FINANCE_PAYMENTS intentionally unmapped — falls back to `null` below
+  // (no sub-icon), per explicit instruction.
+  MENU_PETTY_CASH_LIST: <SearchOutlined />,
+  MENU_PETTY_CASH_CREATE: <PlusOutlined />,
+  MENU_PETTY_CASH_APPROVAL: <CheckCircleOutlined />,
 }
 
 interface VisibleMenuNode extends PermMenu {
