@@ -157,33 +157,92 @@ const UsersPage: React.FC = () => {
           await axios.put(`${BASE_URL}/users/${editing.id}`, payload, {
             headers: { Authorization: `Bearer ${accessToken}` },
           })
-          const dept = departments.find((d) => d.dept_code === values.deptCode)
-          const selectedRoles = allRoles
-            .filter((r) => (values.roleIds ?? []).includes(r.id))
-            .map((r) => ({ role_id: r.id, role_code: r.role_code, role_name: r.role_name }))
+
+          // Don't trust the submitted form values as the new state — re-fetch the
+          // user from the server so we display what was *actually* persisted.
+          // (Backend has a known bug class where a field present in the payload
+          // silently doesn't make it into the UPDATE/join SQL and still returns 200.)
+          const verifyRes = await axios.get(`${BASE_URL}/users/${editing.id}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+          const fresh = verifyRes.data?.data ?? verifyRes.data
+          const freshRoleIds: number[] = Array.isArray(fresh?.roles) ? fresh.roles.map((rl: UserRole) => rl.role_id) : []
+          const freshDeptCode: string | null = fresh?.dept_code ?? null
+          const dept = departments.find((d) => d.dept_code === freshDeptCode)
+
+          if (freshDeptCode !== values.deptCode || JSON.stringify([...freshRoleIds].sort()) !== JSON.stringify([...(values.roleIds ?? [])].sort())) {
+            console.error('User update did not persist as submitted.', {
+              sentPayload: payload,
+              serverReturned: fresh,
+            })
+            message.warning('บันทึกสำเร็จ แต่ค่าที่ระบบเก็บไว้ไม่ตรงกับที่ส่ง — กรุณาตรวจสอบอีกครั้ง')
+          } else {
+            message.success('แก้ไขข้อมูลเรียบร้อย')
+          }
+
           setData(data.map((d) => d.key === editing.key ? {
             ...d,
-            username: values.username,
-            fullName: values.fullName,
-            email: values.email,
-            deptCode: values.deptCode,
-            roleId: values.roleIds?.[0] ?? null,
-            roleIds: values.roleIds ?? [],
-            roles: selectedRoles.length ? selectedRoles : d.roles,
+            username: fresh?.username ?? values.username,
+            fullName: fresh?.full_name ?? fresh?.fullName ?? values.fullName,
+            email: fresh?.email ?? values.email,
+            deptCode: freshDeptCode,
+            roleId: freshRoleIds[0] ?? null,
+            roleIds: freshRoleIds,
+            roles: fresh?.roles ?? d.roles,
             department: dept?.dept_name ?? d.department,
-            role: selectedRoles.map((r) => r.role_name).join(', ') || d.role,
+            role: (fresh?.roles ?? []).map((r: UserRole) => r.role_name).join(', ') || d.role,
           } : d))
-          message.success('แก้ไขข้อมูลเรียบร้อย')
           setOpen(false)
         } catch {
           message.error('แก้ไขข้อมูลไม่สำเร็จ')
         }
       } else {
-        const newUser = { key: Date.now().toString(), id: Date.now().toString(), ...values, isActive: true }
-        setData([...data, newUser])
-        message.success('เพิ่มผู้ใช้เรียบร้อย')
-        setOpen(false)
+        try {
+          const payload = {
+            username: values.username,
+            full_name: values.fullName,
+            email: values.email,
+            password: values.password,
+            dept_code: values.deptCode,
+            role_ids: values.roleIds,
+          }
+          const res = await axios.post(`${BASE_URL}/users`, payload, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+          const created = res.data?.data ?? res.data
+          const dept = departments.find((d) => d.dept_code === values.deptCode)
+          const selectedRoles = allRoles
+            .filter((r) => (values.roleIds ?? []).includes(r.id))
+            .map((r) => ({ role_id: r.id, role_code: r.role_code, role_name: r.role_name }))
+          const newUser: UserRecord = {
+            key: String(created?.id ?? Date.now()),
+            id: String(created?.id ?? Date.now()),
+            username: values.username,
+            fullName: values.fullName,
+            email: values.email,
+            role: selectedRoles.map((r) => r.role_name).join(', ') || '-',
+            department: dept?.dept_name ?? '-',
+            isActive: true,
+            roleId: values.roleIds?.[0] ?? null,
+            roleIds: values.roleIds ?? [],
+            roles: selectedRoles,
+            deptCode: values.deptCode ?? null,
+          }
+          setData([...data, newUser])
+          message.success('เพิ่มผู้ใช้เรียบร้อย')
+          setOpen(false)
+        } catch (err: any) {
+          const errMsg =
+            err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            err?.message ||
+            'เพิ่มผู้ใช้ไม่สำเร็จ'
+          message.error(errMsg)
+        }
       }
+    })
+    .catch((err) => {
+      console.error('User form validation failed:', err)
     })
   }
 
