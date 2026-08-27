@@ -14,14 +14,21 @@ import {
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
-import type { PODetail, PODetailResponse, POLine } from '@/types/po'
+import type { PODetail, PODetailResponse, POLine, POAttachment } from '@/types/po'
 import { PO_WORK_TYPE_LABEL } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
+import PrintErrorBoundary from '@/components/common/PrintErrorBoundary'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { PaperClipOutlined } from '@ant-design/icons'
+
+const BASE_URL = (import.meta as any).env?.VITE_API_URL
+// Uploaded files are served as static assets off the API server root (app.Static("/uploads", ...)),
+// not under /api/v1 — strip the versioned API suffix to get the file host.
+const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 const MENU_CODE = 'MENU_PO_STATUS'
 
@@ -36,6 +43,53 @@ const cardStyle: React.CSSProperties = {
   padding: 24,
   marginBottom: 16,
 }
+
+const formatSize = (b: number) =>
+  b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
+
+// Shared row/empty-state layout for the three attachment sections below —
+// matches the page's existing plain-div section style (not an AntD Card,
+// unlike PRDetailPage), so it's local to this file rather than a new
+// cross-page component.
+const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({ title, items }) => (
+  <div style={cardStyle}>
+    <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
+      {title}
+    </div>
+    {items.length === 0 ? (
+      <div style={{ color: '#9ca3af', fontSize: 13 }}>ไม่มีไฟล์แนบ</div>
+    ) : (
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        {items.map((a) => (
+          <div
+            key={a.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 12px',
+              border: '0.5px solid #e5e7eb',
+              borderRadius: 8,
+            }}
+          >
+            <Space>
+              <PaperClipOutlined style={{ color: '#2563eb' }} />
+              <a
+                href={`${FILE_BASE_URL}/${a.file_path}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 13, color: '#1e40af' }}
+                className="attachment-filename-link"
+              >
+                {a.file_name}
+              </a>
+              <span style={{ fontSize: 12, color: '#6b7280' }}>{formatSize(a.file_size)}</span>
+            </Space>
+          </div>
+        ))}
+      </Space>
+    )}
+  </div>
+)
 
 const POApprovalDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -164,8 +218,26 @@ const POApprovalDetailPage: React.FC = () => {
     }
   }
 
-  const canAct = po?.status === 'PENDING_APPROVAL'
+  // Backend allows approve/reject from both PENDING_APPROVAL (first approval)
+  // and PENDING_REAPPROVAL (an APPROVED PO edited via edit-approved and
+  // resent) — see po_approval.go's status guard on Approve/Reject.
+  const canAct = po?.status === 'PENDING_APPROVAL' || po?.status === 'PENDING_REAPPROVAL'
   const canCancel = po?.status === 'APPROVED'
+
+  // po.can_edit_approved (po.go:488, `CanEditApproved = status=="APPROVED" &&
+  // age<1yr`) is only ever computed true for APPROVED — the backend was
+  // never updated to also compute it for PENDING_REAPPROVAL, even though
+  // PUT /po/:id/edit-approved itself already accepts both statuses (same
+  // handler, po.go:1573/1576 — also enforces the identical 1-year window).
+  // Mirror that window here on the frontend instead of relying on a backend
+  // flag that doesn't cover this status, rather than showing an edit button
+  // that would just 400 past a year.
+  const withinEditApprovedWindow = po?.created_at
+    ? Date.now() - new Date(po.created_at).getTime() < 365 * 24 * 60 * 60 * 1000
+    : false
+  const canEditApprovedNow =
+    Boolean(po?.can_edit_approved) ||
+    (po?.status === 'PENDING_REAPPROVAL' && withinEditApprovedWindow)
 
   const lineColumns: ColumnsType<POLine> = [
     {
@@ -292,7 +364,7 @@ const POApprovalDetailPage: React.FC = () => {
           <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>
             พิมพ์
           </Button>
-          {po.status === 'DRAFT' && (
+          {(po.status === 'DRAFT' || po.status === 'PENDING_APPROVAL') && (
             <PermissionButton
               menuCode={MENU_CODE}
               action="edit"
@@ -302,7 +374,7 @@ const POApprovalDetailPage: React.FC = () => {
               แก้ไข
             </PermissionButton>
           )}
-          {po.can_edit_approved && (
+          {canEditApprovedNow && (
             <EditApprovedButton poId={po.po_id} poNo={po.po_no} menuCode={MENU_CODE} />
           )}
           {canAct && (
@@ -386,7 +458,7 @@ const POApprovalDetailPage: React.FC = () => {
             <POStatusBadges status={po.status} statusReceive={po.status_receive} />
           </Descriptions.Item>
           <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
-          <Descriptions.Item label="รหัส Supplier">{po.supplier_code}</Descriptions.Item>
+          <Descriptions.Item label="รหัส Supplier">{po.supplier_id}</Descriptions.Item>
           <Descriptions.Item label="ประเภทการสั่งซื้อ">
             {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
           </Descriptions.Item>
@@ -414,10 +486,9 @@ const POApprovalDetailPage: React.FC = () => {
           </Descriptions.Item>
           <Descriptions.Item label="วันที่ต้องการ">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{po.created_by_name}</Descriptions.Item>
-          <Descriptions.Item label="เบอร์โทรสำนักงาน">{po.office_phone ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="พนักงานขาย">{po.sales_person ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="อีเมลติดต่อ">{po.contact_email ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="เบอร์โทรติดต่อ">{po.contact_phone ?? '-'}</Descriptions.Item>
+          {/* Supplier contact fields (office_phone/sales_person/contact_email/contact_phone)
+              are live-joined from the supplier master but intentionally screen-hidden here —
+              they still appear in full on the printed PO (see POPrint). */}
           <Descriptions.Item
             label="หมายเหตุ"
             span={3}
@@ -443,6 +514,18 @@ const POApprovalDetailPage: React.FC = () => {
           locale={{ emptyText: 'ไม่มีรายการ' }}
         />
       </div>
+
+      {po.attachments && 'memo' in po.attachments && (
+        <AttachmentSection title="ไฟล์แนบจาก Memo" items={po.attachments.memo ?? []} />
+      )}
+
+      {po.attachments && 'pr' in po.attachments && (
+        <AttachmentSection title="ไฟล์แนบจาก PR" items={po.attachments.pr ?? []} />
+      )}
+
+      {po.attachments && (
+        <AttachmentSection title="ไฟล์แนบ PO" items={po.attachments.po ?? []} />
+      )}
 
       {/* Reject modal */}
       <Modal
@@ -499,13 +582,15 @@ const POApprovalDetailPage: React.FC = () => {
       </Modal>
 
       {printData && (
-        <PurchaseOrderPrint
-          data={printData}
-          onReady={() => {
-            window.print()
-            setPrintData(null)
-          }}
-        />
+        <PrintErrorBoundary label={printData.poNo}>
+          <PurchaseOrderPrint
+            data={printData}
+            onReady={() => {
+              window.print()
+              setPrintData(null)
+            }}
+          />
+        </PrintErrorBoundary>
       )}
     </div>
   )

@@ -289,7 +289,19 @@ export interface GRNPoListItem {
   po_no: string
   po_date?: string
   expected_date?: string | null
+  // Stale — purchase_order no longer has a supplier_code column (migrated to
+  // supplier_id, see CLAUDE.md). Left typed here since other GRN pages still
+  // reference it against endpoints not yet separately verified, but
+  // GET /po/:id (used by GoodsReceiptDetailPage) never actually returns this
+  // field — use supplier_id/supplier_name below for that endpoint instead.
   supplier_code: string
+  supplier_id?: number
+  supplier_name?: string
+  // po.location_text — GET /po/:id returns this (json:"location_text,omitempty").
+  // Purely informational on the receiving page: the PO's own reference
+  // location, distinct from (and never used to default) the physical
+  // warehouse the user selects to receive into.
+  location_text?: string | null
   warehouse_code?: string
   status: string
   currency: string

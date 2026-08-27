@@ -10,6 +10,7 @@ import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 
 const MENU_CODE = 'MENU_PO_CREATE'
 const { Text } = Typography
@@ -159,7 +160,7 @@ const POStatusPage: React.FC = () => {
           >
             ดู
           </Button>
-          {record.status === 'DRAFT' && (
+          {(record.status === 'DRAFT' || record.status === 'PENDING_APPROVAL') && (
             <PermissionButton
               menuCode={MENU_CODE}
               action="edit"
@@ -171,6 +172,18 @@ const POStatusPage: React.FC = () => {
               แก้ไข
             </PermissionButton>
           )}
+          {/* record.can_edit_approved is never actually set by GET /po (list) —
+              the List handler's PORow struct has no CanEditApproved field at
+              all (unlike GET /po/:id, which computes it for APPROVED only).
+              Check status + the same 1-year window the backend enforces
+              directly off record.created_at instead of relying on that
+              always-undefined flag. */}
+          {(record.status === 'APPROVED' || record.status === 'PENDING_REAPPROVAL') &&
+            (record.created_at
+              ? Date.now() - new Date(record.created_at).getTime() < 365 * 24 * 60 * 60 * 1000
+              : false) && (
+              <EditApprovedButton poId={record.po_id} poNo={record.po_no} menuCode={MENU_CODE} size="small" />
+            )}
         </Space>
       ),
     },

@@ -18,7 +18,7 @@ const MENU_CODE = 'MENU_MEMO_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-const LOCKED_STATUSES = ['APPROVED', 'CANCELLED', 'PENDING_APPROVAL']
+const LOCKED_STATUSES = ['APPROVED', 'CANCELLED']
 
 // memo.department is a plain varchar(100) with no backing lookup table — the
 // short code is stored (matching the code/name display pattern used elsewhere
@@ -191,67 +191,68 @@ const MemoCreateEditPage: React.FC = () => {
     }
   }, [isEdit, currentUser])
 
+  // silent=true skips the card loading spinner — used to re-sync state after
+  // a save-draft without disrupting the form the user is still looking at.
+  const fetchMemo = async (silent = false) => {
+    if (!silent) setLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/memo/${id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const memo = res.data?.data ?? res.data
+
+      const status = memo.status ?? ''
+      setMemoStatus(status)
+      setCanEdit(!LOCKED_STATUSES.includes(status.toUpperCase()))
+
+      form.setFieldsValue({
+        requested_by: memo.requested_by ?? memo.requestedBy,
+        title:        memo.title,
+        project_code: memo.project_code ?? memo.projectCode,
+        approver_id:  memo.approver_id ?? memo.approverId,
+        department:   memo.department,
+        delivery_location: memo.delivery_location ?? memo.deliveryLocation,
+        note:         memo.note,
+      })
+
+      const lines = memo.lines ?? memo.items ?? []
+      setItems(
+        lines.map((it: any) => ({
+          key:         String(it.id ?? `${Date.now()}-${Math.random()}`),
+          description: it.description ?? '',
+          unit:        it.unit        ?? '',
+          quantity:    it.quantity    ?? 1,
+          remark:      it.remark      ?? '',
+        }))
+      )
+
+      // Load existing attachments (edit mode)
+      const existingFiles = memo.attachments ?? []
+      setAttachedFiles(
+        existingFiles.map((f: any) => ({
+          uid: String(f.id ?? `${Date.now()}-${Math.random()}`),
+          name: f.file_name ?? f.fileName ?? 'file',
+          size: f.file_size ?? f.fileSize ?? 0,
+          file: null,
+          type: (f.file_name ?? '').split('.').pop()?.toLowerCase() ?? '',
+          isExisting: true,
+          filePath: f.file_path ?? f.filePath,
+        }))
+      )
+    } catch (err: any) {
+      message.error(
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
+      )
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!isEdit) return
-    const fetchMemo = async () => {
-      setLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/memo/${id}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const memo = res.data?.data ?? res.data
-
-        const status = memo.status ?? ''
-        setMemoStatus(status)
-        setCanEdit(!LOCKED_STATUSES.includes(status.toUpperCase()))
-
-        form.setFieldsValue({
-          requested_by: memo.requested_by ?? memo.requestedBy,
-          title:        memo.title,
-          project_code: memo.project_code ?? memo.projectCode,
-          approver_id:  memo.approver_id ?? memo.approverId,
-          department:   memo.department,
-          delivery_location: memo.delivery_location ?? memo.deliveryLocation,
-          note:         memo.note,
-        })
-
-        const lines = memo.lines ?? memo.items ?? []
-        setItems(
-          lines.map((it: any) => ({
-            key:         String(it.id ?? `${Date.now()}-${Math.random()}`),
-            description: it.description ?? '',
-            unit:        it.unit        ?? '',
-            quantity:    it.quantity    ?? 1,
-            remark:      it.remark      ?? '',
-          }))
-        )
-
-        // Load existing attachments (edit mode)
-        const existingFiles = memo.attachments ?? []
-        if (existingFiles.length > 0) {
-          setAttachedFiles(
-            existingFiles.map((f: any) => ({
-              uid: String(f.id ?? `${Date.now()}-${Math.random()}`),
-              name: f.file_name ?? f.fileName ?? 'file',
-              size: f.file_size ?? f.fileSize ?? 0,
-              file: null,
-              type: (f.file_name ?? '').split('.').pop()?.toLowerCase() ?? '',
-              isExisting: true,
-              filePath: f.file_path ?? f.filePath,
-            }))
-          )
-        }
-      } catch (err: any) {
-        message.error(
-          err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          err?.message ||
-          'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
-        )
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchMemo()
   }, [id])
 
@@ -392,12 +393,22 @@ const MemoCreateEditPage: React.FC = () => {
       }
 
       let res
+      let stayOnForm = false
       if (isEdit) {
         res = await axios.put(`${BASE_URL}/memo/${id}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
 
-        if (memoStatus === 'REJECTED' || memoStatus === 'DRAFT') {
+        // REJECTED always resubmits on save (there's only one "บันทึก" button
+        // for it, and the alert text tells the user saving resubmits it).
+        // DRAFT only resubmits when the user explicitly clicked "ส่งอนุมัติ"
+        // (status === 'PENDING_APPROVAL') — clicking "บันทึกร่าง" must leave
+        // it as DRAFT so the draft-editable button set stays visible.
+        const shouldSubmit =
+          memoStatus === 'REJECTED' ||
+          (memoStatus === 'DRAFT' && status === 'PENDING_APPROVAL')
+
+        if (shouldSubmit) {
           try {
             await axios.post(
               `${BASE_URL}/memo/${id}/submit`,
@@ -412,7 +423,13 @@ const MemoCreateEditPage: React.FC = () => {
             )
           }
         } else {
-          message.success('แก้ไขใบบันทึกขอซื้อ (Memo) สำเร็จ')
+          message.success(
+            memoStatus === 'DRAFT' ? 'บันทึกร่างสำเร็จ' : 'แก้ไขใบบันทึกขอซื้อ (Memo) สำเร็จ'
+          )
+          // Only the DRAFT "บันทึกร่าง" path stays on the form — editing a
+          // PENDING_APPROVAL memo still uses the single "บันทึก" button and
+          // keeps its existing navigate-away-after-save behavior.
+          if (memoStatus === 'DRAFT') stayOnForm = true
         }
       } else {
         res = await axios.post(`${BASE_URL}/memo`, payload, {
@@ -420,8 +437,28 @@ const MemoCreateEditPage: React.FC = () => {
         })
         message.success(status === 'DRAFT' ? 'บันทึกร่างสำเร็จ' : 'ส่งขออนุมัติสำเร็จ — รอผู้อนุมัติดำเนินการ')
       }
-      const memoId = res.data?.data?.id ?? res.data?.id ?? id
-      navigate(ROUTES.MEMO.DETAIL.replace(':id', String(memoId)))
+
+      if (stayOnForm) {
+        // Re-sync local state (items/attachments/status) from the saved
+        // record so a subsequent save doesn't act on stale data, without a
+        // full page remount — the button-set logic re-derives from the
+        // refreshed memoStatus automatically.
+        await fetchMemo(true)
+      } else {
+        const memoId = res.data?.data?.id ?? res.data?.id ?? id
+        // Brand-new memo saved as DRAFT (create-mode "บันทึกร่าง") — route to
+        // the EDIT form of the memo that was just created, not the read-only
+        // DETAIL page, so the user lands back on a form with the
+        // บันทึกร่าง/ส่งอนุมัติ pair instead of Edit/Cancel-only actions.
+        // (This branch previously always went to DETAIL — that was the bug:
+        // the earlier stayOnForm fix only covered the isEdit branch and never
+        // touched this create-mode path.)
+        if (!isEdit && status === 'DRAFT') {
+          navigate(ROUTES.MEMO.EDIT.replace(':id', String(memoId)))
+        } else {
+          navigate(ROUTES.MEMO.DETAIL.replace(':id', String(memoId)))
+        }
+      }
     } catch (err: any) {
       message.error(
         err?.response?.data?.message ||
@@ -501,8 +538,6 @@ const MemoCreateEditPage: React.FC = () => {
 
   const lockedMessage = memoStatus === 'APPROVED'
     ? 'ใบบันทึกขอซื้อ (Memo) นี้อนุมัติแล้ว — ไม่สามารถแก้ไขได้'
-    : memoStatus === 'PENDING_APPROVAL'
-    ? 'ใบบันทึกขอซื้อ (Memo) นี้อยู่ระหว่างรอการอนุมัติ — ไม่สามารถแก้ไขได้ในขณะนี้'
     : 'ใบบันทึกขอซื้อ (Memo) นี้ถูกยกเลิกแล้ว — ไม่สามารถแก้ไขได้'
 
   return (
@@ -758,7 +793,36 @@ const MemoCreateEditPage: React.FC = () => {
         <Button icon={<CloseOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
           ยกเลิก
         </Button>
-        {isEdit ? (
+        {isEdit && memoStatus === 'DRAFT' ? (
+          <>
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
+              icon={<SaveOutlined />}
+              loading={submitting}
+              disabled={!canEdit}
+              onClick={() => handleSave('DRAFT')}
+            >
+              บันทึกร่าง
+            </PermissionButton>
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
+              type="primary"
+              icon={<SendOutlined />}
+              loading={submitting}
+              disabled={!canEdit}
+              onClick={() => handleSave('PENDING_APPROVAL')}
+              style={{
+                background: canEdit ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : undefined,
+                border: 'none',
+                boxShadow: canEdit ? '0 4px 16px rgba(37,99,235,0.4)' : undefined,
+              }}
+            >
+              ส่งอนุมัติ
+            </PermissionButton>
+          </>
+        ) : isEdit ? (
           <PermissionButton
             menuCode={MENU_CODE}
             action="edit"

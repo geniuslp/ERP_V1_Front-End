@@ -86,7 +86,7 @@ const AUTH_COLS = ['ผู้จัดทำ/ผู้กรอกเอกส�
 const Header = ({ data }: { data: WOPrintDataLite }) => (
   <div className="wo-std-head" style={{ minHeight: '26mm', padding: '4px 0' }}>
     <div className="wo-std-logo-block">
-      <img src={logo} alt="Logo" style={{ height: '20mm', width: 'auto', objectFit: 'contain' }} />
+      <img src={logo} alt="Logo" width={4248} height={1844} style={{ height: '20mm', width: 'auto', objectFit: 'contain' }} />
     </div>
     <div className="wo-std-doc-title-wrap"><span className="wo-std-doc-title">หนังสือสั่งจ้าง</span></div>
     <div className="wo-std-doc-meta">
@@ -302,7 +302,19 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => { if (mounted) onReady?.() }, [mounted])
+
+  // Preload the logo so onReady (and window.print()) never fires before the
+  // browser has actually finished loading/decoding the image — the source of
+  // an intermittent missing-logo-on-print bug.
+  const [logoReady, setLogoReady] = useState(false)
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => setLogoReady(true)
+    img.onerror = () => { console.warn('[WO] logo image failed to load, printing without it'); setLogoReady(true) }
+    img.src = logo
+  }, [])
+
+  useEffect(() => { if (mounted && logoReady) onReady?.() }, [mounted, logoReady])
 
   return ReactDOM.createPortal(
     <div className="wo-std-portal">

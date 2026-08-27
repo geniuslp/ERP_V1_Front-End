@@ -25,10 +25,11 @@ const getRowState = (line: PRLineWithPOStatus): RowState => {
   return 'available'
 }
 
+// Semantic tones per DESIGN.md: warning `#d97706` (partial), page bg `#f0f5ff` neutral for taken.
 const rowBg: Record<RowState, string | undefined> = {
   available: undefined,
-  partial: '#FFFDE7',
-  taken: '#F5F5F5',
+  partial: '#fffbeb',
+  taken: '#f0f5ff',
 }
 
 const HISTORY_DISPLAY_LIMIT = 8
@@ -201,7 +202,7 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
         if (!disabled) return checkbox
         const tooltipMsg = alreadyInPo
           ? 'รายการนี้ถูกเลือกไว้ใน PO นี้แล้ว'
-          : `This item has already been fully ordered by ${formatPoNos(r.referenced_pos)}`
+          : `สั่งครบแล้ว — สั่งไปแล้วโดย ${formatPoNos(r.referenced_pos)}`
         return (
           <Tooltip title={tooltipMsg}>
             <span style={{ cursor: 'not-allowed' }}>{checkbox}</span>
@@ -216,16 +217,16 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       align: 'center' as const,
     },
     {
-      title: 'Material Code',
+      title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
       width: 160,
     },
     {
-      title: 'Description',
+      title: 'รายละเอียด',
       dataIndex: 'mat_name',
     },
     {
-      title: 'Unit',
+      title: 'หน่วย',
       dataIndex: 'unit',
       width: 80,
       align: 'center' as const,
@@ -249,28 +250,31 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
         ),
     },
     {
-      title: 'Qty Requested',
+      title: 'จำนวนที่ขอ',
       dataIndex: 'qty_requested',
-      width: 110,
+      width: 100,
       align: 'center' as const,
     },
     {
-      title: 'Qty Ordered',
-      dataIndex: 'qty_ordered',
-      width: 110,
-      align: 'center' as const,
-    },
-    {
-      title: 'Qty Remaining',
+      title: 'คงเหลือที่สั่งได้',
       dataIndex: 'qty_remaining',
-      width: 120,
+      width: 150,
       align: 'center' as const,
-      render: (v: number) => (
-        <span style={{ color: v > 0 ? '#15803d' : '#dc2626', fontWeight: 600 }}>{v}</span>
+      render: (v: number, r: PRLineWithPOStatus) => (
+        <div>
+          <div style={{ color: v > 0 ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+            คงเหลือที่สั่งได้: {v}
+          </div>
+          {getRowState(r) === 'partial' && (
+            <div style={{ fontSize: 11, color: '#d97706' }}>
+              สั่งไปแล้ว {r.qty_ordered}/{r.qty_requested}
+            </div>
+          )}
+        </div>
       ),
     },
     {
-      title: 'Last Price',
+      title: 'ราคาล่าสุด',
       key: 'last_price',
       width: 170,
       render: (_: unknown, r: PRLineWithPOStatus) => {
@@ -335,13 +339,12 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       },
     },
     {
-      title: 'Referenced PO(s)',
+      title: 'PO ที่อ้างอิง',
       dataIndex: 'referenced_pos',
       width: 220,
       render: (_: unknown, r: PRLineWithPOStatus) => {
         const state = getRowState(r)
         const pos = r.referenced_pos ?? []
-        const posText = formatPoNos(pos)
         return (
           <Space direction="vertical" size={2}>
             {pos.length > 0 ? (
@@ -361,15 +364,10 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
               <span style={{ fontSize: 13 }}>-</span>
             )}
             {state === 'taken' && (
-              <Tag color="red" style={{ margin: 0 }}>Taken</Tag>
+              <Tag color="red" style={{ margin: 0 }}>สั่งครบแล้ว</Tag>
             )}
             {state === 'partial' && (
-              <>
-                <Tag color="orange" style={{ margin: 0 }}>Partial</Tag>
-                <span style={{ fontSize: 11, color: '#b45309' }}>
-                  Note: {r.qty_ordered} units already ordered by {posText}
-                </span>
-              </>
+              <Tag color="orange" style={{ margin: 0 }}>สั่งบางส่วน</Tag>
             )}
           </Space>
         )
@@ -380,8 +378,8 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
   return (
     <Modal
       title={
-        <span style={{ color: '#1e3a8a', fontWeight: 700 }}>
-          Select Items from PR: {prNo || '-'}
+        <span style={{ color: '#1e3a8a', fontWeight: 700, fontFamily: 'Sarabun' }}>
+          เลือกรายการจาก PR: {prNo || '-'}
         </span>
       }
       open={open}
@@ -391,19 +389,19 @@ const PRItemSelectionModal: React.FC<Props> = ({ open, prId, existingPrLineIds, 
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: '#6b7280', fontSize: 13 }}>
-            {selectedIds.size} item(s) selected
+            เลือกแล้ว {selectedIds.size} รายการ
           </span>
           <Space>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>ยกเลิก</Button>
             <Button type="primary" disabled={selectedIds.size === 0} onClick={handleConfirm}>
-              Confirm Selection
+              ยืนยันการเลือก
             </Button>
           </Space>
         </div>
       }
     >
       <div style={{ marginBottom: 12, fontSize: 13, color: '#374151' }}>
-        Total {lines.length} items — {availableCount} available, {partialCount} partially taken, {takenCount} fully taken
+        ทั้งหมด {lines.length} รายการ — สั่งได้ {availableCount} / สั่งบางส่วน {partialCount} / สั่งครบแล้ว {takenCount}
       </div>
 
       <Table

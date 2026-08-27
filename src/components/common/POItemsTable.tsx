@@ -297,16 +297,28 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       dataIndex: 'qty',
       width: 110,
       align: 'center' as const,
-      render: (_: unknown, r: POLineItem) => (
-        <InputNumber
-          size="small"
-          min={0}
-          status={r.qty > 0 ? undefined : 'error'}
-          value={r.qty}
-          style={{ width: '100%' }}
-          onChange={(v) => updateItem(r.key, 'qty', v ?? 0)}
-        />
-      ),
+      render: (_: unknown, r: POLineItem) => {
+        const max = r.pr_qty_remaining
+        const overMax = max != null && r.qty > max
+        return (
+          <div>
+            <InputNumber
+              size="small"
+              min={0}
+              max={max}
+              status={r.qty > 0 && !overMax ? undefined : 'error'}
+              value={r.qty}
+              style={{ width: '100%' }}
+              onChange={(v) => updateItem(r.key, 'qty', v ?? 0)}
+            />
+            {max != null && (
+              <div style={{ fontSize: 11, color: overMax ? '#dc2626' : '#9ca3af', marginTop: 2 }}>
+                คงเหลือที่สั่งได้: {max}
+              </div>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: 'ราคา/หน่วย',

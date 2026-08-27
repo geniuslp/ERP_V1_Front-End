@@ -179,6 +179,95 @@ The protocol that actually worked:
 (`qty_ordered - qty_received`) ไว้กัน user กรอกเกิน (over-receive) ฝั่ง UI ก่อนส่ง ไม่ใช่พึ่ง backend
 validate อย่างเดียว
 
+## 🔴 Session 2026-08-26 — print race fix, Memo/PR edit-mode rules, stock-split auto-reserve, supplier_code → id migration
+
+**Print logo race condition (fixed).** `PurchaseOrderPrint.tsx`, `PRPrint.tsx`,
+`WorkOrderPrintStandard.tsx`, `WorkOrderPrintPOStyle.tsx` — `window.print()` used to fire once DOM
+layout measured, but the logo `<img>` could still be mid-load, printing a blank logo. Now the logo
+is preloaded and `window.print()` is gated on an `onReady()` callback that fires only after the
+image finishes loading. **Apply this same preload+gate pattern to any future print component that
+renders a logo/remote image.**
+
+**Memo is editable while `PENDING_APPROVAL`**, not just `DRAFT`. `MemoCreateEditPage.tsx` /
+`MemoDetailPage.tsx`: editable for `DRAFT`, `PENDING_APPROVAL`, `REJECTED`; blocked only for
+`APPROVED`/`CANCELLED`. Editing while `PENDING_APPROVAL` does **not** reset status or reassign
+`approver_id` — the in-flight approval just continues against the edited content.
+
+**PR line editing restrictions.** `PRItemsTable.tsx` — a line loaded from the existing PR
+(`isExisting: true`) locks `mat_code` and `cost_subgroup_id`; only `qty_requested` and delete stay
+available on it. Lines added fresh during the current edit session have no such lock. Don't
+"simplify" this by making all rows equally editable — the lock is intentional (existing lines may
+already have stock reservations / PO splits against them).
+
+**PR edit-mode save now actually re-submits.** `PRCreatePage.tsx`'s "บันทึกการแก้ไข" (save edit)
+now calls `PUT /pr/:id` followed by `POST /pr/:id/submit`. Previously it only called `PUT`, so a PR
+reopened from `COMPLETED` got stuck at `DRAFT` after editing instead of returning to `COMPLETED`.
+
+**Attachment cross-linking (Memo/PR/PO).** `POApprovalDetailPage.tsx` renders up to three
+`AttachmentSection` blocks (Memo/PR/PO); `PRDetailPage.tsx` renders two (Memo/PR). Each section
+renders only if its key (`memo`/`pr`/`po`) is **present** on `attachments` in the API response —
+check key presence (`'memo' in po.attachments`), not array length, since the backend omits the key
+entirely (not `[]`) when that chain link doesn't exist for the document.
+
+**Backend note — dead handler removed.** `PRHandler.Get` (`pr.go`) was unused/unreachable; the live
+handler for `GET /pr/:id` has always been `PRApprovalHandler.GetDetail` (`pr_approval.go`), which is
+where the `{pr, memo}` attachments feature was actually merged. If a future PR-detail feature
+doesn't show up after editing what looks like the right handler, check `routes.go` /
+`internal/routes/pr.go` for which handler is actually wired before assuming your edit is live.
+
+**`PRStatusPage.tsx`**: Edit button for `DRAFT` PRs (gated by `MENU_PR_CREATE`) was a regression
+from an unrelated earlier commit (`94b5fe8`) — restored. Also fixed the action column overflowing
+by widening the column and adding `scroll={{x}}`.
+
+**Stock auto-split is now live** — `qty_reserved` / `qty_to_order` on PR lines are computed, not
+static. At PR submit, stock is auto-split: `qty_reserved` = amount deducted from central stock
+(`stock_item`), `qty_to_order` = shortfall that still needs a PO. This replaces the old
+all-or-nothing shortage block — it's first-come-first-served across concurrent PRs. For
+`order_type='cost'` PRs (requires `project_code`), the reserved amount also mirrors into
+`project_stock` via `addToProjectStock`/`deductProjectStock` (the same helpers
+Requisition/StockTransfer already use). Reopening a `COMPLETED` PR reverses both `stock_item` and
+(for `cost`-type) `project_stock` — reversal is blocked with `409` if the project already consumed
+the material elsewhere.
+
+**`PRDetailPage.tsx` line table column swap.** "PO ที่สั่งแล้ว" (per-line multi-PO split-order
+history) was replaced with "ตัดจาก Stock" (`qtyReserved`). The split-order-history view
+(`linePoMap` state/fetch) was removed entirely. **Flag this if a future request asks to see which
+POs were created against a specific PR line** — that view no longer exists and would need to be
+rebuilt.
+
+**PO-line-from-PR-line ordering cap changed.** Anywhere that capped "remaining orderable qty" at
+`qty_requested - qty_ordered` now uses `qty_to_order - qty_ordered` instead, since stock-covered
+quantity should never be orderable via PO. Affects `GetPRLinesForPO`, the PO-create-from-PR flow,
+and the documented pattern in backend `SKILL.md`.
+
+**Backend bugfix — `reconcilePRLineQty` double-counting.** Editing/growing an existing PO line that
+shares a PR line with another PO used to compute "remaining capacity" without excluding the
+editing PO's own prior contribution — this could either wrongly block a valid no-op resave, or (in
+a first attempted fix) wrongly allow real over-allocation. Fixed by comparing the line's new total
+(`newSum[id]`) against `qty_to_order - othersClaim` (everyone else's claim, explicitly excluding
+this call's own old contribution) rather than a delta against a raw budget number. **Rule for
+future split-ordering work: always compare new totals against remaining-excluding-your-own-old-
+claim, never a delta against a raw budget — those are different units and easy to mix up.**
+
+**Supplier identifier migration — `supplier_code` → `id`.** Backend fully dropped `supplier_code`
+from the `supplier` table; everything (list/get/update/delete endpoints, `purchase_order`'s FK)
+now uses `supplier.id` (auto-increment PK). Frontend updated to match: `POCreatePage.tsx` (dropdown
+value, fetch URL, submit payload key is now `supplier_id`), `POApprovalDetailPage.tsx`,
+`types/po.ts` (`supplier_code: string` → `supplier_id?: number`), `SupplierPage.tsx` (rowKey,
+PUT/DELETE URLs, bulk-import flow, and removal of the now-obsolete manual "รหัสผู้ขาย" required
+text input — suppliers no longer have a user-entered code). **Explicitly NOT touched:**
+`WorkOrder*` files and GRN/receiving files/types — these have their own separate, unconfirmed
+`supplier_code` usage on different tables; don't assume they're part of this migration without
+separately verifying their backend state.
+
+**Print button stale-state bugfix.** `POCreatePage.tsx`'s print guard checked a `savedPoId` state
+that was never populated after a successful Create — the response-parsing fallback chain was
+missing the `po_id` key (the field name every other PO response actually uses; the code was
+checking `id`, which doesn't exist on PO responses). Fixed by adding `po_id` to the fallback chain
+in both the create-success handler and the edit-mode load effect. **This codebase's PO responses
+always key the primary key as `po_id`, never `id`** — check for this before writing any new
+response-parsing code for PO objects.
+
 ## Inventory vs Stock — คนละระบบ อย่าสับสนตอนต่อ UI (2026-07-27 session)
 
 DB มี stock tracking 2 ระบบแยกกัน ไม่มี FK เชื่อมกัน:
@@ -200,3 +289,5 @@ DB มี stock tracking 2 ระบบแยกกัน ไม่มี FK เ
 - [ ] เช็ค field การเงินใหม่ของ PO (discount/vat/wht) ในฟอร์มสร้าง/แก้ PO ว่ามีอยู่แล้วหรือยัง
 - [ ] เช็คว่า field ที่เคยได้จาก DB view (`v_pr_full` ฯลฯ) ยังมาจาก API เหมือนเดิมไหม หลัง view หายจาก DB
 - [ ] **หน้า "รับเข้า" (GRN)**: รอ backend ทำ endpoint search PO ก่อน แล้วค่อยต่อ UI ตาม logic ด้านบน
+
+

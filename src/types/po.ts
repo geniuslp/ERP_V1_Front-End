@@ -24,7 +24,7 @@ export interface POListItem {
   // flow (GET /po/receivable) as of the 2026-07-27 session. Render
   // defensively via <POStatusBadges> until backend confirms it's everywhere.
   status_receive?: POReceiveStatus
-  supplier_code: string
+  supplier_id?: number
   supplier_name?: string
   total_amount: number
   vat_amount: number
@@ -83,17 +83,34 @@ export interface POLine {
   job_name?: string
 }
 
+export interface POAttachment {
+  id: number
+  file_name: string
+  file_path: string
+  file_size: number
+  file_type: string
+  uploaded_by: number
+  uploaded_at: string
+}
+
 export interface PODetail {
   po_id: number
   po_no: string
   po_date: string
   status: POStatus
   status_receive?: POReceiveStatus
+  // Present in the raw GET /po/:id JSON (models.go's PurchaseOrder.CreatedAt,
+  // json:"created_at") but never typed here before — needed client-side to
+  // mirror the backend's 1-year edit-approved window (po.go's edit-approved
+  // handler: `time.Since(createdAt) >= 365*24*time.Hour` → 400) for
+  // PENDING_REAPPROVAL POs, since `can_edit_approved` (po.go:488) is only
+  // computed for status=="APPROVED" and not recomputed for PENDING_REAPPROVAL.
+  created_at?: string
   // Links this PO back to the PR it was created from — same fields already
   // confirmed present on GET /po/:id via POCreatePage's edit-load path.
   pr_id?: number
   pr_no?: string
-  supplier_code: string
+  supplier_id?: number
   supplier_name: string
   payment_terms: string | null
   // po.location_text is what GET /po/:id actually returns (json:"location_text,omitempty"
@@ -136,6 +153,17 @@ export interface PODetail {
   // per-line cost_subgroup_id/job_code selection for PO (backend-confirmed
   // this session). PO-only; PR's line-level cost code is untouched.
   work_type?: POWorkType | null
+  // GET /po/:id nests attachments by source doc. `po` is always present
+  // (`[]` at minimum); `pr`/`memo` keys are entirely absent from the JSON
+  // when that chain link doesn't exist (e.g. no `pr` key if the PO has no
+  // originating PR) — check key presence (`'pr' in attachments`), don't
+  // just check array length, to tell "no chain link" apart from "chain
+  // link exists but has zero files".
+  attachments?: {
+    po: POAttachment[]
+    pr?: POAttachment[]
+    memo?: POAttachment[]
+  }
 }
 
 // ⚠️ P/E/S/F/G/H — no "M" prefix, confirmed against backend's work_type CHECK
@@ -161,6 +189,10 @@ export interface POLineItem {
   qty: number
   unit_price: number
   is_from_pr: boolean
+  // Snapshot of qty_remaining on the PR line at the moment it was picked in
+  // PRItemSelectionModal — client-side max for the qty input (task: prevent
+  // over-ordering a single PR line across multiple POs before server checks).
+  pr_qty_remaining?: number
   description?: string
   disc?: number
   disc_type?: 'pct' | 'amt'

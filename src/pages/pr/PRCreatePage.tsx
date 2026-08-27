@@ -130,6 +130,9 @@ const PRCreatePage: React.FC = () => {
   const attachmentsRef = useRef<AttachedFile[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [existingAttachments, setExistingAttachments] = useState<UploadedFile[]>([])
+  // Files attached to the linked Memo (read-only here — owned by the Memo,
+  // never resubmitted as part of this PR's own `attachments` on save).
+  const [memoAttachments, setMemoAttachments] = useState<UploadedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -250,12 +253,20 @@ const PRCreatePage: React.FC = () => {
   // qty_requested was lowered below qty already ordered on an existing PO.
   useEffect(() => {
     if (!isEdit || !id) return
+    // React.StrictMode (see main.tsx) double-invokes effects in dev, firing
+    // this effect's mount → cleanup → mount cycle — without this guard both
+    // invocations fire GET /pr/:id concurrently, and the first (now-stale)
+    // one's error handler can still show a toast after the second has
+    // already resolved and rendered the page correctly. `ignore` makes the
+    // cleanup from the first invocation suppress its own state updates.
+    let ignore = false
     const fetchExisting = async () => {
       setLoadingExisting(true)
       try {
         const res = await axios.get(`${BASE_URL}/pr/${id}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
+        if (ignore) return
         const raw = res.data?.data ?? res.data
         setPrNumber(raw.pr_no ?? '')
         form.setFieldsValue({
@@ -283,8 +294,20 @@ const PRCreatePage: React.FC = () => {
               : null,
           }))
         )
+        // attachments is { pr: [...], memo: [...] } — pr = files uploaded
+        // directly to this PR (editable/removable, resubmitted on save),
+        // memo = files carried over from the linked Memo (display-only).
+        // Not a flat array — see backend confirmation on GET /pr/:id.
         setExistingAttachments(
-          (raw.attachments ?? []).map((a: any) => ({
+          (raw.attachments?.pr ?? []).map((a: any) => ({
+            file_path: a.file_path,
+            file_name: a.file_name,
+            file_size: a.file_size,
+            file_type: a.file_type,
+          }))
+        )
+        setMemoAttachments(
+          (raw.attachments?.memo ?? []).map((a: any) => ({
             file_path: a.file_path,
             file_name: a.file_name,
             file_size: a.file_size,
@@ -292,9 +315,11 @@ const PRCreatePage: React.FC = () => {
           }))
         )
       } catch (err: any) {
+        if (ignore) return
+        console.error('fetchExisting error:', err)  // เพิ่มบรรทัดนี้ชั่วคราว
         message.error(err?.response?.data?.message || 'โหลดข้อมูล PR ไม่สำเร็จ')
       } finally {
-        setLoadingExisting(false)
+        if (!ignore) setLoadingExisting(false)
       }
     }
     const fetchOverOrdered = async () => {
@@ -302,6 +327,7 @@ const PRCreatePage: React.FC = () => {
         const res = await axios.get(`${BASE_URL}/pr/${id}/lines-with-po-status`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
+        if (ignore) return
         const raw = res.data?.data ?? res.data
         const lines = raw?.lines ?? []
         const overs = lines
@@ -314,6 +340,9 @@ const PRCreatePage: React.FC = () => {
     }
     fetchExisting()
     fetchOverOrdered()
+    return () => {
+      ignore = true
+    }
   }, [isEdit, id])
 
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
@@ -373,9 +402,15 @@ const PRCreatePage: React.FC = () => {
         await axios.put(`${BASE_URL}/pr/${id}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
+        // Update never touches status (backend-confirmed) — the reopened PR
+        // stays DRAFT until explicitly submitted. Do that here so saving an
+        // edit always finishes back at COMPLETED instead of stranding it.
+        await axios.post(`${BASE_URL}/pr/${id}/submit`, {}, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
         Modal.success({
-          title: 'บันทึกการแก้ไขสำเร็จ',
-          content: `PR ${prNumber} กลับสู่สถานะ "ร่าง" แล้ว กรุณากด "ส่งใบขอซื้อ" อีกครั้งเมื่อพร้อม เพื่อให้ใบขอซื้อนี้กลับมาสั่งซื้อได้ตามปกติ`,
+          title: 'บันทึกและส่งใบขอซื้อสำเร็จ',
+          content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว`,
         })
         navigate(`/pr/${id}`)
       } else {
@@ -508,7 +543,7 @@ const PRCreatePage: React.FC = () => {
           type="info"
           showIcon
           message="ใบขอซื้อนี้ถูกเปิดกลับเป็นสถานะ ร่าง (DRAFT) ชั่วคราวเพื่อแก้ไข"
-          description='แก้ไขข้อมูลด้านล่างแล้วกด "บันทึกการแก้ไข" — หลังบันทึก PR จะยังอยู่ในสถานะร่าง ต้องกด "ส่งใบขอซื้อ" อีกครั้งเพื่อให้กลับมาสั่งซื้อได้ตามปกติ'
+          description='แก้ไขข้อมูลด้านล่างแล้วกด "บันทึกการแก้ไข" — ระบบจะบันทึกและส่งใบขอซื้อนี้ให้กลับสู่สถานะ "เสร็จสมบูรณ์" ให้ทันที'
         />
       )}
 
@@ -856,6 +891,45 @@ const PRCreatePage: React.FC = () => {
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Memo attachments (read-only — owned by the linked Memo, not this PR) */}
+                {memoAttachments.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: '#60a5fa', marginBottom: 4 }}>
+                      ไฟล์แนบจาก Memo
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {memoAttachments.map((f) => (
+                        <a
+                          key={f.file_path}
+                          href={`${FILE_BASE_URL}/${f.file_path}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            background: '#f0f5ff',
+                            border: '0.5px solid #bfdbfe',
+                            borderRadius: 6,
+                            padding: '3px 8px',
+                            fontSize: 12,
+                            color: '#1e40af',
+                            maxWidth: 240,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <span
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}
+                            title={f.file_name}
+                          >
+                            {f.file_name}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
 

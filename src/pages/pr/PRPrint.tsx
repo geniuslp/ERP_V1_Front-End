@@ -162,6 +162,8 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
       <img
         src={logo}
         alt="Logo"
+        width={4248}
+        height={1844}
         style={{ marginTop: '1px', height: '22mm', width: 'auto', objectFit: 'contain', flexShrink: 0 }}
       />
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -246,12 +248,23 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const [pages, setPages] = useState<PRItem[][] | null>(null)
   const [rowsLast, setRowsLast] = useState(10)
+  const [logoReady, setLogoReady] = useState(false)
 
   useEffect(() => {
     const s = document.createElement('style')
     s.id = 'pr-print-style'; s.textContent = CSS
     document.head.appendChild(s)
     return () => { document.getElementById('pr-print-style')?.remove() }
+  }, [])
+
+  // Preload the logo so onReady (and window.print()) never fires before the
+  // browser has actually finished loading/decoding the image — the source of
+  // an intermittent missing-logo-on-print bug.
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => setLogoReady(true)
+    img.onerror = () => { console.warn('[PR] logo image failed to load, printing without it'); setLogoReady(true) }
+    img.src = logo
   }, [])
 
   useEffect(() => {
@@ -279,8 +292,8 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   })
 
   useEffect(() => {
-    if (pages !== null) onReady?.()
-  }, [pages])
+    if (pages !== null && logoReady) onReady?.()
+  }, [pages, logoReady])
 
   if (pages === null) {
     return ReactDOM.createPortal(

@@ -20,6 +20,10 @@ interface PRItem {
   remark: string
   costSubgroupId: number | null
   costCodeLabel: string | null
+  // true only for lines seeded from an existing PR's initialItems (edit mode).
+  // Locks mat_code/cost_subgroup_id in place — changing material or cost code
+  // requires deleting this line and adding a new one instead.
+  isExisting?: boolean
 }
 
 const unitOptions = [
@@ -90,6 +94,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         remark: '',
         costSubgroupId: it.cost_subgroup_id,
         costCodeLabel: it.cost_code_label ?? null,
+        isExisting: true,
       }))
     )
   }, [initialItems])
@@ -265,13 +270,13 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
             <Button
               size="small"
               style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              disabled={!r.code}
+              disabled={!r.code || r.isExisting}
               onClick={() => setCostCodeModalRowKey(r.key)}
               title={r.costCodeLabel ?? undefined}
             >
               {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
             </Button>
-            {r.costCodeLabel && (
+            {r.costCodeLabel && !r.isExisting && (
               <Button
                 size="small"
                 type="text"
@@ -287,7 +292,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       dataIndex: 'code',
       width: 120,
       render: (_: unknown, r: PRItem) =>
-        readonly ? (
+        readonly || r.isExisting ? (
           <span style={{ fontSize: 13 }}>{r.code}</span>
         ) : (
           <Input

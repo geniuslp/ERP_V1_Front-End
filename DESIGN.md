@@ -165,6 +165,17 @@ Style มาตรฐานทุก Card:
 - Row hover: `#f0f5ff`
 - เลขที่ PR/PO: `color: #2563eb, fontWeight: 600`
 
+### AttachmentSection (cross-linked document attachments)
+ใช้ในหน้า detail ที่ต้องโชว์ไฟล์แนบจากเอกสารที่เชื่อมกัน (เช่น PO detail โชว์ไฟล์แนบของ
+Memo/PR/PO เอง, PR detail โชว์ไฟล์แนบของ Memo/PR) — plain-div section (ไม่ใช่ Card แยก) พร้อม
+title + list ของไฟล์ ต่อกันเป็นบล็อกในหน้าเดียว:
+```tsx
+<AttachmentSection title="ไฟล์แนบจาก Memo" items={po.attachments.memo ?? []} />
+```
+Render เฉพาะ section ที่ key นั้น**มีอยู่จริง**ใน response (เช่น `'memo' in po.attachments`) —
+ห้ามเช็คแค่ length เพราะ backend จะไม่ส่ง key มาเลยถ้าเอกสารนั้นไม่มี chain link (ไม่ใช่ส่งเป็น
+`[]`) ดู `CLAUDE.md` หัวข้อ session 2026-08-26 สำหรับรายละเอียด behavior
+
 ---
 
 ## 🗃️ Layout Patterns

@@ -4,7 +4,7 @@ import {
   Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input,
 } from 'antd'
 import {
-  ArrowLeftOutlined, PrinterOutlined, EditOutlined, StopOutlined,
+  ArrowLeftOutlined, EditOutlined, StopOutlined,
   CheckOutlined, CloseOutlined,
 } from '@ant-design/icons'
 import axios from 'axios'
@@ -204,7 +204,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   }
 
   const isOwner   = memo && user && String(memo.requestedById) === String(user.id)
-  const canEdit   = memo && (memo.status === 'DRAFT' || memo.status === 'draft') && isOwner
+  const canEdit   = memo && (memo.status === 'DRAFT' || memo.status === 'draft' || memo.status === 'PENDING_APPROVAL' || memo.status === 'pending_approval') && isOwner
 
   const columns = [
     { title: '#', key: 'no', align: 'center' as const, render: (_: any, __: any, idx: number) => idx + 1, width: 50 },
@@ -252,9 +252,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
               กลับ
             </Button>
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-              พิมพ์
-            </Button>
+           
             {canEdit && (
               <Button icon={<EditOutlined />} onClick={() => navigate(ROUTES.MEMO.EDIT.replace(':id', memo!.id))}>
                 แก้ไข

@@ -17,6 +17,7 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 const statusOptions = [
   { value: '', label: 'ทุกสถานะ' },
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
+  { value: 'PENDING_REAPPROVAL', label: 'รออนุมัติอีกครั้ง' },
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
   { value: 'DRAFT', label: 'แบบร่าง' },

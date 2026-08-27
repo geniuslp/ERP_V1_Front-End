@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin } from 'antd'
+import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin, Select } from 'antd'
 import { InboxOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -33,6 +33,14 @@ const GoodsReceiptDetailPage: React.FC = () => {
   const [po, setPo] = useState<GRNPoDetail | null>(null)
   const [lines, setLines] = useState<ReceiptLine[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Physical warehouse being received into — independent of (never defaulted
+  // from) the PO's own location_text, which is shown alongside purely as
+  // reference text. See task: no auto-defaulting, to avoid assuming intent.
+  const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
+  const [warehousesLoading, setWarehousesLoading] = useState(false)
+  const [warehouseCode, setWarehouseCode] = useState<string | undefined>(undefined)
+  const [warehouseError, setWarehouseError] = useState<string | undefined>(undefined)
 
   const [scoreModalOpen, setScoreModalOpen] = useState(false)
   const [scoreGrnId, setScoreGrnId] = useState<number | null>(null)
@@ -77,12 +85,45 @@ const GoodsReceiptDetailPage: React.FC = () => {
     return () => { cancelled = true }
   }, [poId, accessToken])
 
+  useEffect(() => {
+    const fetchWarehouses = async () => {
+      setWarehousesLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setWarehouses(list.map((w: any) => ({
+          value: w.warehouse_code ?? w.code,
+          label: w.warehouse_name ?? w.name ?? w.warehouse_code ?? w.code,
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดรายชื่อคลังไม่สำเร็จ')
+      } finally {
+        setWarehousesLoading(false)
+      }
+    }
+    fetchWarehouses()
+  }, [accessToken])
+
   const setLineAddQty = (poLineId: number, val: number | null) => {
     setLines((prev) => prev.map((l) => (l.po_line_id === poLineId ? { ...l, add_qty: val ?? 0 } : l)))
   }
 
   const handleSave = async () => {
     if (!po) return
+
+    // The physical receiving warehouse is required and independent of the
+    // PO's own location_text (shown as reference only, never used to
+    // pre-select this) — block submit with an inline error if unset.
+    if (!warehouseCode) {
+      setWarehouseError('กรุณาเลือกคลังที่รับเข้า')
+      message.warning('กรุณาเลือกคลังที่รับเข้า')
+      return
+    }
+    setWarehouseError(undefined)
+
     if (lines.some((l) => l.add_qty < 0)) {
       message.warning('จำนวนที่รับเข้าต้องไม่ติดลบ')
       return
@@ -102,8 +143,12 @@ const GoodsReceiptDetailPage: React.FC = () => {
         `${BASE_URL}/grn/receive`,
         {
           po_id: po.po_id,
-          warehouse_code: po.warehouse_code,
-          supplier_code: po.supplier_code,
+          // The user-selected physical warehouse, not po.warehouse_code —
+          // purchase_order.warehouse_code/location_text are never touched by
+          // this endpoint and are purely informational reference here.
+          warehouse_code: warehouseCode,
+          // supplier_id removed — backend now derives it server-side from
+          // the PO and no longer accepts/needs it in this request.
           lines: receivingLines,
         },
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -228,12 +273,39 @@ const GoodsReceiptDetailPage: React.FC = () => {
                   <span style={{ color: '#9ca3af' }}>ไม่ระบุ</span>
                 )}
               </Descriptions.Item>
-              <Descriptions.Item key="supplier_code" label="Supplier">{po.supplier_code}</Descriptions.Item>
-              <Descriptions.Item key="warehouse_code" label="คลัง">{po.warehouse_code || '—'}</Descriptions.Item>
+              <Descriptions.Item key="supplier" label="Supplier">{po.supplier_name || '—'}</Descriptions.Item>
+              <Descriptions.Item key="warehouse_code" label="คลัง (ตาม PO)">{po.warehouse_code || '—'}</Descriptions.Item>
+              <Descriptions.Item key="location_text" label="สถานที่ (ตาม PO)">{po.location_text || '—'}</Descriptions.Item>
               <Descriptions.Item key="status" label="สถานะ PO">{po.status}</Descriptions.Item>
               <Descriptions.Item key="currency" label="สกุลเงิน">{po.currency}</Descriptions.Item>
               <Descriptions.Item key="net_amount" label="มูลค่าสุทธิ">{(po.net_amount ?? 0).toLocaleString()}</Descriptions.Item>
             </Descriptions>
+          </Card>
+
+          <Card style={{ ...cardStyle, marginBottom: 20 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              คลังที่รับเข้าจริง <span style={{ color: '#ff4d4f' }}>*</span>
+            </div>
+            <Select
+              placeholder="— เลือกคลังที่รับเข้า —"
+              style={{ width: 280 }}
+              status={warehouseError ? 'error' : undefined}
+              loading={warehousesLoading}
+              value={warehouseCode}
+              onChange={(v) => {
+                setWarehouseCode(v)
+                setWarehouseError(undefined)
+              }}
+              options={warehouses}
+            />
+            {warehouseError && (
+              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>{warehouseError}</div>
+            )}
+            {po.location_text && (
+              <div style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
+                ตามใบสั่งซื้อ: {po.location_text}
+              </div>
+            )}
           </Card>
 
           <Card style={cardStyle}>

@@ -98,6 +98,12 @@ function normalizeData(raw: POData): POData {
     useDiscount: raw.useDiscount ?? false,
     useVat: raw.useVat ?? false,
     useWht: raw.useWht ?? false,
+    // purchase_order.remarks is nullable (GET /po/:id/print-data's `remark`
+    // field, models.go:2081) — null whenever the PO has no remark set, e.g.
+    // seen on a PENDING_REAPPROVAL PO (id 15) that crashed POFooter's
+    // `data.remark.split('\n')` with "Cannot read properties of null" and
+    // blanked the whole print view (no error boundary around it).
+    remark: raw.remark ?? '',
   }
 }
 
@@ -251,6 +257,8 @@ const POHeader = ({data,pageNum,totalPages}:{data:POData;pageNum:number;totalPag
              <img
           src={logo}
           alt="Logo"
+          width={4248}
+          height={1844}
          style={{
           marginTop: "1px",
           height: "22mm",
@@ -400,12 +408,23 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const [pages,    setPages]    = useState<POItem[][]|null>(null)
   const [rowsLast, setRowsLast] = useState(10)
+  const [logoReady, setLogoReady] = useState(false)
 
   useEffect(()=>{
     const s = document.createElement('style')
     s.id='po-style'; s.textContent=CSS
     document.head.appendChild(s)
     return ()=>{ document.getElementById('po-style')?.remove() }
+  },[])
+
+  // Preload the logo so onReady (and window.print()) never fires before the
+  // browser has actually finished loading/decoding the image — the source of
+  // an intermittent missing-logo-on-print bug.
+  useEffect(()=>{
+    const img = new Image()
+    img.onload = () => setLogoReady(true)
+    img.onerror = () => { console.warn('[PO] logo image failed to load, printing without it'); setLogoReady(true) }
+    img.src = logo
   },[])
 
   useEffect(()=>{
@@ -437,8 +456,8 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   })
 
   useEffect(() => {
-    if (pages !== null) onReady?.()
-  }, [pages])
+    if (pages !== null && logoReady) onReady?.()
+  }, [pages, logoReady])
 
   if(pages===null){
     return ReactDOM.createPortal(

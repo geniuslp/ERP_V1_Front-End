@@ -75,8 +75,20 @@ interface PRDetail {
   prDate: string
   requiredDate: string | null
   lines: PRLineItem[]
-  attachments: PRAttachment[]
+  // GET /pr/:id nests attachments by source doc. `pr` is always present
+  // (`[]` at minimum); `memo` key is entirely absent from the JSON when
+  // the PR has no originating Memo — check key presence, not array length.
+  attachments: { pr: PRAttachment[]; memo?: PRAttachment[] }
 }
+
+const mapAttachment = (a: any): PRAttachment => ({
+  id:         a.id,
+  fileName:   a.file_name,
+  filePath:   a.file_path,
+  fileSize:   a.file_size ?? 0,
+  fileType:   a.file_type ?? '',
+  uploadedAt: a.uploaded_at ?? '',
+})
 
 const mapPR = (raw: any): PRDetail => ({
   id:           raw.id,
@@ -104,18 +116,51 @@ const mapPR = (raw: any): PRDetail => ({
     costCode:         l.cost_code,
     costSubgroupName: l.cost_subgroup_name,
   })),
-  attachments: (raw.attachments ?? []).map((a: any) => ({
-    id:         a.id,
-    fileName:   a.file_name,
-    filePath:   a.file_path,
-    fileSize:   a.file_size ?? 0,
-    fileType:   a.file_type ?? '',
-    uploadedAt: a.uploaded_at ?? '',
-  })),
+  attachments: {
+    pr: (raw.attachments?.pr ?? []).map(mapAttachment),
+    ...('memo' in (raw.attachments ?? {}) ? { memo: (raw.attachments.memo ?? []).map(mapAttachment) } : {}),
+  },
 })
 
 const formatSize = (b: number) =>
   b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
+
+const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: boolean }> = ({ title, items, last }) => (
+  <Card style={last ? cardStyle : { ...cardStyle, marginBottom: 16 }} title={<span style={cardTitleStyle}>{title}</span>}>
+    {items.length === 0 ? (
+      <Text type="secondary" style={{ fontSize: 13 }}>ไม่มีไฟล์แนบ</Text>
+    ) : (
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        {items.map((a) => (
+          <div
+            key={a.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 12px',
+              border: '0.5px solid #e5e7eb',
+              borderRadius: 8,
+            }}
+          >
+            <Space>
+              <PaperClipOutlined style={{ color: '#2563eb' }} />
+              <a
+                href={`${FILE_BASE_URL}/${a.filePath}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 13, color: '#1e40af' }}
+                className="attachment-filename-link"
+              >
+                {a.fileName}
+              </a>
+              <Text type="secondary" style={{ fontSize: 12 }}>{formatSize(a.fileSize)}</Text>
+            </Space>
+          </div>
+        ))}
+      </Space>
+    )}
+  </Card>
+)
 
 interface BlockingPO {
   po_id?: number
@@ -181,10 +226,10 @@ const PRDetailPage: React.FC = () => {
 
   useEffect(() => { fetchPR() }, [id])
 
-  // Proactive check: only relevant once the PR is COMPLETED (the only status
-  // that shows the "แก้ไข" button / calls reopen).
+  // Fetch the per-line PO breakdown to compute the reopen-blocking banner — only
+  // relevant once COMPLETED, since that's the only status Reopen guards against.
   useEffect(() => {
-    if (pr?.status !== 'COMPLETED') {
+    if (!pr) {
       setBlockingPOs([])
       return
     }
@@ -194,14 +239,15 @@ const PRDetailPage: React.FC = () => {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         const body = res.data?.data ?? res.data
-        setBlockingPOs(extractBlockingPOs(body?.lines ?? []))
+        const lines = body?.lines ?? []
+        setBlockingPOs(pr.status === 'COMPLETED' ? extractBlockingPOs(lines) : [])
       } catch {
         // Non-critical — the reactive error modal on "แก้ไข" click still catches this.
         setBlockingPOs([])
       }
     }
     fetchLinesPOStatus()
-  }, [pr?.status, id])
+  }, [pr?.status, pr?.id, id])
 
   const handleEdit = async () => {
     setReopening(true)
@@ -268,6 +314,7 @@ const PRDetailPage: React.FC = () => {
     { title: 'จำนวนขอ', dataIndex: 'qtyRequested', key: 'qtyRequested', width: 100, align: 'right' as const },
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qtyToOrder', key: 'qtyToOrder', width: 110, align: 'right' as const },
     { title: 'หน่วย', dataIndex: 'unitName', key: 'unitName', width: 80, align: 'center' as const },
+    { title: 'ตัดจาก Stock', dataIndex: 'qtyReserved', key: 'qtyReserved', width: 110, align: 'right' as const },
     ...(hasCostCode
       ? [{
           title: 'Cost Code', key: 'costCode', width: 180,
@@ -380,42 +427,15 @@ const PRDetailPage: React.FC = () => {
           columns={lineColumns}
           pagination={false}
           locale={{ emptyText: 'ไม่มีรายการ' }}
-          scroll={{ x: 700 }}
+          scroll={{ x: 920 }}
         />
       </Card>
 
-      {pr.attachments.length > 0 && (
-        <Card style={cardStyle} title={<span style={cardTitleStyle}>ไฟล์แนบ</span>}>
-          <Space direction="vertical" style={{ width: '100%' }} size={8}>
-            {pr.attachments.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '8px 12px',
-                  border: '0.5px solid #e5e7eb',
-                  borderRadius: 8,
-                }}
-              >
-                <Space>
-                  <PaperClipOutlined style={{ color: '#2563eb' }} />
-                  <a
-                    href={`${FILE_BASE_URL}/${a.filePath}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: 13, color: '#1e40af' }}
-                    className="attachment-filename-link"
-                  >
-                    {a.fileName}
-                  </a>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{formatSize(a.fileSize)}</Text>
-                </Space>
-              </div>
-            ))}
-          </Space>
-        </Card>
+      {pr.attachments.memo !== undefined && (
+        <AttachmentCard title="ไฟล์แนบจาก Memo" items={pr.attachments.memo} />
       )}
+
+      <AttachmentCard title="ไฟล์แนบ PR" items={pr.attachments.pr} last />
 
       <Modal
         open={!!blockModalPOs}
