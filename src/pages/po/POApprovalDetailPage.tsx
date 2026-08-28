@@ -25,10 +25,6 @@ import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { PaperClipOutlined } from '@ant-design/icons'
 
-const BASE_URL = (import.meta as any).env?.VITE_API_URL
-// Uploaded files are served as static assets off the API server root (app.Static("/uploads", ...)),
-// not under /api/v1 — strip the versioned API suffix to get the file host.
-const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 const MENU_CODE = 'MENU_PO_STATUS'
 
@@ -74,7 +70,7 @@ const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({
             <Space>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
-                href={`${FILE_BASE_URL}/${a.file_path}`}
+                href={a.file_path}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 13, color: '#1e40af' }}

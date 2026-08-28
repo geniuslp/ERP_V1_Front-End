@@ -119,8 +119,6 @@ const responsiveStyle = `
   }
 `
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
-// Uploaded files are served as static assets off the API server root, not under /api/v1.
-const FILE_BASE_URL = BASE_URL.replace(/\/api\/v1\/?$/, '')
 
 const PRCreatePage: React.FC = () => {
   const navigate = useNavigate()
@@ -786,7 +784,7 @@ const PRCreatePage: React.FC = () => {
                       {selectedMemo.attachments.map((f) => (
                         <a
                           key={f.filePath}
-                          href={`${FILE_BASE_URL}/${f.filePath}`}
+                          href={f.filePath}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
@@ -899,7 +897,7 @@ const PRCreatePage: React.FC = () => {
                       {memoAttachments.map((f) => (
                         <a
                           key={f.file_path}
-                          href={`${FILE_BASE_URL}/${f.file_path}`}
+                          href={f.file_path}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{

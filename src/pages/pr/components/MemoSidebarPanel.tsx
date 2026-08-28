@@ -11,8 +11,6 @@ import { useAppSelector } from '@/store'
 import type { Memo } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
-// Uploaded files are served as static assets off the API server root, not under /api/v1.
-const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 type SidebarSize = 'compact' | 'expanded'
 
@@ -270,7 +268,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                   {detailMemo.attachments.map((f) => (
                     <a
                       key={f.filePath}
-                      href={`${FILE_BASE_URL}/${f.filePath}`}
+                      href={f.filePath}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{

@@ -32,7 +32,6 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 // Uploaded files are served as static assets off the API server root, not under
 // /api/v1 — strip the versioned API suffix to get the file host (same convention
 // PRDetailPage.tsx uses for its attachment download links).
-const FILE_BASE_URL = BASE_URL.replace(/\/api\/v1\/?$/, '')
 
 interface AttachedFile {
   uid: string
@@ -1642,7 +1641,7 @@ const POCreatePage: React.FC = () => {
                             <Space>
                               <PaperClipOutlined style={{ color: '#2563eb' }} />
                               <a
-                                href={`${FILE_BASE_URL}/${a.filePath}`}
+                                href={a.filePath}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{ fontSize: 13, color: '#1e40af' }}

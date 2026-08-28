@@ -11,9 +11,6 @@ import PRPrint, { type PRData } from './PRPrint'
 const { Text } = Typography
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
-// Uploaded files are served as static assets off the API server root (app.Static("/uploads", ...)),
-// not under /api/v1 — strip the versioned API suffix to get the file host.
-const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -145,7 +142,7 @@ const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: bo
             <Space>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
-                href={`${FILE_BASE_URL}/${a.filePath}`}
+                href={a.filePath}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 13, color: '#1e40af' }}
