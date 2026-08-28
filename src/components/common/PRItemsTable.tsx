@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { Card, Table, Button, Input, InputNumber, Select, Space, message, Spin } from 'antd'
+import React, { useState, useEffect, useRef } from 'react'
+import { Card, Table, Button, Input, InputNumber, Space, message, Spin } from 'antd'
 import { PlusOutlined, SearchOutlined, DeleteOutlined, PrinterOutlined, RollbackOutlined, CloseCircleFilled } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
@@ -25,15 +25,6 @@ interface PRItem {
   // requires deleting this line and adding a new one instead.
   isExisting?: boolean
 }
-
-const unitOptions = [
-  { value: 'Ea', label: 'Ea' },
-  { value: 'ชิ้น', label: 'ชิ้น' },
-  { value: 'กล่อง', label: 'กล่อง' },
-  { value: 'ชุด', label: 'ชุด' },
-  { value: 'kg', label: 'kg' },
-  { value: 'L', label: 'L' },
-]
 
 interface InitialPRItem {
   mat_code: string
@@ -73,10 +64,13 @@ interface PRItemsTableProps {
     cost_code_label: string | null
     remark: string
   }[]) => void
+  // Document-level "ประเภท Job" value (PR header field, e.g. 'MP', 'G') — passed
+  // down so the CostCode picker can filter its options to that job type.
+  jobTypeCode?: string
 }
 
 const PRItemsTable: React.FC<PRItemsTableProps> = ({
-  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint,
+  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint, jobTypeCode,
 }) => {
   const [items, setItems] = useState<PRItem[]>([])
 
@@ -98,6 +92,22 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       }))
     )
   }, [initialItems])
+
+  // Job type is a single document-level field (PR header), shared by every line's
+  // CostCode filter — see jobTypeCode prop above. If the user changes it after
+  // already picking CostCodes, those selections may no longer match the new
+  // filter, so clear them all (same pattern as department clearing role in
+  // UsersPage.tsx: clear, never auto-remap). Skip the very first render so
+  // loading an existing PR's job_code (edit mode) doesn't wipe initialItems'
+  // cost_subgroup_id right after it's set.
+  const isFirstJobTypeRender = useRef(true)
+  useEffect(() => {
+    if (isFirstJobTypeRender.current) {
+      isFirstJobTypeRender.current = false
+      return
+    }
+    setItems((prev) => prev.map((i) => ({ ...i, costSubgroupId: null, costCodeLabel: null })))
+  }, [jobTypeCode])
 
   useEffect(() => {
     onItemsChange?.(items.map((i) => ({
@@ -160,7 +170,9 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         // silently tell the backend "fully covered by stock, order nothing."
         qtyPR: 1,
         qtyStock: 1,
-        unit: 'Ea',
+        // Blank until a material is actually picked — don't show a unit value
+        // that hasn't been confirmed by a real material selection.
+        unit: '',
         remark: '',
         costSubgroupId: null,
         costCodeLabel: null,
@@ -190,7 +202,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
     setItems((prev) => prev.map((i) => (i.key === key ? {
       ...i,
       costSubgroupId: item.subgroupId,
-      costCodeLabel: `${item.costCode} — ${item.subgroupName}`,
+      costCodeLabel: item.costCode,
     } : i)))
   }
 
@@ -387,18 +399,9 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       dataIndex: 'unit',
       width: 90,
       align: 'center' as const,
-      render: (_: unknown, r: PRItem) =>
-        readonly ? (
-          <span style={{ fontSize: 13 }}>{r.unit}</span>
-        ) : (
-          <Select
-            size="small"
-            value={r.unit}
-            style={{ width: '100%' }}
-            options={unitOptions}
-            onChange={(v) => updateItem(r.key, 'unit', v)}
-          />
-        ),
+      // Always read-only — mirrors the selected material's unit_name and can
+      // never be edited by the user (see handleMaterialConfirm / initialItems seeding).
+      render: (_: unknown, r: PRItem) => <span style={{ fontSize: 13 }}>{r.unit || '-'}</span>,
     },
 
     ...(!readonly
@@ -496,6 +499,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         onSelect={(item) => {
           if (costCodeModalRowKey) handleCostCodeSelect(costCodeModalRowKey, item)
         }}
+        jobTypeCode={jobTypeCode}
       />
 
       {/* Bottom actions */}

@@ -46,7 +46,7 @@ const UsersPage: React.FC = () => {
         fullName: u.full_name ?? u.fullName ?? u.username,
         email: u.email,
         role: (u.roles ?? []).map((rl: UserRole) => rl.role_name).join(', ') || u.role || '-',
-        department: u.department ?? '-',
+        department: u.dept_name ?? '-',
         isActive: u.is_active,
         roleId: u.roles?.[0]?.role_id ?? u.role_id ?? null,
         roleIds: (u.roles ?? []).map((rl: UserRole) => rl.role_id),
@@ -111,14 +111,43 @@ const UsersPage: React.FC = () => {
     })
     setOpen(true)
   }
-  const handleDeptChange = (deptCode: string) => {
-    const rolesForDept = allRoles.filter((role) => role.dept_code === deptCode)
+  const handleDeptChange = async (deptCode: string) => {
+    // Guard the same race openEdit guards against: if allRoles hasn't finished
+    // its initial fetch yet, don't filter against an empty list — that would
+    // wrongly wipe out valid role options/selections.
+    let roles = allRoles
+    if (roles.length === 0 && accessToken) {
+      try {
+        roles = await permissionMatrixService.getRoles(accessToken as string)
+        setAllRoles(roles)
+      } catch {
+        roles = []
+      }
+    }
+    const rolesForDept = roles.filter((role) => role.dept_code === deptCode)
     setRoleOptions(rolesForDept)
     const currentRoleIds: number[] = form.getFieldValue('roleIds') ?? []
     const filtered = currentRoleIds.filter((id) => rolesForDept.some((role) => role.id === id))
     form.setFieldValue('roleIds', filtered)
   }
-  const handleDelete = (key: string) => { setData(data.filter((d) => d.key !== key)); message.success('ลบผู้ใช้เรียบร้อย') }
+  const handleDelete = async (key: string) => {
+    const target = data.find((d) => d.key === key)
+    if (!target) return
+    try {
+      await axios.delete(`${BASE_URL}/users/${target.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      setData(data.filter((d) => d.key !== key))
+      message.success('ลบผู้ใช้เรียบร้อย')
+    } catch (err: any) {
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        'ลบผู้ใช้ไม่สำเร็จ'
+      message.error(errMsg)
+    }
+  }
 
   const openPasswordReset = (r: UserRecord) => { setPasswordTarget(r); passwordForm.resetFields(); setPasswordOpen(true) }
   const handlePasswordOk = () => {
@@ -147,16 +176,56 @@ const UsersPage: React.FC = () => {
     form.validateFields().then(async (values) => {
       if (editing) {
         try {
-          const payload = {
+          // Backend split: PUT /users/:id's UpdateUserRequest only accepts a
+          // singular `role_id`, not a `role_ids` array — sending `role_ids` here
+          // gets silently ignored (no error, just dropped). Role assignment has
+          // its own endpoint, PUT /users/:id/roles, which takes { role_ids: [...] }.
+          // Profile fields and roles must therefore be saved as two separate calls.
+          const profilePayload = {
             username: values.username,
             full_name: values.fullName,
             email: values.email,
             dept_code: values.deptCode,
-            role_ids: values.roleIds,
           }
-          await axios.put(`${BASE_URL}/users/${editing.id}`, payload, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          })
+          const rolesPayload = { role_ids: values.roleIds ?? [] }
+          console.log('[UsersPage] PUT /users/:id payload', profilePayload)
+          console.log('[UsersPage] PUT /users/:id/roles payload', rolesPayload)
+
+          let profileFailed = false
+          let rolesFailed = false
+          let profileErrMsg = ''
+          let rolesErrMsg = ''
+
+          try {
+            await axios.put(`${BASE_URL}/users/${editing.id}`, profilePayload, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            })
+          } catch (err: any) {
+            profileFailed = true
+            profileErrMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'unknown error'
+          }
+
+          try {
+            await axios.put(`${BASE_URL}/users/${editing.id}/roles`, rolesPayload, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            })
+          } catch (err: any) {
+            rolesFailed = true
+            rolesErrMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'unknown error'
+          }
+
+          if (profileFailed && rolesFailed) {
+            message.error(`บันทึกข้อมูลทั่วไปไม่สำเร็จ: ${profileErrMsg} และบันทึกบทบาทไม่สำเร็จ: ${rolesErrMsg}`)
+            return
+          }
+          if (profileFailed) {
+            message.error(`บันทึกข้อมูลทั่วไปไม่สำเร็จ: ${profileErrMsg} (บทบาทถูกบันทึกแล้ว)`)
+            return
+          }
+          if (rolesFailed) {
+            message.error(`บันทึกข้อมูลทั่วไปสำเร็จ แต่บันทึกบทบาทไม่สำเร็จ: ${rolesErrMsg}`)
+            return
+          }
 
           // Don't trust the submitted form values as the new state — re-fetch the
           // user from the server so we display what was *actually* persisted.
@@ -166,13 +235,36 @@ const UsersPage: React.FC = () => {
             headers: { Authorization: `Bearer ${accessToken}` },
           })
           const fresh = verifyRes.data?.data ?? verifyRes.data
-          const freshRoleIds: number[] = Array.isArray(fresh?.roles) ? fresh.roles.map((rl: UserRole) => rl.role_id) : []
-          const freshDeptCode: string | null = fresh?.dept_code ?? null
+          // Compare only the fields we actually submitted — never diff sentPayload
+          // against the whole `fresh` object, since `fresh` legitimately carries
+          // extra keys (`department` raw column, `dept_name` joined display) that
+          // were never part of the payload and aren't mismatches.
+          // Role objects' id key isn't confirmed (`role_id` vs `id`) — accept either.
+          const freshRoleIds: number[] = Array.isArray(fresh?.roles)
+            ? fresh.roles.map((rl: any) => rl.role_id ?? rl.id).filter((id: unknown) => id != null)
+            : []
+          // GET /users/:id does NOT reliably return a `dept_code` key (see openEdit
+          // above, which avoids it for the same reason). Post backend fix, the real
+          // FK-code value lives on `department` (raw column); `dept_name` is only the
+          // joined display label — never compare against that. Fall back through the
+          // possible shapes rather than assuming one key name.
+          // `fresh.department` is the raw free-text column and is null by design
+          // (confirmed by backend) — it never holds a dept_code, so don't fall
+          // back to it. Only `dept_code` directly, or resolving `dept_name` back
+          // to its code via the departments master, are valid sources here.
+          const freshDeptCode: string | null =
+            fresh?.dept_code ??
+            departments.find((d) => d.dept_name === fresh?.dept_name)?.dept_code ??
+            null
           const dept = departments.find((d) => d.dept_code === freshDeptCode)
 
-          if (freshDeptCode !== values.deptCode || JSON.stringify([...freshRoleIds].sort()) !== JSON.stringify([...(values.roleIds ?? [])].sort())) {
+          const deptMatches = freshDeptCode === values.deptCode
+          const roleIdsMatch =
+            JSON.stringify([...freshRoleIds].sort()) === JSON.stringify([...(values.roleIds ?? [])].sort())
+
+          if (!deptMatches || !roleIdsMatch) {
             console.error('User update did not persist as submitted.', {
-              sentPayload: payload,
+              sentPayload: { ...profilePayload, ...rolesPayload },
               serverReturned: fresh,
             })
             message.warning('บันทึกสำเร็จ แต่ค่าที่ระบบเก็บไว้ไม่ตรงกับที่ส่ง — กรุณาตรวจสอบอีกครั้ง')

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, Table, Input, Select, Button, Typography, message } from 'antd'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -29,9 +30,12 @@ interface Props {
   open: boolean
   onClose: () => void
   onSelect: (item: CostCodeItem) => void
+  // Document-level PR "ประเภท Job" value (e.g. 'MP', 'G'). Resolved via
+  // JOB_TYPES to a job_code to filter CostCode rows by — see constants/jobTypes.ts.
+  jobTypeCode?: string
 }
 
-const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) => {
+const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobTypeCode }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   const [data, setData] = useState<CostCodeItem[]>([])
@@ -90,22 +94,44 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
     fetchCostCodes()
   }, [open, accessToken])
 
-  // Group filter options — distinct group_code across the whole hierarchy
-  // (previously cascaded from a Job Type selection; Job is no longer a
-  // selectable filter level here, see note above).
+  // Resolve the document-level job type (e.g. 'MP') to the subject_code +
+  // job_code it should filter CostCode rows by (e.g. 'M' + 'P'). job_code
+  // alone is not unique — the same job_code repeats under multiple subjects
+  // (M/S/L) — so both must match together. Unrecognized/unset jobTypeCode, or
+  // a job type whose filterJobCode is null (e.g. 'G' — General Code), means
+  // "show all, unfiltered" — same as today's default behavior.
+  const matchedJobType = useMemo(
+    () => JOB_TYPES.find((jt) => jt.code === jobTypeCode),
+    [jobTypeCode],
+  )
+  const filterSubjectCode = matchedJobType?.filterSubjectCode ?? null
+  const filterJobCode = matchedJobType?.filterJobCode ?? null
+
+  const jobFilteredData = useMemo(
+    () =>
+      filterJobCode
+        ? data.filter((d) => d.subjectCode === filterSubjectCode && d.jobCode === filterJobCode)
+        : data,
+    [data, filterSubjectCode, filterJobCode],
+  )
+
+  // Group filter options — distinct group_code across the job-type-filtered
+  // hierarchy (previously cascaded from a Job Type selection; Job is no
+  // longer a *selectable* filter level here, see note above — it's now
+  // driven by the PR header's job type instead).
   const groupOptions: SelectOption[] = useMemo(() => {
     const seen = new Map<string, string>()
-    data.forEach((d) => {
+    jobFilteredData.forEach((d) => {
       if (!seen.has(d.groupCode)) seen.set(d.groupCode, d.groupName)
     })
     return Array.from(seen.entries())
       .map(([code, name]) => ({ value: code, label: name ? `${code} — ${name}` : code }))
       .sort((a, b) => a.value.localeCompare(b.value))
-  }, [data])
+  }, [jobFilteredData])
 
   const filteredData = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return data.filter((d) => {
+    return jobFilteredData.filter((d) => {
       if (selectedGroup && d.groupCode !== selectedGroup) return false
       if (!q) return true
       return (
@@ -117,7 +143,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect }) =>
         d.subgroupCode?.toLowerCase().includes(q)
       )
     })
-  }, [data, search, selectedGroup])
+  }, [jobFilteredData, search, selectedGroup])
 
   const handleSelect = (item: CostCodeItem) => {
     onSelect(item)

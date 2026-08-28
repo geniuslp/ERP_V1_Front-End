@@ -15,6 +15,7 @@ import PRPrint, { type PRData } from '@/pages/pr/PRPrint'
 import axios from 'axios'
 import type { User, Memo, PROrderType, CreatePRRequest } from '@/types'
 import { useAppSelector } from '@/store'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const MENU_CODE = 'MENU_PR_CREATE'
 
@@ -153,6 +154,7 @@ const PRCreatePage: React.FC = () => {
   // be included in the submit payload.
   const [remark, setRemark] = useState('')
   const orderType: PROrderType | undefined = Form.useWatch('order_type', form)
+  const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
   const [printData, setPrintData] = useState<PRData | null>(null)
 
   useEffect(() => {
@@ -616,14 +618,7 @@ const PRCreatePage: React.FC = () => {
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
-                    options={[
-                      { value: 'MP', label: 'MP - Metal Structure' },
-                      { value: 'ME', label: 'ME - Electrical system work' },
-                      { value: 'MS', label: 'MS - Sanitary System' },
-                      { value: 'MF', label: 'MF - Fire Protection' },
-                      { value: 'MG', label: 'MG - GAS System' },
-                      { value: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room' },
-                    ]}
+                    options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
                   />
                 </Form.Item>
               </Field>
@@ -987,6 +982,7 @@ const PRCreatePage: React.FC = () => {
           remark={remark}
           onRemarkChange={setRemark}
           onPrint={handlePrintCurrent}
+          jobTypeCode={jobTypeCode}
         />
 
         {/* ── Action bar ── */}
