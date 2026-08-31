@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Divider } from 'antd'
-import { SaveOutlined, CloseOutlined, SettingOutlined } from '@ant-design/icons'
+import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber } from 'antd'
+import { SaveOutlined, CloseOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -28,64 +29,8 @@ const ProjectCreateEditPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [locations, setLocations] = useState<{ value: string; label: string }[]>([])
-  const [locationsLoading, setLocationsLoading] = useState(false)
-  const [newLocationName, setNewLocationName] = useState('')
-  const [creatingLocation, setCreatingLocation] = useState(false)
   const [owners, setOwners] = useState<{ value: number; label: string; dept?: string }[]>([])
   const [ownersLoading, setOwnersLoading] = useState(false)
-
-  const fetchLocations = async () => {
-    setLocationsLoading(true)
-    try {
-      const res = await axios.get(`${BASE_URL}/master/locations`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: { is_active: true },
-      })
-      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setLocations(list.map((l: any) => ({
-        value: l.location_code,
-        label: l.location_name ?? l.name,
-      })))
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || err?.message || 'โหลดสถานที่ไม่สำเร็จ')
-    } finally {
-      setLocationsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchLocations()
-  }, [])
-
-  // Manager-tier quick-create: reuses the guard already on this page (project
-  // create/edit is manager-gated) rather than a separate permission check. Confirmed
-  // against the live backend: location_code is auto-generated server-side and
-  // location_type defaults to 'SITE' when omitted, so this quick-add flow only ever
-  // sends location_name — do not synthesize a code client-side.
-  const handleCreateLocation = async () => {
-    const name = newLocationName.trim()
-    if (!name) {
-      message.warning('กรุณาพิมพ์ชื่อสถานที่')
-      return
-    }
-    setCreatingLocation(true)
-    try {
-      const res = await axios.post(`${BASE_URL}/master/locations`, {
-        location_name: name,
-      }, { headers: { Authorization: `Bearer ${accessToken}` } })
-      const created = res.data?.data ?? res.data
-      const option = { value: created?.location_code, label: created?.location_name ?? name }
-      setLocations((prev) => [...prev, option])
-      form.setFieldValue('location_code', option.value)
-      setNewLocationName('')
-      message.success('เพิ่มสถานที่สำเร็จ')
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || err?.message || 'เพิ่มสถานที่ไม่สำเร็จ')
-    } finally {
-      setCreatingLocation(false)
-    }
-  }
 
   useEffect(() => {
     const fetchOwners = async () => {
@@ -125,6 +70,9 @@ const ProjectCreateEditPage: React.FC = () => {
           project_name: p.project_name,
           location_code: p.location_code,
           owner_id: p.owner_id,
+          project_owner_name: p.project_owner_name,
+          job_codes: p.job_codes ?? [],
+          credit: p.credit,
           budget_amount: p.budget_amount ?? 0,
           consultant_name: p.consultant_name,
           date_range: p.start_date && p.end_date
@@ -154,8 +102,13 @@ const ProjectCreateEditPage: React.FC = () => {
     const payload = {
       project_code:  values.project_code,
       project_name:  values.project_name,
+      // Free-text project address — sent as-is, no location master lookup.
       location_code: values.location_code ?? undefined,
       owner_id:      values.owner_id ?? undefined,
+      // "เจ้าของโครงการ" — free text, distinct from owner_id ("ผู้รับผิดชอบหลัก")
+      project_owner_name: values.project_owner_name ?? undefined,
+      job_codes:     values.job_codes ?? [],
+      credit:        values.credit ?? undefined,
       budget_amount: values.budget_amount ?? 0,
       consultant_name: values.consultant_name ?? undefined,
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
@@ -219,44 +172,9 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item
-                label={
-                  <span>
-                    สถานที่{' '}
-                    <a onClick={() => navigate('/master/location')} style={{ fontSize: 12, fontWeight: 400 }}>
-                      <SettingOutlined /> จัดการสถานที่
-                    </a>
-                  </span>
-                }
-                name="location_code"
-              >
-                <Select
-                  placeholder="— เลือกสถานที่ —"
-                  loading={locationsLoading}
-                  showSearch
-                  allowClear
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={locations}
-                  dropdownRender={(menu) => (
-                    <>
-                      {menu}
-                      <Divider style={{ margin: '4px 0' }} />
-                      <div style={{ padding: '4px 8px', display: 'flex', gap: 8 }}>
-                        <Input
-                          placeholder="พิมพ์ชื่อสถานที่ใหม่..."
-                          value={newLocationName}
-                          onChange={(e) => setNewLocationName(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />
-                        <Button type="link" size="small" loading={creatingLocation} onClick={handleCreateLocation}>
-                          + เพิ่ม
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                />
+              {/* Free-text project address — no longer an FK/lookup against the location master. */}
+              <Form.Item label="ที่อยู่โครงการ" name="location_code">
+                <Input placeholder="กรอกที่อยู่โครงการ" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
@@ -282,6 +200,22 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
+              {/* "เจ้าของโครงการ" — free text, distinct from owner_id/ผู้รับผิดชอบหลัก above */}
+              <Form.Item label="เจ้าของโครงการ" name="project_owner_name">
+                <Input placeholder="ชื่อเจ้าของโครงการ" />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="ประเภทงาน" name="job_codes">
+                <Select
+                  mode="multiple"
+                  placeholder="— เลือกประเภทงาน —"
+                  allowClear
+                  options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
               <Form.Item
                 label="มูลค่าโครงการ"
                 name="budget_amount"
@@ -300,6 +234,11 @@ const ProjectCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item label="ที่ปรึกษาโครงการ" name="consultant_name">
                 <Input placeholder="ชื่อบริษัท/บุคคลที่ปรึกษา (ถ้ามี)" />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="เครดิต" name="credit">
+                <Input placeholder="กรอกเครดิต (ถ้ามี)" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
