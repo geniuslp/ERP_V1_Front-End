@@ -8,7 +8,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
   CloseOutlined, AppstoreOutlined, CheckCircleOutlined,
   UploadOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
-  FileExcelOutlined, RightOutlined,
+  FileExcelOutlined, RightOutlined, SearchOutlined,
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
@@ -400,6 +400,11 @@ const MaterialPage: React.FC = () => {
   const [total, setTotal] = useState(0)
   const [groups, setGroups] = useState<GroupRaw[]>([])
   const [filterGroup, setFilterGroup] = useState<string | undefined>()
+  // `search` is the debounced value actually sent to the API; `searchInput`
+  // tracks the raw keystrokes so the box stays responsive while typing.
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [pendingRows, setPendingRows] = useState<PendingRow[]>([newRow(true)])
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<MaterialRecord | null>(null)
@@ -438,7 +443,7 @@ const MaterialPage: React.FC = () => {
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/master/allMaterial`, {
-        params: { page, limit: 10 },
+        params: { page, limit: 10, search: search || undefined },
         headers: authHeader,
       })
       const rawList = Array.isArray(res.data) ? res.data : res.data?.data
@@ -466,10 +471,25 @@ const MaterialPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [accessToken, page])
+  }, [accessToken, page, search])
 
-  // load materials — re-runs when page changes
+  // load materials — re-runs when page or (debounced) search changes
   useEffect(() => { fetchMaterials() }, [fetchMaterials])
+
+  // debounce the search box: wait 400ms after typing stops before hitting the
+  // API, and jump back to page 1 since the result set changes.
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1)
+      setSearch(value)
+    }, 400)
+  }
+
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+  }, [])
 
   const groupOptions = groups.map((g) => ({ value: g.group_code, label: `${g.group_code} — ${g.group_name}`, id: g.id, name: g.group_name }))
   const groupById = (id: string) => groups.find((g) => g.group_code === id)
@@ -758,6 +778,14 @@ const MaterialPage: React.FC = () => {
           <div style={{ ...panelHead, flexWrap: 'wrap', gap: 10 }}>
             <Title level={5} style={{ margin: 0 }}>รายการวัสดุทั้งหมด</Title>
             <Space wrap>
+              <Input
+                allowClear
+                prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
+                placeholder="ค้นหา Mat Code / ชื่อวัสดุ / สเปค"
+                style={{ width: 260 }}
+                value={searchInput}
+                onChange={(e) => handleSearchInputChange(e.target.value)}
+              />
               <Select allowClear placeholder="กรองตามกลุ่ม" style={{ width: 260 }} options={groupOptions}
                 value={filterGroup} onChange={(v) => setFilterGroup(v)} />
               <Button icon={<FileExcelOutlined />} loading={exporting} onClick={handleExport}>

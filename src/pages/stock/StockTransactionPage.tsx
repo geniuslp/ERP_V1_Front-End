@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   Card, Table, Button, Space, Select, DatePicker, Input, Modal,
   Form, InputNumber, message, Tag,
@@ -19,13 +19,23 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
+// Single source of truth for outbound vs inbound txn_type display — both the
+// "Type" tag color and the Qty Change sign/color below key off this same map,
+// so the two columns can never disagree about a given txn_type's direction.
 const txnTypeColor: Record<string, string> = {
   IN: 'green',
   OUT: 'red',
   TRANSFER: 'blue',
   ADJUST: 'orange',
+  ISSUE: 'red',
+  RETURN: 'green',
+  TRANSFER_OUT: 'red',
+  TRANSFER_IN: 'green',
   ADJUST_PLUS: 'green',
   ADJUST_MINUS: 'red',
+  GRN_IN: 'green',
+  BORROW_OUT: 'red',
+  BORROW_RETURN: 'green',
 }
 
 // No Thai-label mapping exists yet for txn_type elsewhere in the codebase
@@ -59,9 +69,20 @@ const StockTransactionPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<StockTransaction[]>([])
   const [loading, setLoading] = useState(false)
-  const [txnType, setTxnType] = useState<StockTransactionType | undefined>()
+  // Filter value, not a single StockTransactionType — "Adjust" sends a
+  // comma-separated pair ("ADJUST_PLUS,ADJUST_MINUS") that the backend splits
+  // and matches via `txn_type = ANY(...)`, since ADJUST_PLUS/ADJUST_MINUS are
+  // the only real txn_type values in the DB (plain "ADJUST" doesn't exist).
+  const [txnType, setTxnType] = useState<string | undefined>()
   const [range, setRange] = useState<any>(null)
+  // `search` is the debounced value actually sent to the API; `searchInput`
+  // tracks raw keystrokes so the box stays responsive — same split used on
+  // the Master/Material list page's search box.
   const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
@@ -72,18 +93,40 @@ const StockTransactionPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/stock/transactions`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { txn_type: txnType, search: search || undefined },
+        // `search` already reaches the same backend param used by every other OR-match
+        // search box in this project (e.g. Master/Material's `?search=`); the backend
+        // decides what columns it matches against.
+        params: { txn_type: txnType, search: search || undefined, page, page_size: 20 },
       })
-      const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+      const body = res.data?.data ?? res.data
+      const raw = Array.isArray(body) ? body : body?.data ?? []
       setData(Array.isArray(raw) ? raw.map(mapTransaction) : [])
+      setTotal(body?.total ?? (Array.isArray(raw) ? raw.length : 0))
     } catch {
       setData(mockTxns)
+      setTotal(mockTxns.length)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchData() }, [txnType, search])
+  useEffect(() => { fetchData() }, [txnType, search, page])
+
+  // Debounce the search box: wait 400ms after typing stops before hitting the
+  // API, and jump back to page 1 since the result set changes — same pattern
+  // as MaterialPage.tsx's handleSearchInputChange.
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1)
+      setSearch(value)
+    }, 400)
+  }
+
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+  }, [])
 
   const handleQRScan = async (val: string) => {
     form.setFieldValue('itemCode', val)
@@ -135,8 +178,13 @@ const StockTransactionPage: React.FC = () => {
       key: 'qty',
       align: 'right' as const,
       render: (val: number, r: StockTransaction) => {
-        const color = txnTypeColor[r.txnType] === 'green' ? '#16a34a' : txnTypeColor[r.txnType] === 'red' ? '#dc2626' : undefined
-        const sign = val > 0 ? '+' : ''
+        // qty is always stored as a positive magnitude — the +/- sign here is
+        // purely a display decision keyed off txn_type direction (via the
+        // same txnTypeColor map the "Type" tag uses), not the raw qty value.
+        const isOutbound = txnTypeColor[r.txnType] === 'red'
+        const isInbound = txnTypeColor[r.txnType] === 'green'
+        const color = isOutbound ? '#dc2626' : isInbound ? '#16a34a' : undefined
+        const sign = isOutbound ? '-' : isInbound ? '+' : ''
         return <span style={{ color, fontWeight: 500 }}>{sign}{val}</span>
       },
     },
@@ -185,22 +233,48 @@ const StockTransactionPage: React.FC = () => {
           <Select
             placeholder="Transaction Type"
             value={txnType}
-            onChange={setTxnType}
+            onChange={(v) => setTxnType(v || undefined)}
             allowClear
             style={{ width: 160 }}
-            options={['IN', 'OUT', 'TRANSFER', 'ADJUST'].map((v) => ({ value: v, label: v }))}
+            options={[
+              { value: '', label: 'ทั้งหมด (All)' },
+              { value: 'IN', label: 'IN' },
+              { value: 'OUT', label: 'OUT' },
+              { value: 'TRANSFER', label: 'TRANSFER' },
+              // Sends both real txn_type values — plain "ADJUST" isn't a value
+              // that exists in stock_transaction.txn_type.
+              { value: 'ADJUST_PLUS,ADJUST_MINUS', label: 'Adjust' },
+            ]}
           />
           <DatePicker.RangePicker value={range} onChange={setRange} format="DD/MM/YYYY" />
-          <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200 }} allowClear />
-          <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>Search</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => { setTxnType(undefined); setSearch(''); setRange(null) }}>Reset</Button>
+          <Input
+            placeholder="ค้นหา PO No / PR No / Material (code/name)"
+            value={searchInput}
+            onChange={(e) => handleSearchInputChange(e.target.value)}
+            style={{ width: 260 }}
+            allowClear
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={() => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); setPage(1); setSearch(searchInput) }}
+          >
+            Search
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { setTxnType(undefined); setSearchInput(''); setSearch(''); setRange(null); setPage(1) }}>Reset</Button>
         </Space>
         <Table
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={data}
-          pagination={{ pageSize: 20, showTotal: (t) => `Total ${t} items` }}
+          pagination={{
+            current: page,
+            pageSize: 20,
+            total,
+            showTotal: (t) => `Total ${t} items`,
+            onChange: (p) => setPage(p),
+          }}
           locale={{ emptyText: 'No transactions' }}
         />
       </Card>
