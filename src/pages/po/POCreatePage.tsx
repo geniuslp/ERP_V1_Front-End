@@ -857,29 +857,6 @@ const POCreatePage: React.FC = () => {
     const doSubmit = async () => {
       setSubmitting(true)
       try {
-        // Upload newly-added files first (POST /upload/po just stores the file
-        // and hands back its path/size/type — it does not attach it to a PO).
-        // Already-saved attachments (edit mode) are left alone entirely; they
-        // were persisted via their own POST /po/:id/attachments call already.
-        const uploadedFiles: { file_path: string; file_name: string; file_size: number; file_type: string }[] = []
-        for (const f of attachedFiles) {
-          const formData = new FormData()
-          formData.append('file', f.file)
-          const uploadRes = await axios.post(`${BASE_URL}/upload/po`, formData, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'multipart/form-data',
-            },
-          })
-          const d = uploadRes.data?.data ?? uploadRes.data
-          uploadedFiles.push({
-            file_path: d.file_path,
-            file_name: d.file_name,
-            file_size: d.file_size,
-            file_type: d.file_type,
-          })
-        }
-
         const payload = {
           // ── Header ──
           supplier_id: values.supplier_code,
@@ -998,35 +975,47 @@ const POCreatePage: React.FC = () => {
           message.success(status === 'DRAFT' ? 'บันทึกร่าง PO สำเร็จ' : 'ส่งใบสั่งซื้อเรียบร้อยแล้ว')
         }
 
-        // Attach each newly-uploaded file to the PO now that it has an id —
-        // POST /upload/po only stores the file; it takes a separate
-        // POST /po/:id/attachments call to link it to this PO.
-        if (uploadedFiles.length > 0 && poId) {
+        // Upload + attach each newly-added file now that the PO has an id —
+        // POST /po/:id/attachments is a single-step multipart upload (field
+        // name "file"); it stores the file and links it to this PO in one
+        // call. The old two-step POST /upload/po + POST /po/:id/attachments
+        // (client-supplied file_path) flow was removed backend-side because
+        // it could leave orphaned attachment rows.
+        if (attachedFiles.length > 0 && poId) {
           const newlyAttached: SavedAttachment[] = []
-          for (const f of uploadedFiles) {
+          const attachedNames: string[] = []
+          for (const f of attachedFiles) {
             try {
+              const formData = new FormData()
+              formData.append('file', f.file)
               const attachRes = await axios.post(
                 `${BASE_URL}/po/${poId}/attachments`,
-                { file_name: f.file_name, file_path: f.file_path, file_size: f.file_size, file_type: f.file_type },
-                { headers: { Authorization: `Bearer ${accessToken}` } }
+                formData,
+                {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'multipart/form-data',
+                  },
+                }
               )
               const saved = attachRes.data?.data ?? attachRes.data
               newlyAttached.push({
-                id: saved?.id ?? `${f.file_path}-${f.file_name}`,
-                fileName: f.file_name,
-                filePath: f.file_path,
-                fileSize: f.file_size,
+                id: saved?.id ?? `${saved?.file_path}-${f.name}`,
+                fileName: f.name,
+                filePath: saved?.file_path,
+                fileSize: f.file.size,
               })
+              attachedNames.push(f.name)
             } catch (attachErr: any) {
               message.warning(
-                `แนบไฟล์ ${f.file_name} ไม่สำเร็จ: ` +
+                `แนบไฟล์ ${f.name} ไม่สำเร็จ: ` +
                 (attachErr?.response?.data?.message || attachErr?.message || 'unknown error')
               )
             }
           }
           if (newlyAttached.length > 0) {
             setSavedAttachments((prev) => ({ ...prev, po: [...prev.po, ...newlyAttached] }))
-            setAttachedFiles((prev) => prev.filter((f) => !uploadedFiles.some((u) => u.file_name === f.name)))
+            setAttachedFiles((prev) => prev.filter((f) => !attachedNames.includes(f.name)))
           }
         }
       } catch (err: any) {

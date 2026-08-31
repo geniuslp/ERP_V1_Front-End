@@ -38,18 +38,24 @@ export interface StockInventory {
 export interface StockTransaction {
   id: number
   txnNo: string
-  txnType: StockTransactionType
+  txnType: string
   itemId: number
-  itemCode: string
+  matCode: string
   itemName: string
-  fromLocationId?: number
-  fromLocationName?: string
-  toLocationId?: number
-  toLocationName?: string
+  fromLocation?: string | null
+  toLocation?: string | null
   qty: number
-  remarks?: string
-  createdBy: string
-  createdAt: string
+  // Before/after snapshot of on-hand qty at the item level — null for a few
+  // transaction types not yet backfilled server-side; render as '-', not 0.
+  qtyBefore?: number | null
+  qtyAfter?: number | null
+  // Reference document number resolved server-side from ref_doc_type + ref_doc_id
+  // (e.g. "PR202608-0007", a grn_no, req_no, or borrow_no) — null when ref_doc_type
+  // has no joinable table yet (see stock_transaction.go on the backend).
+  refDocNo?: string | null
+  remarks?: string | null
+  createdByName: string
+  txnDate: string
 }
 
 export interface BorrowRequest {

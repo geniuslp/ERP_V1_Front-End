@@ -20,6 +20,11 @@ export interface PRItem {
   costCode?: string
   matCode?: string
   desc: string
+  // Item spec/specification text — shown as a second line under the
+  // description in the print table. Source: PR line's `spec_name` field
+  // (see types/pr.ts PRLine.spec_name) — NOT currently wired through by
+  // PRDetailPage.tsx's handlePrint, which this file was told not to touch.
+  spec?: string
   qty: number
   unit: string
   remark?: string
@@ -50,9 +55,9 @@ export const MOCK_DATA: PRData = {
   deliveryTo: 'โรงงานนครปฐม', remark: 'ขอเบิกเร่งด่วนสำหรับงานหน้างาน Zone B',
   orderType: 'stock',
   items: [
-    { no: '1', costCode: 'CC-001 — โครงสร้าง', matCode: '1001001', desc: 'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.', qty: 40, unit: 'เส้น', remark: '' },
-    { no: '2', costCode: 'CC-002 — งานหลังคา', matCode: '1001002', desc: 'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.', qty: 10, unit: 'เส้น', remark: 'Zone A อาคาร 2' },
-    { no: '3', costCode: '', matCode: '1001003', desc: 'Flat Bar Steel (เหล็กแบน) 50×5mm×6M.', qty: 8, unit: 'เส้น', remark: '' },
+    { no: '1', costCode: 'CC-001 — โครงสร้าง', matCode: '1001001', desc: 'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.', spec: 'SS400, Hot-dip Galvanized', qty: 40, unit: 'เส้น', remark: '' },
+    { no: '2', costCode: 'CC-002 — งานหลังคา', matCode: '1001002', desc: 'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.', spec: 'SS400', qty: 10, unit: 'เส้น', remark: 'Zone A อาคาร 2' },
+    { no: '3', costCode: '', matCode: '1001003', desc: 'Flat Bar Steel (เหล็กแบน) 50×5mm×6M.', spec: '', qty: 8, unit: 'เส้น', remark: '' },
   ],
 }
 
@@ -65,6 +70,7 @@ function normalizeItem(raw: Partial<PRItem> & Record<string, any>): PRItem {
     costCode: raw.costCode ?? '',
     matCode: raw.matCode ?? '',
     desc: raw.desc ?? '',
+    spec: raw.spec ?? '',
     qty: raw.qty ?? 0,
     unit: raw.unit ?? '',
     remark: raw.remark ?? '',
@@ -181,6 +187,9 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
       <div style={{ textAlign: 'right' }}>
         <div style={{ fontSize: '18pt', fontWeight: 700, color: BK, lineHeight: 1.1, marginTop: '4px' }}>PURCHASE REQUEST</div>
         <div style={{ fontSize: '13pt', fontWeight: 600, color: BK, marginTop: '6px' }}>ใบขอซื้อ</div>
+        <div style={{ fontSize: '11pt', fontWeight: 600, color: BK, textAlign: 'right', marginTop: '3px', fontFamily: "'Cordia New',sans-serif" }}>
+          PR No : {data.prNo}
+        </div>
       </div>
     </div>
   </div>
@@ -189,7 +198,6 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
 const PRInfoBox = ({ data }: { data: PRData }) => (
   <div className="pr-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
     <div><b>Project / Dept :</b>&nbsp;{data.projectDept}</div>
-    <div><b>PR No :</b>&nbsp;{data.prNo}</div>
     <div><b>Date Doc. :</b>&nbsp;{data.prDate}</div>
     <div><b>ประเภทการซื้อ :</b>&nbsp;{ORDER_TYPE_LABEL[data.orderType] ?? ''}</div>
     <div><b>Delivery Date :</b>&nbsp;{data.deliveryDate}</div>
@@ -203,12 +211,27 @@ const PRInfoBox = ({ data }: { data: PRData }) => (
   </div>
 )
 
+// `row.costCode` arrives pre-resolved as `${cost_code}${cost_subgroup_name ? " — " + name : ''}`
+// (see PRItem.costCode comment above / PRDetailPage.tsx handlePrint). The subgroup-name
+// separator is an EM DASH "—" (U+2014), not an ASCII hyphen "-" — splitting on "—" strips the
+// subgroup name and keeps only the code, e.g. "MP01013 — Expanded Metal" -> "MP01013". This
+// also correctly leaves codes containing a literal "-" (e.g. "MP-01013") untouched, since we
+// only split on "—".
+const formatCostCodeForPrint = (costCode?: string): string => {
+  if (!costCode) return ''
+  const dashIdx = costCode.indexOf('—')
+  return dashIdx === -1 ? costCode.trim() : costCode.slice(0, dashIdx).trimEnd()
+}
+
 const ItemRow = ({ row }: { row: PRItem }) => (
   <tr>
     <td style={{ textAlign: 'center' }}>{row.no}</td>
-    <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.costCode}</td>
+    <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeForPrint(row.costCode)}</td>
     <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap' }}>{row.matCode}</td>
-    <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{row.desc}</td>
+    <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+      {row.desc}
+      {row.spec && <div style={{ color: '#444' }}>{row.spec}</div>}
+    </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{row.remark}</td>

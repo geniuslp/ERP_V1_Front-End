@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import PRPrint, { type PRData } from './PRPrint'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const { Text } = Typography
 
@@ -35,6 +36,13 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   CANCELLED:        { color: 'default', label: 'ยกเลิก' },
 }
 
+// Same labels as the order_type <Select> options in PRCreatePage.tsx — no shared
+// mapping exists yet for this enum, mirrored here rather than duplicating a new wording.
+const orderTypeLabel: Record<string, string> = {
+  stock: 'คลังสินค้า (Stock)',
+  cost:  'โครงการ (Cost)',
+}
+
 interface PRLineItem {
   id: number
   lineNo: number
@@ -46,6 +54,7 @@ interface PRLineItem {
   remarks?: string | null
   matName?: string | null
   unitName?: string | null
+  specName?: string | null
   costCode?: string | null
   costSubgroupName?: string | null
 }
@@ -68,6 +77,7 @@ interface PRDetail {
   locationText: string
   projectCode: string | null
   orderType: 'stock' | 'cost' | null
+  jobCode: string | null
   remarks: string | null
   prDate: string
   requiredDate: string | null
@@ -96,6 +106,7 @@ const mapPR = (raw: any): PRDetail => ({
   locationText: raw.location_text  ?? '—',
   projectCode:  raw.project_code   ?? null,
   orderType:    raw.order_type     ?? null,
+  jobCode:      raw.job_code       ?? null,
   remarks:      raw.remarks        ?? null,
   prDate:       raw.pr_date        ?? '',
   requiredDate: raw.required_date  ?? null,
@@ -110,6 +121,7 @@ const mapPR = (raw: any): PRDetail => ({
     remarks:          l.remarks,
     matName:          l.mat_name,
     unitName:         l.unit_name,
+    specName:         l.spec_name,
     costCode:         l.cost_code,
     costSubgroupName: l.cost_subgroup_name,
   })),
@@ -291,6 +303,7 @@ const PRDetailPage: React.FC = () => {
         costCode: l.costCode ? `${l.costCode}${l.costSubgroupName ? ` — ${l.costSubgroupName}` : ''}` : '',
         matCode: l.matCode,
         desc: l.matName ?? '',
+        spec: l.specName ?? '',
         qty: l.qtyRequested,
         unit: l.unitName ?? '',
         remark: l.remarks ?? '',
@@ -412,6 +425,12 @@ const PRDetailPage: React.FC = () => {
           <Descriptions.Item label="ผู้อนุมัติ">{pr.approverName || '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานที่ส่งของ">{pr.locationText}</Descriptions.Item>
           <Descriptions.Item label="รหัสงาน">{pr.projectCode || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ประเภทการสั่งซื้อ">
+            {pr.orderType ? (orderTypeLabel[pr.orderType] ?? pr.orderType) : '—'}
+          </Descriptions.Item>
+          <Descriptions.Item label="ประเภท Job">
+            {pr.jobCode ? (JOB_TYPES.find((jt) => jt.code === pr.jobCode)?.label ?? pr.jobCode) : '—'}
+          </Descriptions.Item>
           <Descriptions.Item label="หมายเหตุ" span={2}>{pr.remarks || '—'}</Descriptions.Item>
         </Descriptions>
       </Card>

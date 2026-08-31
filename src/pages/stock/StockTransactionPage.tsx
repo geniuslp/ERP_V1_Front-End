@@ -3,7 +3,7 @@ import {
   Card, Table, Button, Space, Select, DatePicker, Input, Modal,
   Form, InputNumber, message, Tag,
 } from 'antd'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, ArrowRightOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
@@ -19,18 +19,41 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-const txnTypeColor: Record<StockTransactionType, string> = {
+const txnTypeColor: Record<string, string> = {
   IN: 'green',
   OUT: 'red',
   TRANSFER: 'blue',
   ADJUST: 'orange',
+  ADJUST_PLUS: 'green',
+  ADJUST_MINUS: 'red',
 }
 
+// No Thai-label mapping exists yet for txn_type elsewhere in the codebase
+// (unlike StatusBadge for PR/PO/etc.) — display the raw enum until one exists.
+
 const mockTxns: StockTransaction[] = [
-  { id: 1, txnNo: 'TXN-2024-001', txnType: 'IN',       itemId: 1, itemCode: 'STK-001', itemName: 'Electric Drill',    toLocationId: 1, toLocationName: 'WH-A Zone 1', qty: 5,  createdBy: 'Admin', createdAt: '2024-06-01T08:00:00Z' },
-  { id: 2, txnNo: 'TXN-2024-002', txnType: 'OUT',      itemId: 2, itemCode: 'STK-002', itemName: 'Safety Helmet',     fromLocationId: 1, fromLocationName: 'WH-A Zone 1', qty: 2,  createdBy: 'John',  createdAt: '2024-06-05T08:00:00Z' },
-  { id: 3, txnNo: 'TXN-2024-003', txnType: 'TRANSFER', itemId: 1, itemCode: 'STK-001', itemName: 'Electric Drill',    fromLocationId: 1, fromLocationName: 'WH-A Zone 1', toLocationId: 2, toLocationName: 'WH-B Zone 1', qty: 2, createdBy: 'Admin', createdAt: '2024-06-10T08:00:00Z' },
+  { id: 1, txnNo: 'TXN-2024-001', txnType: 'IN',       itemId: 1, matCode: 'STK-001', itemName: 'Electric Drill', toLocation: 'WH-A Zone 1', qty: 5, refDocNo: null, createdByName: 'Admin', txnDate: '2024-06-01T08:00:00Z' },
+  { id: 2, txnNo: 'TXN-2024-002', txnType: 'OUT',      itemId: 2, matCode: 'STK-002', itemName: 'Safety Helmet',  fromLocation: 'WH-A Zone 1', qty: 2, refDocNo: null, createdByName: 'John',  txnDate: '2024-06-05T08:00:00Z' },
+  { id: 3, txnNo: 'TXN-2024-003', txnType: 'TRANSFER', itemId: 1, matCode: 'STK-001', itemName: 'Electric Drill', fromLocation: 'WH-A Zone 1', toLocation: 'WH-B Zone 1', qty: 2, refDocNo: null, createdByName: 'Admin', txnDate: '2024-06-10T08:00:00Z' },
 ]
+
+const mapTransaction = (t: any): StockTransaction => ({
+  id:            t.id,
+  txnNo:         t.txn_no ?? '',
+  txnType:       t.txn_type ?? '',
+  itemId:        t.item_id,
+  matCode:       t.mat_code ?? '',
+  itemName:      t.item_name ?? '',
+  fromLocation:  t.from_location ?? null,
+  toLocation:    t.to_location ?? null,
+  qty:           t.qty ?? 0,
+  qtyBefore:     t.qty_before ?? null,
+  qtyAfter:      t.qty_after ?? null,
+  refDocNo:      t.ref_doc_no ?? null,
+  remarks:       t.remarks ?? null,
+  createdByName: t.created_by_name ?? '',
+  txnDate:       t.txn_date ?? t.created_at ?? '',
+})
 
 const StockTransactionPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -51,8 +74,8 @@ const StockTransactionPage: React.FC = () => {
         headers: { Authorization: `Bearer ${accessToken}` },
         params: { txn_type: txnType, search: search || undefined },
       })
-      const raw = Array.isArray(res.data) ? res.data : res.data?.data
-      setData(Array.isArray(raw) ? raw : [])
+      const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+      setData(Array.isArray(raw) ? raw.map(mapTransaction) : [])
     } catch {
       setData(mockTxns)
     } finally {
@@ -87,33 +110,56 @@ const StockTransactionPage: React.FC = () => {
   }
 
   const columns = [
-    { title: 'Txn No', dataIndex: 'txnNo', key: 'txnNo' },
+    {
+      title: 'Doc No',
+      dataIndex: 'refDocNo',
+      key: 'refDocNo',
+      render: (val: string | null) => val || '-',
+    },
+    {
+      title: 'Material',
+      key: 'material',
+      ellipsis: true,
+      render: (_: any, r: StockTransaction) => (r.matCode ? `${r.matCode} — ${r.itemName}` : r.itemName || '—'),
+    },
+    {
+      title: 'Qty Before',
+      dataIndex: 'qtyBefore',
+      key: 'qtyBefore',
+      align: 'right' as const,
+      render: (val: number | null) => (val ?? null) === null ? '-' : val,
+    },
+    {
+      title: 'Qty Change',
+      dataIndex: 'qty',
+      key: 'qty',
+      align: 'right' as const,
+      render: (val: number, r: StockTransaction) => {
+        const color = txnTypeColor[r.txnType] === 'green' ? '#16a34a' : txnTypeColor[r.txnType] === 'red' ? '#dc2626' : undefined
+        const sign = val > 0 ? '+' : ''
+        return <span style={{ color, fontWeight: 500 }}>{sign}{val}</span>
+      },
+    },
+    {
+      title: 'Qty After',
+      dataIndex: 'qtyAfter',
+      key: 'qtyAfter',
+      align: 'right' as const,
+      render: (val: number | null) => (val ?? null) === null ? '-' : val,
+    },
     {
       title: 'Type',
       dataIndex: 'txnType',
       key: 'txnType',
-      render: (val: StockTransactionType) => <Tag color={txnTypeColor[val]}>{val}</Tag>,
+      render: (val: string) => <Tag color={txnTypeColor[val] ?? 'default'}>{val}</Tag>,
     },
-    { title: 'Item', dataIndex: 'itemName', key: 'itemName', ellipsis: true },
-    {
-      title: 'From → To',
-      key: 'locations',
-      render: (_: any, r: StockTransaction) => (
-        <span style={{ fontSize: 12 }}>
-          {r.fromLocationName || '—'}
-          {r.fromLocationName && r.toLocationName && <ArrowRightOutlined style={{ margin: '0 4px', color: '#9ca3af' }} />}
-          {r.toLocationName || (r.fromLocationName ? '' : '—')}
-        </span>
-      ),
-    },
-    { title: 'Qty', dataIndex: 'qty', key: 'qty', align: 'right' as const },
-    { title: 'Created By', dataIndex: 'createdBy', key: 'createdBy' },
     {
       title: 'Date',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'txnDate',
+      key: 'txnDate',
       render: (val: string) => val ? dayjs(val).format('DD/MM/YYYY') : '—',
     },
+    { title: 'Remarks', dataIndex: 'remarks', key: 'remarks', render: (val: string | null) => val || '-' },
   ]
 
   return (
