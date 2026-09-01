@@ -372,29 +372,6 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       },
     },
     {
-      title: (
-        <div style={{ textAlign: 'center' }}>
-          <div>จำนวนขอ</div>
-          <div style={{ fontWeight: 400, fontSize: 11, color: '#6b7280' }}>ซื้อ(Stock)</div>
-        </div>
-      ),
-      dataIndex: 'qtyStock',
-      width: 110,
-      align: 'center' as const,
-      render: (_: unknown, r: PRItem) =>
-        readonly ? (
-          <span style={{ fontSize: 13 }}>{r.qtyStock}</span>
-        ) : (
-          <InputNumber
-            size="small"
-            min={0}
-            value={r.qtyStock}
-            style={{ width: '100%' }}
-            onChange={(v) => updateItem(r.key, 'qtyStock', v || 0)}
-          />
-        ),
-    },
-    {
       title: 'หน่วย',
       dataIndex: 'unit',
       width: 90,

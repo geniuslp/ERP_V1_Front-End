@@ -9,7 +9,7 @@ import {
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
   DollarOutlined, WalletOutlined,
 } from '@ant-design/icons'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
 import type { PermMenu } from '@/types/permission.types'
 import type { MenuProps } from 'antd'
@@ -108,7 +108,6 @@ interface SidebarMenuProps {
 }
 
 const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
-  const navigate = useNavigate()
   const location = useLocation()
   const { can, hasRole, loading, menus } = usePermissionContext()
 
@@ -174,6 +173,13 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
     return result
   }, [menus, can, hasRole])
 
+  // Menu items render their label as a real react-router <Link> (an actual
+  // <a href>) instead of a plain string + onClick(navigate(...)) — the latter
+  // bypasses the browser entirely, which is why Ctrl/Cmd/middle-click and
+  // right-click → "Open in new tab" never worked. A real href restores all of
+  // that native behavior for free; no onClick/preventDefault is added here
+  // that could interfere with it. Items without a menu_path (grouping-only)
+  // fall back to a plain label, matching the previous no-op guard.
   const buildMenuItems = (): MenuProps['items'] => {
     return visibleMenuTree.map((top) => {
       if (top.children.length > 0) {
@@ -184,16 +190,14 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
           children: top.children.map((child) => ({
             key: child.menu_path || child.menu_code,
             icon: subIconMap[child.menu_code] || null,
-            label: child.menu_name,
-            onClick: () => child.menu_path && navigate(child.menu_path),
+            label: child.menu_path ? <Link to={child.menu_path}>{child.menu_name}</Link> : child.menu_name,
           })),
         }
       }
       return {
         key: top.menu_path || top.menu_code,
         icon: topIconMap[top.menu_code] || <AppstoreOutlined />,
-        label: top.menu_name,
-        onClick: () => top.menu_path && navigate(top.menu_path),
+        label: top.menu_path ? <Link to={top.menu_path}>{top.menu_name}</Link> : top.menu_name,
       }
     })
   }

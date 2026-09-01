@@ -8,7 +8,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, SaveOutlined,
   CloseOutlined, AppstoreOutlined, CheckCircleOutlined,
   UploadOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
-  FileExcelOutlined, RightOutlined, SearchOutlined,
+  FileExcelOutlined, RightOutlined, SearchOutlined, ReloadOutlined,
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
@@ -64,11 +64,33 @@ const isRowComplete = (r: PendingRow): boolean =>
 const isRealRow = (r: PendingRow): boolean => !r.isTemplate || isRowComplete(r)
 
 // ── helpers ──────────────────────────────────────────────────────
-const SectionPill: React.FC<{ color: string; bg: string; label: string }> = ({ color, bg, label }) => (
-  <span style={{ display: 'inline-block', background: bg, color, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 4, marginBottom: 6 }}>
-    {label}
-  </span>
-)
+// onClick makes the pill act as a per-column "copy this value down" trigger
+// (used by ReferenceLookupRow only — InsertRow's own pills stay static, no
+// onClick passed). Hover feedback via local state since this file styles
+// everything inline rather than through CSS classes.
+const SectionPill: React.FC<{ color: string; bg: string; label: string; onClick?: () => void; title?: string }> =
+  ({ color, bg, label, onClick, title }) => {
+    const [hover, setHover] = useState(false)
+    return (
+      <span
+        onClick={onClick}
+        onMouseEnter={() => onClick && setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={title}
+        style={{
+          display: 'inline-block', background: bg, color, fontSize: 10, fontWeight: 700,
+          letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 4,
+          marginBottom: 6,
+          cursor: onClick ? 'pointer' : 'default',
+          boxShadow: hover ? '0 0 0 1px currentColor' : 'none',
+          opacity: hover ? 0.85 : 1,
+          transition: 'box-shadow 0.15s, opacity 0.15s',
+        }}
+      >
+        {label}
+      </span>
+    )
+  }
 
 const FL: React.FC<{ text: string; required?: boolean }> = ({ text, required }) => (
   <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>
@@ -303,6 +325,258 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
   )
 }
 
+// ── reference/lookup row (browse-only, never writes into InsertRow) ────────
+// Same cascading pattern as InsertRow (useCascadeOptions, same master
+// endpoints/mappers) but with fully independent local state — selecting a
+// value here never calls InsertRow's onChange/updateRow, so it can't affect
+// the pendingRows table in any way. Unit has no cascade parent in the schema
+// (GET /master/units takes no filter param, confirmed in master.go), so it's
+// populated as a plain full list, same as the Material list page's filter row.
+interface ReferenceLookupRowProps {
+  groupOptions: GroupOption[]
+  accessToken?: string
+  // Applies a partial patch to every row in pendingRows (all pending InsertRows,
+  // not just one) — passed down from MaterialPage so each pill's click can copy
+  // just its own column without ReferenceLookupRow needing to know about
+  // pendingRows itself.
+  onCopyColumn: (patch: Partial<PendingRow>) => void
+}
+
+// alphabetical/ascending sort by the visible dropdown label — applies only to
+// ReferenceLookupRow's own option lists (a fresh sorted copy each render),
+// never mutates the shared arrays InsertRow reads from.
+const sortedByLabel = <T extends { label: string }>(opts: T[]): T[] =>
+  [...opts].sort((a, b) => a.label.localeCompare(b.label, 'th'))
+
+const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, accessToken, onCopyColumn }) => {
+  const [groupId, setGroupId] = useState('')
+  const [subGroupId, setSubGroupId] = useState('')
+  const [subGroupName, setSubGroupName] = useState('')
+  const [matNameId, setMatNameId] = useState('')
+  const [materialName, setMaterialName] = useState('')
+  const [specId, setSpecId] = useState('')
+  const [specDescription, setSpecDescription] = useState('')
+  const [brandId, setBrandId] = useState('')
+  const [brandName, setBrandName] = useState('')
+  const [unitId, setUnitId] = useState<number | undefined>()
+
+  const [unitOptions, setUnitOptions] = useState<IdOption[]>([])
+  useEffect(() => {
+    if (!accessToken) return
+    axios.get(`${BASE_URL}/master/units`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => setUnitOptions((res.data?.data ?? []).map(
+        (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
+      )))
+      .catch(() => setUnitOptions([]))
+  }, [accessToken])
+
+  const groupNumericId = groupOptions.find((o) => o.value === groupId)?.id
+  const { options: subGroupOptions, loading: subGroupLoading } =
+    useCascadeOptions(groupNumericId ? String(groupNumericId) : '', '/master/subgroups', 'group_id', mapSubGroup, accessToken)
+  const { options: matNameOptions, loading: matNameLoading } =
+    useCascadeOptions(subGroupId, '/master/mat-names', 'subgroup_id', mapMatName, accessToken)
+  const { options: specOptions, loading: specLoading } =
+    useCascadeOptions(matNameId, '/master/specs', 'mat_name_id', mapSpec, accessToken)
+  const { options: brandOptions, loading: brandLoading } =
+    useCascadeOptions(specId, '/master/brands', 'spec_id', mapBrand, accessToken)
+
+  const sortedGroupOptions = sortedByLabel(groupOptions)
+  const sortedSubGroupOptions = sortedByLabel(subGroupOptions)
+  const sortedMatNameOptions = sortedByLabel(matNameOptions)
+  const sortedSpecOptions = sortedByLabel(specOptions)
+  const sortedBrandOptions = sortedByLabel(brandOptions)
+  const sortedUnitOptions = sortedByLabel(unitOptions)
+
+  // Each copy* fn patches only its own column (plus resetting the downstream
+  // columns that would otherwise be left orphaned/inconsistent — same reset
+  // InsertRow's own onChange already does when a user picks that field
+  // manually). No-ops (with a warning) if nothing is selected here yet.
+  const copyGroup = () => {
+    if (!groupId) return message.warning('กรุณาเลือกกลุ่มก่อนคัดลอก')
+    onCopyColumn({
+      groupId,
+      subGroupId: '', subGroupCode: '', subGroupName: '',
+      matNameId: '', materialCode: '', materialName: '',
+      specId: '', specCode: '', specDescription: '',
+      brandId: '', brandCode: '', brandName: '',
+    })
+  }
+  const copySubGroup = () => {
+    const opt = subGroupOptions.find((o) => o.id === Number(subGroupId))
+    if (!opt) return message.warning('กรุณาเลือกกลุ่มย่อยก่อนคัดลอก')
+    onCopyColumn({
+      subGroupId: String(opt.id), subGroupCode: opt.code, subGroupName: opt.name,
+      matNameId: '', materialCode: '', materialName: '',
+      specId: '', specCode: '', specDescription: '',
+      brandId: '', brandCode: '', brandName: '',
+    })
+  }
+  const copyMatName = () => {
+    const opt = matNameOptions.find((o) => o.id === Number(matNameId))
+    if (!opt) return message.warning('กรุณาเลือกชื่อวัสดุก่อนคัดลอก')
+    onCopyColumn({
+      matNameId: String(opt.id), materialCode: opt.code, materialName: opt.name,
+      specId: '', specCode: '', specDescription: '',
+      brandId: '', brandCode: '', brandName: '',
+    })
+  }
+  const copySpec = () => {
+    const opt = specOptions.find((o) => o.id === Number(specId))
+    if (!opt) return message.warning('กรุณาเลือกสเปคก่อนคัดลอก')
+    onCopyColumn({
+      specId: String(opt.id), specCode: opt.code, specDescription: opt.name,
+      brandId: '', brandCode: '', brandName: '',
+    })
+  }
+  const copyBrand = () => {
+    const opt = brandOptions.find((o) => o.id === Number(brandId))
+    if (!opt) return message.warning('กรุณาเลือกยี่ห้อก่อนคัดลอก')
+    onCopyColumn({ brandId: String(opt.id), brandCode: opt.code, brandName: opt.name })
+  }
+  const copyUnit = () => {
+    const opt = unitOptions.find((o) => o.id === unitId)
+    if (!opt) return message.warning('กรุณาเลือกหน่วยก่อนคัดลอก')
+    onCopyColumn({ unitCode: opt.code, unitName: opt.name })
+  }
+
+  const groupLabel = groupOptions.find((o) => o.value === groupId)?.name ?? ''
+  const breadcrumbSteps: BreadcrumbStep[] = [
+    { value: groupLabel, placeholderLabel: 'กลุ่ม' },
+    { value: subGroupName, placeholderLabel: 'กลุ่มย่อย' },
+    { value: materialName, placeholderLabel: 'ชื่อวัสดุ' },
+    { value: specDescription, placeholderLabel: 'สเปค' },
+    { value: brandName, placeholderLabel: 'ยี่ห้อ' },
+  ]
+
+  const reset = () => {
+    setGroupId(''); setSubGroupId(''); setSubGroupName('')
+    setMatNameId(''); setMaterialName('')
+    setSpecId(''); setSpecDescription('')
+    setBrandId(''); setBrandName('')
+    setUnitId(undefined)
+  }
+
+  return (
+    <div>
+      <CascadeBreadcrumb steps={breadcrumbSteps} />
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', background: '#fffbeb',
+        border: '1px dashed #f59e0b', borderRadius: 10, padding: '12px 14px',
+        marginBottom: 12, gap: 0,
+      }}>
+        {/* label — visually distinct from InsertRow's numbered-circle column */}
+        <div style={{ flex: '0 0 46px', paddingTop: 22, textAlign: 'center', marginRight: 12 }}>
+          <SearchOutlined style={{ fontSize: 16, color: '#b45309' }} />
+          <div style={{ fontSize: 9, color: '#b45309', marginTop: 3, lineHeight: 1.2, fontWeight: 700 }}>ดูข้อมูล</div>
+        </div>
+
+        <div style={{ flex: '0 0 170px', marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Group" onClick={copyGroup} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="กลุ่ม" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่ม"
+            showSearch allowClear
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedGroupOptions} value={groupId || undefined}
+            onChange={(v) => {
+              setGroupId(v ?? '')
+              setSubGroupId(''); setSubGroupName('')
+              setMatNameId(''); setMaterialName('')
+              setSpecId(''); setSpecDescription('')
+              setBrandId(''); setBrandName('')
+            }} />
+        </div>
+
+        <VSep />
+
+        <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Sub Group" onClick={copySubGroup} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="กลุ่มย่อย" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่มย่อย"
+            showSearch allowClear loading={subGroupLoading} disabled={!groupId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedSubGroupOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={subGroupId ? Number(subGroupId) : undefined}
+            onChange={(v) => {
+              const opt = subGroupOptions.find((o) => o.id === v)
+              setSubGroupId(opt ? String(opt.id) : ''); setSubGroupName(opt?.name ?? '')
+              setMatNameId(''); setMaterialName('')
+              setSpecId(''); setSpecDescription('')
+              setBrandId(''); setBrandName('')
+            }} />
+        </div>
+
+        <VSep />
+
+        <div style={{ flex: '1 1 0', minWidth: 200, marginLeft: 10, marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Material" onClick={copyMatName} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="ชื่อวัสดุ" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกชื่อวัสดุ"
+            showSearch allowClear loading={matNameLoading} disabled={!subGroupId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedMatNameOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={matNameId ? Number(matNameId) : undefined}
+            onChange={(v) => {
+              const opt = matNameOptions.find((o) => o.id === v)
+              setMatNameId(opt ? String(opt.id) : ''); setMaterialName(opt?.name ?? '')
+              setSpecId(''); setSpecDescription('')
+              setBrandId(''); setBrandName('')
+            }} />
+        </div>
+
+        <VSep />
+
+        <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Spec" onClick={copySpec} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="สเปค" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกสเปค"
+            showSearch allowClear loading={specLoading} disabled={!matNameId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedSpecOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={specId ? Number(specId) : undefined}
+            onChange={(v) => {
+              const opt = specOptions.find((o) => o.id === v)
+              setSpecId(opt ? String(opt.id) : ''); setSpecDescription(opt?.name ?? '')
+              setBrandId(''); setBrandName('')
+            }} />
+        </div>
+
+        <VSep />
+
+        <div style={{ flex: '0 0 200px', marginLeft: 10, marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Brand" onClick={copyBrand} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="ยี่ห้อ" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกยี่ห้อ"
+            showSearch allowClear loading={brandLoading} disabled={!specId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedBrandOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={brandId ? Number(brandId) : undefined}
+            onChange={(v) => {
+              const opt = brandOptions.find((o) => o.id === v)
+              setBrandId(opt ? String(opt.id) : ''); setBrandName(opt?.name ?? '')
+            }} />
+        </div>
+
+        <VSep />
+
+        <div style={{ flex: '0 0 170px', marginLeft: 10, marginRight: 10 }}>
+          <SectionPill color="#b45309" bg="#fef3c7" label="Unit" onClick={copyUnit} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+          <FL text="หน่วย" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกหน่วย"
+            showSearch allowClear
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={sortedUnitOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={unitId} onChange={(v) => setUnitId(v ?? undefined)} />
+        </div>
+
+        <div style={{ flex: '0 0 28px', paddingTop: 30, marginLeft: 6 }}>
+          <Button type="text" size="small" icon={<CloseOutlined style={{ fontSize: 12 }} />}
+            onClick={reset} style={{ padding: '0 4px' }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── file import helpers ──────────────────────────────────────────
 const FILE_COLS = ['groupCode', 'subGroupCode', 'subGroupName', 'materialCode', 'materialName', 'specCode', 'specDescription', 'brandCode', 'brandName', 'unitCode', 'unitName']
 
@@ -399,12 +673,33 @@ const MaterialPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [groups, setGroups] = useState<GroupRaw[]>([])
-  const [filterGroup, setFilterGroup] = useState<string | undefined>()
   // `search` is the debounced value actually sent to the API; `searchInput`
   // tracks the raw keystrokes so the box stays responsive while typing.
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Lookup-field filter row — all 6 are sent server-side as *_id params to
+  // GET /master/allMaterial (it already supports group_id/subgroup_id/
+  // mat_name_id/spec_id/brand_id/unit_id, confirmed in master.go — no backend
+  // change needed). Subgroup cascades off Group (same group_id param the
+  // GET /master/subgroups endpoint already accepts, mirroring the cascade
+  // pattern InsertRow/useCascadeOptions below uses for the insert-row form);
+  // Mat Name/Spec/Brand/Unit are kept independent per-field lists since the
+  // task only asked for the Group→Subgroup relationship to cascade.
+  const [filterGroupId, setFilterGroupId] = useState<number | undefined>()
+  const [filterSubgroupId, setFilterSubgroupId] = useState<number | undefined>()
+  const [filterMatNameId, setFilterMatNameId] = useState<number | undefined>()
+  const [filterSpecId, setFilterSpecId] = useState<number | undefined>()
+  const [filterBrandId, setFilterBrandId] = useState<number | undefined>()
+  const [filterUnitId, setFilterUnitId] = useState<number | undefined>()
+
+  const [filterSubgroupOptions, setFilterSubgroupOptions] = useState<IdOption[]>([])
+  const [filterSubgroupLoading, setFilterSubgroupLoading] = useState(false)
+  const [filterMatNameOptions, setFilterMatNameOptions] = useState<IdOption[]>([])
+  const [filterSpecOptions, setFilterSpecOptions] = useState<IdOption[]>([])
+  const [filterBrandOptions, setFilterBrandOptions] = useState<IdOption[]>([])
+  const [filterUnitOptions, setFilterUnitOptions] = useState<IdOption[]>([])
   const [pendingRows, setPendingRows] = useState<PendingRow[]>([newRow(true)])
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<MaterialRecord | null>(null)
@@ -427,6 +722,42 @@ const MaterialPage: React.FC = () => {
       .catch(() => {})
   }, [accessToken])
 
+  // Subgroup filter cascades off the selected Group filter — refetch (all
+  // subgroups when no group is selected, or just that group's when one is)
+  // and clear any stale subgroup selection whenever the group changes.
+  useEffect(() => {
+    if (!accessToken) return
+    setFilterSubgroupLoading(true)
+    axios.get(`${BASE_URL}/master/subgroups`, {
+      headers: authHeader,
+      params: filterGroupId ? { group_id: filterGroupId } : undefined,
+    })
+      .then((res) => setFilterSubgroupOptions((res.data?.data ?? []).map(mapSubGroup)))
+      .catch(() => setFilterSubgroupOptions([]))
+      .finally(() => setFilterSubgroupLoading(false))
+  }, [accessToken, filterGroupId])
+
+  // Mat Name / Spec / Brand / Unit filters are independent full lists — load
+  // once (each endpoint already returns everything when called with no
+  // cascade param, confirmed in master.go).
+  useEffect(() => {
+    if (!accessToken) return
+    axios.get(`${BASE_URL}/master/mat-names`, { headers: authHeader })
+      .then((res) => setFilterMatNameOptions((res.data?.data ?? []).map(mapMatName)))
+      .catch(() => setFilterMatNameOptions([]))
+    axios.get(`${BASE_URL}/master/specs`, { headers: authHeader })
+      .then((res) => setFilterSpecOptions((res.data?.data ?? []).map(mapSpec)))
+      .catch(() => setFilterSpecOptions([]))
+    axios.get(`${BASE_URL}/master/brands`, { headers: authHeader })
+      .then((res) => setFilterBrandOptions((res.data?.data ?? []).map(mapBrand)))
+      .catch(() => setFilterBrandOptions([]))
+    axios.get(`${BASE_URL}/master/units`, { headers: authHeader })
+      .then((res) => setFilterUnitOptions((res.data?.data ?? []).map(
+        (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
+      )))
+      .catch(() => setFilterUnitOptions([]))
+  }, [accessToken])
+
   // load material stats once
   useEffect(() => {
     if (!accessToken) return
@@ -443,7 +774,12 @@ const MaterialPage: React.FC = () => {
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/master/allMaterial`, {
-        params: { page, limit: 10, search: search || undefined },
+        params: {
+          page, limit: 10, search: search || undefined,
+          group_id: filterGroupId, subgroup_id: filterSubgroupId,
+          mat_name_id: filterMatNameId, spec_id: filterSpecId,
+          brand_id: filterBrandId, unit_id: filterUnitId,
+        },
         headers: authHeader,
       })
       const rawList = Array.isArray(res.data) ? res.data : res.data?.data
@@ -471,9 +807,9 @@ const MaterialPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [accessToken, page, search])
+  }, [accessToken, page, search, filterGroupId, filterSubgroupId, filterMatNameId, filterSpecId, filterBrandId, filterUnitId])
 
-  // load materials — re-runs when page or (debounced) search changes
+  // load materials — re-runs when page, (debounced) search, or any filter changes
   useEffect(() => { fetchMaterials() }, [fetchMaterials])
 
   // debounce the search box: wait 400ms after typing stops before hitting the
@@ -490,6 +826,36 @@ const MaterialPage: React.FC = () => {
   useEffect(() => () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
   }, [])
+
+  // Selecting a new Group clears any stale Subgroup selection (its options
+  // are about to be refetched for the new group) and resets to page 1, same
+  // as every other filter change below.
+  const handleFilterGroupChange = (v?: number) => {
+    setFilterGroupId(v)
+    setFilterSubgroupId(undefined)
+    setPage(1)
+  }
+  const makeFilterChangeHandler = (setter: (v?: number) => void) => (v?: number) => {
+    setter(v)
+    setPage(1)
+  }
+  const handleFilterSubgroupChange = makeFilterChangeHandler(setFilterSubgroupId)
+  const handleFilterMatNameChange = makeFilterChangeHandler(setFilterMatNameId)
+  const handleFilterSpecChange = makeFilterChangeHandler(setFilterSpecId)
+  const handleFilterBrandChange = makeFilterChangeHandler(setFilterBrandId)
+  const handleFilterUnitChange = makeFilterChangeHandler(setFilterUnitId)
+
+  const handleResetFilters = () => {
+    setSearchInput('')
+    setSearch('')
+    setFilterGroupId(undefined)
+    setFilterSubgroupId(undefined)
+    setFilterMatNameId(undefined)
+    setFilterSpecId(undefined)
+    setFilterBrandId(undefined)
+    setFilterUnitId(undefined)
+    setPage(1)
+  }
 
   const groupOptions = groups.map((g) => ({ value: g.group_code, label: `${g.group_code} — ${g.group_name}`, id: g.id, name: g.group_name }))
   const groupById = (id: string) => groups.find((g) => g.group_code === id)
@@ -520,11 +886,6 @@ const MaterialPage: React.FC = () => {
     const timer = setTimeout(() => setFlashRowKey(null), 1300)
     return () => clearTimeout(timer)
   }, [flashRowKey])
-
-  const filteredData = data.filter((d) => {
-    if (filterGroup && d.groupId !== filterGroup) return false
-    return true
-  })
 
   const columns = [
     {
@@ -638,6 +999,33 @@ const MaterialPage: React.FC = () => {
     }
   }
 
+  // mat_code composition — mirrors project_handler.go's CreateMaterial exactly:
+  // group_code + subgroup_code + mat_name_code + spec_code + brand_code + unit_code,
+  // literal concatenation, no separators. spec_code/brand_code fall back to the same
+  // '000' placeholder handleSubmitAll's own POST payload already uses when the user
+  // left Spec/Brand unselected (those fields aren't required on this form, but the
+  // backend's mat_code still needs *something* in that position).
+  const buildMatCode = (r: PendingRow) =>
+    r.groupId + r.subGroupCode + r.materialCode + (r.specCode || '000') + (r.brandCode || '000') + r.unitCode
+
+  // Pre-submit duplicate check — calls the same GET /master/materials/{code} the
+  // material detail/edit page already uses to look up one material by mat_code.
+  // 200 = exists (duplicate), 404 = free to use. This is a courtesy check only;
+  // the backend remains the authoritative guard (COUNT check + a real 23505 handler
+  // on the INSERT itself for the race window between this check and the actual save).
+  const checkDuplicateMatCodes = async (rows: PendingRow[]): Promise<string[]> => {
+    const codes = rows.map(buildMatCode)
+    const results = await Promise.all(codes.map(async (code) => {
+      try {
+        await axios.get(`${BASE_URL}/master/materials/${encodeURIComponent(code)}`, { headers: authHeader })
+        return code // 200 → already exists
+      } catch {
+        return null // 404 (or any other error) → treat as not-a-known-duplicate here; backend still guards it
+      }
+    }))
+    return results.filter((c): c is string => c !== null)
+  }
+
   const handleSubmitAll = async () => {
     const rowsToSubmit = pendingRows.filter(isRealRow)
     if (rowsToSubmit.length === 0) { message.warning('กรุณาเพิ่มอย่างน้อย 1 รายการ'); return }
@@ -650,6 +1038,13 @@ const MaterialPage: React.FC = () => {
 
     setSubmitting(true)
     try {
+      const duplicates = await checkDuplicateMatCodes(rowsToSubmit)
+      if (duplicates.length > 0) {
+        message.error(`รหัสวัสดุซ้ำกับที่มีอยู่แล้ว: ${duplicates.join(', ')}`)
+        setSubmitting(false)
+        return
+      }
+
       await axios.post(`${BASE_URL}/master/materials`,
         rowsToSubmit.map((r) => ({
           group_code:       r.groupId,
@@ -786,16 +1181,72 @@ const MaterialPage: React.FC = () => {
                 value={searchInput}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
               />
-              <Select allowClear placeholder="กรองตามกลุ่ม" style={{ width: 260 }} options={groupOptions}
-                value={filterGroup} onChange={(v) => setFilterGroup(v)} />
               <Button icon={<FileExcelOutlined />} loading={exporting} onClick={handleExport}>
                 Export Excel
               </Button>
             </Space>
           </div>
+          {/* Lookup-field filter row — each Select's value is the master row's numeric
+              id (not its code), matching what GET /master/allMaterial's *_id params expect. */}
+          <div style={{ padding: '12px 20px 4px', borderBottom: '1px solid #f3f4f6' }}>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="กลุ่ม (Group)" style={{ width: '100%' }}
+                  options={groupOptions.map((g) => ({ value: Number(g.id), label: g.label }))}
+                  value={filterGroupId} onChange={handleFilterGroupChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="กลุ่มย่อย (Subgroup)" style={{ width: '100%' }}
+                  loading={filterSubgroupLoading}
+                  options={filterSubgroupOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  value={filterSubgroupId} onChange={handleFilterSubgroupChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="ชื่อวัสดุ (Mat Name)" style={{ width: '100%' }}
+                  options={filterMatNameOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  value={filterMatNameId} onChange={handleFilterMatNameChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="สเปค (Spec)" style={{ width: '100%' }}
+                  options={filterSpecOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  value={filterSpecId} onChange={handleFilterSpecChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="ยี่ห้อ (Brand)" style={{ width: '100%' }}
+                  options={filterBrandOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  value={filterBrandId} onChange={handleFilterBrandChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={4}>
+                <Select
+                  allowClear placeholder="หน่วย (Unit)" style={{ width: '100%' }}
+                  options={filterUnitOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  value={filterUnitId} onChange={handleFilterUnitChange}
+                  showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Col>
+            </Row>
+            <Row justify="end" style={{ marginTop: 8 }}>
+              <Button icon={<ReloadOutlined />} onClick={handleResetFilters}>ล้างตัวกรอง</Button>
+            </Row>
+          </div>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table
-              dataSource={filteredData} columns={columns} size="middle"
+              dataSource={data} columns={columns} size="middle"
               loading={loading}
               pagination={{
                 current: page,
@@ -829,6 +1280,16 @@ const MaterialPage: React.FC = () => {
 
           <div style={{ padding: '16px 20px', overflowX: 'auto' }}>
             <div style={{ minWidth: 1100 }}>
+              {/* Reference/lookup row — browse-only, independent state, never
+                  touches pendingRows/InsertRow. See ReferenceLookupRow above. */}
+              <Text style={{ fontSize: 11, color: '#b45309', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                🔍 ดูข้อมูล (สำหรับค้นหาอ้างอิงเท่านั้น ไม่ใช่การเพิ่มข้อมูล)
+              </Text>
+              <ReferenceLookupRow
+                groupOptions={groupOptions}
+                accessToken={accessToken}
+                onCopyColumn={(patch) => setPendingRows((prev) => prev.map((r) => ({ ...r, ...patch })))}
+              />
               {(() => {
                 let counter = 0
                 return pendingRows.map((row) => {

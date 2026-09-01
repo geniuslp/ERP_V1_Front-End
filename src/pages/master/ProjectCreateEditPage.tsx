@@ -7,6 +7,8 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { permissionMatrixService } from '@/services/permissionMatrix.service'
+import type { Department } from '@/types/permission.types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -29,32 +31,19 @@ const ProjectCreateEditPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [owners, setOwners] = useState<{ value: number; label: string; dept?: string }[]>([])
-  const [ownersLoading, setOwnersLoading] = useState(false)
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [departmentsLoading, setDepartmentsLoading] = useState(false)
 
+  // Reuses the same GET /departments source as UsersPage.tsx/PermissionMatrix —
+  // no separate department endpoint for this form.
   useEffect(() => {
-    const fetchOwners = async () => {
-      setOwnersLoading(true)
-      try {
-        // Filter to engineering team only
-        const res = await axios.get(`${BASE_URL}/users/allUser`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: { role: 'engineering' },
-        })
-        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        setOwners(list.map((u: any) => ({
-          value: Number(u.id),
-          label: u.full_name ?? u.fullName ?? u.username,
-          dept: u.department,
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดรายชื่อผู้รับผิดชอบไม่สำเร็จ')
-      } finally {
-        setOwnersLoading(false)
-      }
-    }
-    fetchOwners()
-  }, [])
+    if (!accessToken) return
+    setDepartmentsLoading(true)
+    permissionMatrixService.getDepartments(accessToken)
+      .then(setDepartments)
+      .catch(() => message.error('โหลดข้อมูลแผนกไม่สำเร็จ'))
+      .finally(() => setDepartmentsLoading(false))
+  }, [accessToken])
 
   useEffect(() => {
     if (!isEdit) return
@@ -69,12 +58,13 @@ const ProjectCreateEditPage: React.FC = () => {
           project_code: p.project_code,
           project_name: p.project_name,
           location_code: p.location_code,
-          owner_id: p.owner_id,
+          dept_code: p.dept_code,
+          responsible_person_name: p.responsible_person_name,
           project_owner_name: p.project_owner_name,
           job_codes: p.job_codes ?? [],
-          credit: p.credit,
           budget_amount: p.budget_amount ?? 0,
           consultant_name: p.consultant_name,
+          consultant_phone: p.consultant_phone,
           date_range: p.start_date && p.end_date
             ? [dayjs(p.start_date), dayjs(p.end_date)]
             : undefined,
@@ -104,13 +94,15 @@ const ProjectCreateEditPage: React.FC = () => {
       project_name:  values.project_name,
       // Free-text project address — sent as-is, no location master lookup.
       location_code: values.location_code ?? undefined,
-      owner_id:      values.owner_id ?? undefined,
-      // "เจ้าของโครงการ" — free text, distinct from owner_id ("ผู้รับผิดชอบหลัก")
+      dept_code:     values.dept_code ?? undefined,
+      // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
+      responsible_person_name: values.responsible_person_name,
+      // "เจ้าของโครงการ" — free text, distinct from responsible_person_name above
       project_owner_name: values.project_owner_name ?? undefined,
       job_codes:     values.job_codes ?? [],
-      credit:        values.credit ?? undefined,
       budget_amount: values.budget_amount ?? 0,
       consultant_name: values.consultant_name ?? undefined,
+      consultant_phone: values.consultant_phone ?? undefined,
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
       end_date:      endDate ? endDate.format('YYYY-MM-DD') : undefined,
       status:        values.status ?? 'ACTIVE',
@@ -178,29 +170,33 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="ผู้รับผิดชอบหลัก" name="owner_id">
+              {/* Reuses GET /departments (permissionMatrixService.getDepartments) — the same
+                  source UsersPage.tsx/PermissionMatrix already use, no new endpoint. */}
+              <Form.Item label="แผนก" name="dept_code">
                 <Select
-                  placeholder="— เลือกผู้รับผิดชอบ (ทีมวิศวกร) —"
-                  loading={ownersLoading}
+                  placeholder="— เลือกแผนก —"
+                  loading={departmentsLoading}
                   showSearch
                   allowClear
                   filterOption={(input, option) =>
                     String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
-                  optionRender={(option) => (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <span>{option.data.label}</span>
-                      {option.data.dept && (
-                        <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
-                      )}
-                    </div>
-                  )}
-                  options={owners}
+                  options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
                 />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* "เจ้าของโครงการ" — free text, distinct from owner_id/ผู้รับผิดชอบหลัก above */}
+              {/* Required free text — replaces the old owner_id (users) dropdown. */}
+              <Form.Item
+                label="ผู้รับผิดชอบหลัก"
+                name="responsible_person_name"
+                rules={[{ required: true, message: 'กรุณากรอกผู้รับผิดชอบหลัก' }]}
+              >
+                <Input placeholder="ชื่อผู้รับผิดชอบหลัก" />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              {/* "เจ้าของโครงการ" — free text, distinct from responsible_person_name above */}
               <Form.Item label="เจ้าของโครงการ" name="project_owner_name">
                 <Input placeholder="ชื่อเจ้าของโครงการ" />
               </Form.Item>
@@ -237,8 +233,8 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="เครดิต" name="credit">
-                <Input placeholder="กรอกเครดิต (ถ้ามี)" />
+              <Form.Item label="เบอร์ติดต่อของที่ปรึกษา" name="consultant_phone">
+                <Input placeholder="เบอร์โทรที่ปรึกษา (ถ้ามี)" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
