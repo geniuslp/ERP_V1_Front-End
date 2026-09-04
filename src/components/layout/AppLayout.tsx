@@ -189,7 +189,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           borderTop: '1px solid #dbeafe',
           background: '#fff',
         }}>
-          © 2024 ERP System — Enterprise Resource Planning
+          © 2026 ERP System — Genius Engineering
         </div>
       </Layout>
     </Layout>

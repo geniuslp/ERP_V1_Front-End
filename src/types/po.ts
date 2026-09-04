@@ -37,6 +37,11 @@ export interface POListItem {
   // POMyListPage still reads it defensively; unverified on this endpoint.
   can_edit_approved?: boolean
   created_by_name?: string
+  // purchase_order.job_code — header-level "ประเภท Job" (shared 12-code
+  // JOB_TYPES list with PR). Replaces the old work_type column; always
+  // present on GET /po (never null). Distinct from the per-line derived
+  // job_code on POLine below and from job_names (per-line display) below.
+  job_code: string
   // Added for POStatusPage "Job" / "Last Edited By" columns (2026-08-07).
   // Backend returns job_name (not job_code) since this is display-only on
   // the PO list — deduplicated server-side but deduped defensively client-side too.
@@ -117,6 +122,11 @@ export interface PODetail {
   // on the backend) — this is the "ที่อยู่จัดส่ง" value. There is no delivery_address or
   // warehouse_address field on this endpoint; don't reintroduce either.
   location_text?: string | null
+  // purchase_order.receiver_name/receiver_phone — optional free text,
+  // unvalidated on the backend (internal/handlers/po.go). Nullable on
+  // GET /po/:id, accepted on POST/PUT /po/:id and PUT /po/:id/edit-approved.
+  receiver_name?: string | null
+  receiver_phone?: string | null
   warehouse_code: string | null
   currency: string
   total_amount: number
@@ -149,10 +159,15 @@ export interface PODetail {
   revision_round?: number
   // purchase_order.order_type — same 'stock'/'cost' domain as PR's order_type.
   order_type?: 'stock' | 'cost'
-  // purchase_order.work_type — header-level "ประเภทงาน", replaces the old
-  // per-line cost_subgroup_id/job_code selection for PO (backend-confirmed
-  // this session). PO-only; PR's line-level cost code is untouched.
-  work_type?: POWorkType | null
+  // purchase_order.job_code — header-level "ประเภท Job", shares the 12-code
+  // JOB_TYPES constant (constants/jobTypes.ts) with PR's job_code. Replaces
+  // the old work_type column (single-letter P/E/S/F/G/H, 6 values, renamed
+  // by backend to job_code — old 'G' meant GAS System and was migrated to
+  // 'MG'; bare 'G' is now exclusively General Code). Always present on
+  // GET /po/:id (never null); optional on create/update (backend auto-fills
+  // from the linked PR's job_code when omitted and pr_id is set). Distinct
+  // from POLine.job_code (per-line, derived read-only from cost_subgroup_id).
+  job_code: string
   // GET /po/:id nests attachments by source doc. `po` is always present
   // (`[]` at minimum); `pr`/`memo` keys are entirely absent from the JSON
   // when that chain link doesn't exist (e.g. no `pr` key if the PO has no
@@ -166,19 +181,6 @@ export interface PODetail {
   }
 }
 
-// ⚠️ P/E/S/F/G/H — no "M" prefix, confirmed against backend's work_type CHECK
-// constraint this session.
-export type POWorkType = 'P' | 'E' | 'S' | 'F' | 'G' | 'H'
-
-export const PO_WORK_TYPE_LABEL: Record<POWorkType, string> = {
-  P: 'Metal Structure',
-  E: 'Electrical system work',
-  S: 'Sanitary System',
-  F: 'Fire Protection',
-  G: 'GAS System',
-  H: 'HVAC / BAS / Clean Room-Cold Room',
-}
-
 export interface POLineItem {
   key: string
   no: number
@@ -188,6 +190,7 @@ export interface POLineItem {
   unit_name: string
   qty: number
   unit_price: number
+  spec?: string
   is_from_pr: boolean
   // Snapshot of qty_remaining on the PR line at the moment it was picked in
   // PRItemSelectionModal — client-side max for the qty input (task: prevent
@@ -197,6 +200,13 @@ export interface POLineItem {
   disc?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: 1 | 3 | 5 | null
+  // Cost Code selection for this line — same cost_subgroup_id persisted on
+  // purchase_order_line as POLine above. Auto-filled from the source PR
+  // line's cost_subgroup_id when is_from_pr, but always stays editable.
+  cost_subgroup_id?: number | null
+  // Display-only "code — name" label, same convention as PRItemsTable's
+  // costCodeLabel. The submitted value is cost_subgroup_id, not this.
+  cost_code_label?: string | null
 }
 
 export interface AvailablePR {

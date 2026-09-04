@@ -30,15 +30,21 @@ interface PendingRow {
   subGroupId: string
   subGroupCode: string
   subGroupName: string
+  // true once the user has copied a Sub Group value in via the "ดูข้อมูล"
+  // pill — switches that field from <Select> to free-text <Input> for this row only
+  subGroupIsText?: boolean
   matNameId: string
   materialCode: string
   materialName: string
-  specId: string
+  matNameIsText?: boolean
   specCode: string
   specDescription: string
-  brandId: string
+  // true once the user has copied a Spec value in via the "ดูข้อมูล" pill —
+  // switches that field from <Select> to free-text <Input> for this row only
+  specIsText?: boolean
   brandCode: string
   brandName: string
+  brandIsText?: boolean
   unitCode: string
   unitName: string
 }
@@ -48,10 +54,10 @@ const newRow = (isTemplate = false): PendingRow => ({
   rowKey: `${Date.now()}${Math.random()}`,
   isTemplate,
   groupId: '',
-  subGroupId: '', subGroupCode: '', subGroupName: '',
-  matNameId: '', materialCode: '', materialName: '',
-  specId: '', specCode: '', specDescription: '',
-  brandId: '', brandCode: '', brandName: '',
+  subGroupId: '', subGroupCode: '', subGroupName: '', subGroupIsText: false,
+  matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+  specCode: '', specDescription: '', specIsText: false,
+  brandCode: '', brandName: '', brandIsText: false,
   unitCode: '', unitName: '',
 })
 
@@ -150,22 +156,24 @@ const mapBrand = (b: any): IdOption => ({ id: b.id, code: b.brand_code, name: b.
 interface InsertRowProps {
   row: PendingRow; displayNumber?: number
   groupOptions: GroupOption[]
+  // Full unfiltered spec/brand lists — the same ones MaterialPage already
+  // fetches once for the list-page filter row (filterSpecOptions/
+  // filterBrandOptions), reused here to populate the default <Select>
+  // dropdown so this component doesn't need its own API call.
+  specOptions: IdOption[]
+  brandOptions: IdOption[]
   accessToken?: string
   onChange: (key: string, patch: Partial<PendingRow>) => void
   onRemove: (key: string) => void; canRemove: boolean
 }
 
-const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions, accessToken, onChange, onRemove, canRemove }) => {
+const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions, specOptions, brandOptions, accessToken, onChange, onRemove, canRemove }) => {
   const isExample = !!row.isTemplate && !isRowComplete(row)
   const groupNumericId = groupOptions.find((o) => o.value === row.groupId)?.id
   const { options: subGroupOptions, loading: subGroupLoading } =
     useCascadeOptions(groupNumericId ? String(groupNumericId) : '', '/master/subgroups', 'group_id', mapSubGroup, accessToken)
   const { options: matNameOptions, loading: matNameLoading } =
     useCascadeOptions(row.subGroupId, '/master/mat-names', 'subgroup_id', mapMatName, accessToken)
-  const { options: specOptions, loading: specLoading } =
-    useCascadeOptions(row.matNameId, '/master/specs', 'mat_name_id', mapSpec, accessToken)
-  const { options: brandOptions, loading: brandLoading } =
-    useCascadeOptions(row.specId, '/master/brands', 'spec_id', mapBrand, accessToken)
 
   const groupLabel = groupOptions.find((o) => o.value === row.groupId)?.name ?? ''
   const breadcrumbSteps: BreadcrumbStep[] = [
@@ -205,93 +213,201 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
         options={groupOptions} value={row.groupId || undefined}
         onChange={(v) => onChange(row.rowKey, {
           groupId: v,
-          subGroupId: '', subGroupCode: '', subGroupName: '',
-          matNameId: '', materialCode: '', materialName: '',
-          specId: '', specCode: '', specDescription: '',
-          brandId: '', brandCode: '', brandName: '',
+          subGroupId: '', subGroupCode: '', subGroupName: '', subGroupIsText: false,
+          matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+          specCode: '', specDescription: '', specIsText: false,
+          brandCode: '', brandName: '', brandIsText: false,
         })} />
     </div>
 
     <VSep />
 
-    {/* SUBGROUP */}
+    {/* SUBGROUP — locked <Select> (cascaded off row.groupId) until the
+        "ดูข้อมูล" pill copies a value in (row.subGroupIsText), at which point
+        this row's Sub Group switches to two free-text <Input>s, same
+        Select↔Input toggle pattern as Spec/Brand below. Reload button
+        switches back to <Select> mode, clearing downstream fields too (same
+        as picking a new Sub Group from the dropdown already does). */}
     <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#0284c7" bg="#e0f2fe" label="Sub Group" />
-      <FL text="กลุ่มย่อย" required />
-      <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่มย่อย"
-        showSearch allowClear loading={subGroupLoading} disabled={!row.groupId}
-        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-        options={subGroupOptions.map((o) => ({ value: o.id, label: o.label }))}
-        value={row.subGroupId ? Number(row.subGroupId) : undefined}
-        onChange={(v) => {
-          const opt = subGroupOptions.find((o) => o.id === v)
-          onChange(row.rowKey, {
-            subGroupId: opt ? String(opt.id) : '', subGroupCode: opt?.code ?? '', subGroupName: opt?.name ?? '',
-            matNameId: '', materialCode: '', materialName: '',
-            specId: '', specCode: '', specDescription: '',
-            brandId: '', brandCode: '', brandName: '',
-          })
-        }} />
+      {!row.subGroupIsText ? (
+        <>
+          <FL text="กลุ่มย่อย" required />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่มย่อย"
+            showSearch allowClear loading={subGroupLoading} disabled={!row.groupId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={subGroupOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={row.subGroupId ? Number(row.subGroupId) : undefined}
+            onChange={(v) => {
+              const opt = subGroupOptions.find((o) => o.id === v)
+              onChange(row.rowKey, {
+                subGroupId: opt ? String(opt.id) : '', subGroupCode: opt?.code ?? '', subGroupName: opt?.name ?? '',
+                matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+                specCode: '', specDescription: '', specIsText: false,
+                brandCode: '', brandName: '', brandIsText: false,
+              })
+            }} />
+        </>
+      ) : (
+        <Row gutter={6}>
+          <Col span={9}>
+            <FL text="รหัสกลุ่มย่อย" required />
+            <Input size="small" placeholder="กรอกรหัสกลุ่มย่อย" value={row.subGroupCode}
+              onChange={(e) => onChange(row.rowKey, { subGroupCode: e.target.value })} />
+          </Col>
+          <Col span={13}>
+            <FL text="ชื่อกลุ่มย่อย" required />
+            <Input size="small" placeholder="ชื่อกลุ่มย่อย" value={row.subGroupName}
+              onChange={(e) => onChange(row.rowKey, { subGroupName: e.target.value })} />
+          </Col>
+          <Col span={2} style={{ paddingTop: 18 }}>
+            <Button type="text" size="small" icon={<ReloadOutlined style={{ fontSize: 12 }} />}
+              title="เปลี่ยนกลับเป็นเลือกจากรายการ"
+              onClick={() => onChange(row.rowKey, {
+                subGroupIsText: false, subGroupId: '', subGroupCode: '', subGroupName: '',
+                matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+                specCode: '', specDescription: '', specIsText: false,
+                brandCode: '', brandName: '', brandIsText: false,
+              })} />
+          </Col>
+        </Row>
+      )}
     </div>
 
     <VSep />
 
-    {/* MATERIAL */}
+    {/* MATERIAL — same Select↔Input toggle as Sub Group above, cascaded off
+        row.subGroupId when in <Select> mode. */}
     <div style={{ flex: '1 1 0', minWidth: 200, marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#4f46e5" bg="#e0e7ff" label="Material" />
-      <FL text="ชื่อวัสดุ" required />
-      <Select size="small" style={{ width: '100%' }} placeholder="เลือกชื่อวัสดุ"
-        showSearch allowClear loading={matNameLoading} disabled={!row.subGroupId}
-        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-        options={matNameOptions.map((o) => ({ value: o.id, label: o.label }))}
-        value={row.matNameId ? Number(row.matNameId) : undefined}
-        onChange={(v) => {
-          const opt = matNameOptions.find((o) => o.id === v)
-          onChange(row.rowKey, {
-            matNameId: opt ? String(opt.id) : '', materialCode: opt?.code ?? '', materialName: opt?.name ?? '',
-            specId: '', specCode: '', specDescription: '',
-            brandId: '', brandCode: '', brandName: '',
-          })
-        }} />
+      {!row.matNameIsText ? (
+        <>
+          <FL text="ชื่อวัสดุ" required />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกชื่อวัสดุ"
+            showSearch allowClear loading={matNameLoading} disabled={!row.subGroupId}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            options={matNameOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={row.matNameId ? Number(row.matNameId) : undefined}
+            onChange={(v) => {
+              const opt = matNameOptions.find((o) => o.id === v)
+              onChange(row.rowKey, {
+                matNameId: opt ? String(opt.id) : '', materialCode: opt?.code ?? '', materialName: opt?.name ?? '',
+                specCode: '', specDescription: '', specIsText: false,
+                brandCode: '', brandName: '', brandIsText: false,
+              })
+            }} />
+        </>
+      ) : (
+        <Row gutter={6}>
+          <Col span={9}>
+            <FL text="รหัสวัสดุ" required />
+            <Input size="small" placeholder="กรอกรหัสวัสดุ" value={row.materialCode}
+              onChange={(e) => onChange(row.rowKey, { materialCode: e.target.value })} />
+          </Col>
+          <Col span={13}>
+            <FL text="ชื่อวัสดุ" required />
+            <Input size="small" placeholder="ชื่อวัสดุ" value={row.materialName}
+              onChange={(e) => onChange(row.rowKey, { materialName: e.target.value })} />
+          </Col>
+          <Col span={2} style={{ paddingTop: 18 }}>
+            <Button type="text" size="small" icon={<ReloadOutlined style={{ fontSize: 12 }} />}
+              title="เปลี่ยนกลับเป็นเลือกจากรายการ"
+              onClick={() => onChange(row.rowKey, {
+                matNameIsText: false, matNameId: '', materialCode: '', materialName: '',
+                specCode: '', specDescription: '', specIsText: false,
+                brandCode: '', brandName: '', brandIsText: false,
+              })} />
+          </Col>
+        </Row>
+      )}
     </div>
 
     <VSep />
 
-    {/* SPEC */}
+    {/* SPEC — locked <Select> (same pattern as Group/Sub Group/Material) until
+        the "ดูข้อมูล" pill copies a value in (row.specIsText), at which point
+        this row's Spec switches to two free-text <Input>s. The small reload
+        button switches it back to <Select> mode (clearing the value) if the
+        user wants to pick fresh from the list instead. */}
     <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#7c3aed" bg="#ede9fe" label="Spec" />
-      <FL text="สเปค" />
-      <Select size="small" style={{ width: '100%' }} placeholder="เลือกสเปค"
-        showSearch allowClear loading={specLoading} disabled={!row.matNameId}
-        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-        options={specOptions.map((o) => ({ value: o.id, label: o.label }))}
-        value={row.specId ? Number(row.specId) : undefined}
-        onChange={(v) => {
-          const opt = specOptions.find((o) => o.id === v)
-          onChange(row.rowKey, {
-            specId: opt ? String(opt.id) : '', specCode: opt?.code ?? '', specDescription: opt?.name ?? '',
-            brandId: '', brandCode: '', brandName: '',
-          })
-        }} />
+      {!row.specIsText ? (
+        <>
+          <FL text="สเปค" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกสเปค (ไม่บังคับ)"
+            showSearch allowClear
+            filterOption={(input, option) => (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
+            options={specOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={(() => {
+              const opt = specOptions.find((o) => o.code === row.specCode)
+              return opt ? opt.id : undefined
+            })()}
+            onChange={(v) => {
+              const opt = specOptions.find((o) => o.id === v)
+              onChange(row.rowKey, { specCode: opt?.code ?? '', specDescription: opt?.name ?? '' })
+            }} />
+        </>
+      ) : (
+        <Row gutter={6}>
+          <Col span={9}>
+            <FL text="รหัสสเปค" />
+            <Input size="small" placeholder="กรอกรหัสสเปค" value={row.specCode}
+              onChange={(e) => onChange(row.rowKey, { specCode: e.target.value })} />
+          </Col>
+          <Col span={13}>
+            <FL text="รายละเอียดสเปค" />
+            <Input size="small" placeholder="รายละเอียดสเปค (ถ้ามี)" value={row.specDescription}
+              onChange={(e) => onChange(row.rowKey, { specDescription: e.target.value })} />
+          </Col>
+          <Col span={2} style={{ paddingTop: 18 }}>
+            <Button type="text" size="small" icon={<ReloadOutlined style={{ fontSize: 12 }} />}
+              title="เปลี่ยนกลับเป็นเลือกจากรายการ"
+              onClick={() => onChange(row.rowKey, { specIsText: false, specCode: '', specDescription: '' })} />
+          </Col>
+        </Row>
+      )}
     </div>
 
     <VSep />
 
-    {/* BRAND */}
-    <div style={{ flex: '0 0 200px', marginLeft: 10, marginRight: 10 }}>
+    {/* BRAND — same Select↔Input toggle pattern as Spec above */}
+    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
       <SectionPill color="#b45309" bg="#fef3c7" label="Brand" />
-      <FL text="ยี่ห้อ" />
-      <Select size="small" style={{ width: '100%' }} placeholder="เลือกยี่ห้อ"
-        showSearch allowClear loading={brandLoading} disabled={!row.specId}
-        filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-        options={brandOptions.map((o) => ({ value: o.id, label: o.label }))}
-        value={row.brandId ? Number(row.brandId) : undefined}
-        onChange={(v) => {
-          const opt = brandOptions.find((o) => o.id === v)
-          onChange(row.rowKey, {
-            brandId: opt ? String(opt.id) : '', brandCode: opt?.code ?? '', brandName: opt?.name ?? '',
-          })
-        }} />
+      {!row.brandIsText ? (
+        <>
+          <FL text="ยี่ห้อ" />
+          <Select size="small" style={{ width: '100%' }} placeholder="เลือกยี่ห้อ (ไม่บังคับ)"
+            showSearch allowClear
+            filterOption={(input, option) => (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
+            options={brandOptions.map((o) => ({ value: o.id, label: o.label }))}
+            value={(() => {
+              const opt = brandOptions.find((o) => o.code === row.brandCode)
+              return opt ? opt.id : undefined
+            })()}
+            onChange={(v) => {
+              const opt = brandOptions.find((o) => o.id === v)
+              onChange(row.rowKey, { brandCode: opt?.code ?? '', brandName: opt?.name ?? '' })
+            }} />
+        </>
+      ) : (
+        <Row gutter={6}>
+          <Col span={9}>
+            <FL text="รหัสยี่ห้อ" />
+            <Input size="small" placeholder="กรอกรหัสยี่ห้อ" value={row.brandCode}
+              onChange={(e) => onChange(row.rowKey, { brandCode: e.target.value })} />
+          </Col>
+          <Col span={13}>
+            <FL text="ยี่ห้อ" />
+            <Input size="small" placeholder="ชื่อยี่ห้อ (ถ้ามี)" value={row.brandName}
+              onChange={(e) => onChange(row.rowKey, { brandName: e.target.value })} />
+          </Col>
+          <Col span={2} style={{ paddingTop: 18 }}>
+            <Button type="text" size="small" icon={<ReloadOutlined style={{ fontSize: 12 }} />}
+              title="เปลี่ยนกลับเป็นเลือกจากรายการ"
+              onClick={() => onChange(row.rowKey, { brandIsText: false, brandCode: '', brandName: '' })} />
+          </Col>
+        </Row>
+      )}
     </div>
 
     <VSep />
@@ -395,43 +511,61 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
     if (!groupId) return message.warning('กรุณาเลือกกลุ่มก่อนคัดลอก')
     onCopyColumn({
       groupId,
-      subGroupId: '', subGroupCode: '', subGroupName: '',
-      matNameId: '', materialCode: '', materialName: '',
-      specId: '', specCode: '', specDescription: '',
-      brandId: '', brandCode: '', brandName: '',
+      subGroupId: '', subGroupCode: '', subGroupName: '', subGroupIsText: false,
+      matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+      specCode: '', specDescription: '', specIsText: false,
+      brandCode: '', brandName: '', brandIsText: false,
     })
   }
+  // Sub Group/Material's destination <Select> in InsertRow is disabled — and
+  // its own options list empty — until that row's parent field(s) are set
+  // (Sub Group needs row.groupId; Material needs row.subGroupId), since both
+  // cascade off the row's own useCascadeOptions call. Copying only the child
+  // id left the parent chain unset, so the destination Select couldn't
+  // resolve a label for it (disabled + empty options → looked unchanged for
+  // Sub Group, or fell back to rendering the raw numeric id for Material).
+  // Backfilling groupId (and subGroupId/Code/Name for Material) — values this
+  // browse row already guarantees are consistent, since its own cascade
+  // enforces the same parent chain — fixes both.
   const copySubGroup = () => {
     const opt = subGroupOptions.find((o) => o.id === Number(subGroupId))
     if (!opt) return message.warning('กรุณาเลือกกลุ่มย่อยก่อนคัดลอก')
+    if (!groupId) return message.warning('กรุณาเลือกกลุ่มก่อนคัดลอก')
     onCopyColumn({
-      subGroupId: String(opt.id), subGroupCode: opt.code, subGroupName: opt.name,
-      matNameId: '', materialCode: '', materialName: '',
-      specId: '', specCode: '', specDescription: '',
-      brandId: '', brandCode: '', brandName: '',
+      groupId,
+      subGroupId: String(opt.id), subGroupCode: opt.code, subGroupName: opt.name, subGroupIsText: true,
+      matNameId: '', materialCode: '', materialName: '', matNameIsText: false,
+      specCode: '', specDescription: '', specIsText: false,
+      brandCode: '', brandName: '', brandIsText: false,
     })
   }
   const copyMatName = () => {
     const opt = matNameOptions.find((o) => o.id === Number(matNameId))
     if (!opt) return message.warning('กรุณาเลือกชื่อวัสดุก่อนคัดลอก')
+    if (!groupId || !subGroupId) return message.warning('กรุณาเลือกกลุ่มและกลุ่มย่อยก่อนคัดลอก')
+    const subOpt = subGroupOptions.find((o) => o.id === Number(subGroupId))
     onCopyColumn({
-      matNameId: String(opt.id), materialCode: opt.code, materialName: opt.name,
-      specId: '', specCode: '', specDescription: '',
-      brandId: '', brandCode: '', brandName: '',
+      groupId,
+      subGroupId, subGroupCode: subOpt?.code ?? '', subGroupName: subOpt?.name ?? subGroupName,
+      matNameId: String(opt.id), materialCode: opt.code, materialName: opt.name, matNameIsText: true,
+      specCode: '', specDescription: '', specIsText: false,
+      brandCode: '', brandName: '', brandIsText: false,
     })
   }
+  // Copying Spec/Brand switches that field from <Select> to free-text
+  // <Input> for the row(s) it lands on (specIsText/brandIsText) — the lookup
+  // Select above still browses real master data; copy just prefills the text
+  // with that option's code/description so the user can freely retype/edit
+  // it afterward with zero dropdown interference.
   const copySpec = () => {
     const opt = specOptions.find((o) => o.id === Number(specId))
     if (!opt) return message.warning('กรุณาเลือกสเปคก่อนคัดลอก')
-    onCopyColumn({
-      specId: String(opt.id), specCode: opt.code, specDescription: opt.name,
-      brandId: '', brandCode: '', brandName: '',
-    })
+    onCopyColumn({ specCode: opt.code, specDescription: opt.name, specIsText: true })
   }
   const copyBrand = () => {
     const opt = brandOptions.find((o) => o.id === Number(brandId))
     if (!opt) return message.warning('กรุณาเลือกยี่ห้อก่อนคัดลอก')
-    onCopyColumn({ brandId: String(opt.id), brandCode: opt.code, brandName: opt.name })
+    onCopyColumn({ brandCode: opt.code, brandName: opt.name, brandIsText: true })
   }
   const copyUnit = () => {
     const opt = unitOptions.find((o) => o.id === unitId)
@@ -938,12 +1072,6 @@ const MaterialPage: React.FC = () => {
       ),
     },
     {
-      title: 'Status', dataIndex: 'isActive', width: 90,
-      render: (v: boolean) => (
-        <Tag color={v ? 'success' : 'error'} style={{ borderRadius: 20, fontSize: 13 }}>{v ? 'ใช้งาน' : 'ปิด'}</Tag>
-      ),
-    },
-    {
       title: '', key: 'action', width: 140, fixed: 'right' as const,
       onCell: () => ({ style: { paddingRight: 24 } }),
       render: (_: unknown, r: MaterialRecord) => (
@@ -1297,7 +1425,8 @@ const MaterialPage: React.FC = () => {
                   if (!isExample) counter += 1
                   return (
                     <InsertRow key={row.rowKey} row={row} displayNumber={isExample ? undefined : counter}
-                      groupOptions={groupOptions} accessToken={accessToken}
+                      groupOptions={groupOptions} specOptions={filterSpecOptions} brandOptions={filterBrandOptions}
+                      accessToken={accessToken}
                       onChange={updateRow} onRemove={removeRow} canRemove={pendingRows.length > 1} />
                   )
                 })

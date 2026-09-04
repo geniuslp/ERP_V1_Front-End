@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography } from 'antd'
+import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography, Select } from 'antd'
 import { EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -11,6 +11,7 @@ import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const MENU_CODE = 'MENU_PO_CREATE'
 const { Text } = Typography
@@ -32,6 +33,9 @@ const POStatusPage: React.FC = () => {
   const [supplierInput, setSupplierInput] = useState('')
   const [createdByInput, setCreatedByInput] = useState('')
   const [filters, setFilters] = useState<{ po_no?: string; supplier?: string; created_by_name?: string }>({})
+  // Filters the already-fetched page's rows client-side — GET /po has no
+  // confirmed job_code query param, unlike the server-side filters above.
+  const [jobCode, setJobCode] = useState<string | undefined>()
 
   const fetchData = async (p = page, l = limit, f = filters) => {
     setLoading(true)
@@ -57,6 +61,8 @@ const POStatusPage: React.FC = () => {
 
   useEffect(() => { fetchData(page, limit, filters) }, [page, limit, filters])
 
+  const filteredItems = jobCode ? items.filter((i) => i.job_code === jobCode) : items
+
   const handleSearch = () => {
     setPage(1)
     setFilters({
@@ -70,6 +76,7 @@ const POStatusPage: React.FC = () => {
     setPoNoInput('')
     setSupplierInput('')
     setCreatedByInput('')
+    setJobCode(undefined)
     setPage(1)
     setFilters({})
   }
@@ -226,6 +233,16 @@ const POStatusPage: React.FC = () => {
             />
           </Col>
           <Col xs={24} md={6}>
+            <Select
+              placeholder="กรองตามประเภท Job"
+              allowClear
+              style={{ width: '100%' }}
+              value={jobCode}
+              onChange={setJobCode}
+              options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+            />
+          </Col>
+          <Col xs={24} md={6}>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>
                 ค้นหา
@@ -240,7 +257,7 @@ const POStatusPage: React.FC = () => {
         <Table
           rowKey="po_id"
           loading={loading}
-          dataSource={items}
+          dataSource={filteredItems}
           columns={columns}
           size="small"
           locale={{ emptyText: 'ไม่พบข้อมูล' }}

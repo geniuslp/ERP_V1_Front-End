@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Card, Form, Input, Row, Col, Button, Table, InputNumber, Space, message, Alert, Select,
+  Card, Form, Input, Row, Col, Button, Table, InputNumber, Space, message, Alert, Select, DatePicker,
 } from 'antd'
+import dayjs from 'dayjs'
 import {
   PlusOutlined, DeleteOutlined, SaveOutlined, SendOutlined, CloseOutlined,
   UploadOutlined, FileOutlined, FileImageOutlined, FileExcelOutlined,
@@ -205,6 +206,7 @@ const MemoCreateEditPage: React.FC = () => {
       setMemoStatus(status)
       setCanEdit(!LOCKED_STATUSES.includes(status.toUpperCase()))
 
+      const siteDeliveryDate = memo.site_delivery_date ?? memo.siteDeliveryDate
       form.setFieldsValue({
         requested_by: memo.requested_by ?? memo.requestedBy,
         title:        memo.title,
@@ -212,6 +214,8 @@ const MemoCreateEditPage: React.FC = () => {
         approver_id:  memo.approver_id ?? memo.approverId,
         department:   memo.department,
         delivery_location: memo.delivery_location ?? memo.deliveryLocation,
+        site_delivery_date: siteDeliveryDate ? dayjs(siteDeliveryDate) : undefined,
+        responsible_factory: memo.responsible_factory ?? memo.responsibleFactory,
         note:         memo.note,
       })
 
@@ -377,6 +381,8 @@ const MemoCreateEditPage: React.FC = () => {
         approver_id:  values.approver_id,
         department:   values.department   ?? undefined,
         delivery_location: values.delivery_location ?? undefined,
+        site_delivery_date: values.site_delivery_date ? values.site_delivery_date.format('YYYY-MM-DD') : undefined,
+        responsible_factory: values.responsible_factory ?? undefined,
         note:         values.note         ?? undefined,
         lines: items.map((item, i) => ({
           line_no:     i + 1,
@@ -575,6 +581,20 @@ const MemoCreateEditPage: React.FC = () => {
         >
           <Row gutter={16}>
             <Col md={12} xs={24}>
+              <Form.Item label="โครงการ" name="project_code" rules={[{ required: true, message: 'กรุณาเลือกโครงการ' }]}>
+                <Select
+                  placeholder="— เลือกโครงการ —"
+                  loading={projectsLoading}
+                  showSearch
+                  allowClear
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={projects}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
               <Form.Item label="หัวข้อ / เรื่อง" name="title" rules={[{ required: true, message: 'กรุณากรอกหัวข้อ' }]}>
                 <Input />
               </Form.Item>
@@ -605,20 +625,6 @@ const MemoCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="โครงการ" name="project_code">
-                <Select
-                  placeholder="— เลือกโครงการ —"
-                  loading={projectsLoading}
-                  showSearch
-                  allowClear
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={projects}
-                />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
               <Form.Item
                 label="ผู้อนุมัติ"
                 name="approver_id"
@@ -644,7 +650,7 @@ const MemoCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="หน่วยงาน" name="department">
+              <Form.Item label="หน่วยงาน" name="department" rules={[{ required: true, message: 'กรุณาเลือกหน่วยงาน' }]}>
                 <Select
                   placeholder="เลือกหน่วยงาน"
                   allowClear
@@ -653,8 +659,18 @@ const MemoCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="สถานที่ส่งของ" name="delivery_location">
+              <Form.Item label="สถานที่ส่งชิ้นงาน" name="delivery_location" rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งชิ้นงาน' }]}>
                 <Input placeholder="ระบุสถานที่ส่งของ" maxLength={255} />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="กำหนดส่งของหน้างาน" name="site_delivery_date" rules={[{ required: true, message: 'กรุณาเลือกวันที่กำหนดส่งของหน้างาน' }]}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="โรงงานที่รับผิดชอบ" name="responsible_factory" rules={[{ required: true, message: 'กรุณากรอกโรงงานที่รับผิดชอบ' }]}>
+                <Input placeholder="ระบุโรงงานที่รับผิดชอบ" maxLength={255} />
               </Form.Item>
             </Col>
             <Col xs={24}>

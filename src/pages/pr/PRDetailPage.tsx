@@ -6,6 +6,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { usePermissionContext } from '@/contexts/PermissionContext'
 import PRPrint, { type PRData } from './PRPrint'
 import { JOB_TYPES } from '@/constants/jobTypes'
 
@@ -211,6 +212,11 @@ const PRDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  // Only PURCHASING/ADMIN can jump to a linked PO's detail page from here —
+  // same hasRole() pattern RequireRole.tsx/SidebarMenu.tsx already use to
+  // read role codes off user.roles (JWT-backed /auth/me response).
+  const { hasRole } = usePermissionContext()
+  const canViewLinkedPo = hasRole('PURCHASING') || hasRole('ADMIN')
   const [pr, setPr] = useState<PRDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [reopening, setReopening] = useState(false)
@@ -316,6 +322,14 @@ const PRDetailPage: React.FC = () => {
 
   const lineColumns = [
     { title: 'No.', dataIndex: 'lineNo', key: 'lineNo', width: 60, align: 'center' as const },
+    ...(hasCostCode
+      ? [{
+          title: 'Cost Code', key: 'costCode', width: 180,
+          render: (_: unknown, r: PRLineItem) => r.costCode
+            ? <Text code>{r.costCode}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
+            : <Text type="secondary">—</Text>,
+        }]
+      : []),
     { title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130 },
     {
       title: 'รายการ', key: 'matName',
@@ -325,14 +339,6 @@ const PRDetailPage: React.FC = () => {
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qtyToOrder', key: 'qtyToOrder', width: 110, align: 'right' as const },
     { title: 'หน่วย', dataIndex: 'unitName', key: 'unitName', width: 80, align: 'center' as const },
     { title: 'ตัดจาก Stock', dataIndex: 'qtyReserved', key: 'qtyReserved', width: 110, align: 'right' as const },
-    ...(hasCostCode
-      ? [{
-          title: 'Cost Code', key: 'costCode', width: 180,
-          render: (_: unknown, r: PRLineItem) => r.costCode
-            ? <Text code>{r.costCode}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
-            : <Text type="secondary">—</Text>,
-        }]
-      : []),
     {
       title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks',
       render: (v?: string | null) => v || <Text type="secondary">—</Text>,
@@ -472,12 +478,12 @@ const PRDetailPage: React.FC = () => {
         <ul style={{ marginTop: 8, marginBottom: 8, paddingLeft: 20 }}>
           {blockModalPOs?.map((po) => (
             <li key={po.po_id ?? po.po_no}>
-              {po.po_id ? (
+              {po.po_id && canViewLinkedPo ? (
                 <a onClick={() => { setBlockModalPOs(null); navigate(`/po/approval/${po.po_id}`) }}>
                   {po.po_no}
                 </a>
               ) : (
-                po.po_no
+                <Text strong>{po.po_no}</Text>
               )}
             </li>
           ))}

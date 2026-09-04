@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 // Edit uses the create page's own menu code (same convention as
 // POStatusPage.tsx gating its edit button with MENU_PO_CREATE).
@@ -33,6 +34,7 @@ interface PRItem {
   projectCode: string | null
   remarks: string | null
   prDate: string
+  jobCode: string | null
 }
 
 const PRStatusPage: React.FC = () => {
@@ -48,6 +50,9 @@ const PRStatusPage: React.FC = () => {
   // filter state — kept for UI, not yet sent to API
   const [search, setSearch]   = useState('')
   const [status, setStatus]   = useState<string | undefined>()
+  // Filters the already-fetched page's rows client-side — GET /pr has no
+  // confirmed job_code query param, unlike a server-side filter.
+  const [jobCode, setJobCode] = useState<string | undefined>()
 
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
@@ -68,6 +73,7 @@ const PRStatusPage: React.FC = () => {
         projectCode:  r.project_code   ?? null,
         remarks:      r.remarks        ?? null,
         prDate:       r.pr_date        ?? '',
+        jobCode:      r.job_code       ?? null,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -78,6 +84,8 @@ const PRStatusPage: React.FC = () => {
   }
 
   useEffect(() => { fetchData(page, limit) }, [page, limit])
+
+  const filteredItems = jobCode ? items.filter((i) => i.jobCode === jobCode) : items
 
   const columns = [
     {
@@ -109,6 +117,12 @@ const PRStatusPage: React.FC = () => {
       title: 'แผนก',
       dataIndex: 'locationCode',
       key: 'locationCode',
+    },
+    {
+      title: 'ประเภท Job',
+      dataIndex: 'jobCode',
+      key: 'jobCode',
+      render: (v: string | null) => (v ? (JOB_TYPES.find((jt) => jt.code === v)?.label ?? v) : '—'),
     },
     {
       title: 'สถานะ',
@@ -208,10 +222,20 @@ const PRStatusPage: React.FC = () => {
               disabled
             />
           </Col>
+          <Col xs={24} md={6}>
+            <Select
+              placeholder="กรองตามประเภท Job"
+              allowClear
+              style={{ width: '100%' }}
+              value={jobCode}
+              onChange={setJobCode}
+              options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+            />
+          </Col>
           <Col>
             <Button
               icon={<ReloadOutlined />}
-              onClick={() => { setSearch(''); setStatus(undefined) }}
+              onClick={() => { setSearch(''); setStatus(undefined); setJobCode(undefined) }}
             >
               รีเซ็ต
             </Button>
@@ -221,7 +245,7 @@ const PRStatusPage: React.FC = () => {
         <Table
           rowKey="id"
           loading={loading}
-          dataSource={items}
+          dataSource={filteredItems}
           columns={columns}
           size="small"
           scroll={{ x: 1080 }}

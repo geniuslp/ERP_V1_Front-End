@@ -323,22 +323,12 @@ const StockListPage: React.FC = () => {
       render: (v: string) => <Text style={{ color: '#2563eb', fontWeight: 600 }}>{v}</Text>,
     },
     { title: 'ชื่อ Item', dataIndex: 'itemName', key: 'itemName', align: 'center' as const },
-    {
-      title: 'ประเภท', dataIndex: 'itemType', key: 'itemType', width: 130,
-      render: (v: StockItem['itemType']) => (
-        <Tag color={v === 'RETURNABLE' ? 'blue' : 'orange'}>{v === 'RETURNABLE' ? 'Returnable' : 'Consumable'}</Tag>
-      ),
-    },
     { title: 'หน่วยนับ', dataIndex: 'unit', key: 'unit', width: 100 },
     {
       title: 'ราคาต้นทุนต่อหน่วย', dataIndex: 'unitCost', key: 'unitCost', width: 150, align: 'right' as const,
       render: (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
     },
     { title: 'จำนวนคงเหลือ', dataIndex: 'qty', key: 'qty', width: 110, align: 'right' as const },
-    {
-      title: 'สถานะ', dataIndex: 'isActive', key: 'isActive', width: 100,
-      render: (v: boolean) => <Tag color={v ? 'success' : 'error'}>{v ? 'ใช้งาน' : 'ปิด'}</Tag>,
-    },
   ]
 
   return (

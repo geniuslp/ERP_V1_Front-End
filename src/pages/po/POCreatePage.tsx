@@ -21,9 +21,39 @@ import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
-import { PO_WORK_TYPE_LABEL } from '@/types/po'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const MENU_CODE = 'MENU_PO_CREATE'
+
+// PRCreatePage.tsx positions its label to the LEFT of the input at desktop
+// widths (`.pr-field-row { display:flex }`, `.pr-field-label { width:130px;
+// text-align:right; padding-right:8px }`), only stacking label-above-input
+// at ≤768px. The previous fix here targeted AntD's *vertical* layout tokens
+// (labelHeight/verticalLabelPadding) — that only tightens the gap in a
+// label-above-input layout, which is the wrong layout direction entirely;
+// it never made PO's label sit beside the input like PR's.
+//
+// Fixed properly by switching the Form itself to `layout="horizontal"`
+// with a fixed 130px labelCol, matching PR's numbers exactly. Every
+// existing Form.Item on this page already passes a real `label` prop (no
+// `noStyle` usage found anywhere), so this is one Form-level prop change
+// with no per-field edits needed. Applied via labelCol/wrapperCol's own
+// `style` (inline, on the antd-rendered Col) rather than an external
+// stylesheet — the last attempt used a page-scoped <style> override that
+// silently lost a specificity/DOM-order race against antd's own injected
+// CSS-in-JS; an inline style on the element itself can't lose that race.
+// The `xs`/`md` breakpoint keys are antd's own responsive Col system (md
+// activates at ≥768px), reproducing PR's ≤768px stack-to-vertical behavior
+// natively instead of hand-rolling another media query.
+const poLabelCol = {
+  xs: { span: 24 },
+  md: { flex: '130px' },
+  style: { textAlign: 'right' as const, paddingRight: 8 },
+}
+const poWrapperCol = {
+  xs: { span: 24 },
+  md: { flex: 1 },
+}
 
 const formatNumber = (n: number) =>
   n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -86,6 +116,9 @@ const POCreatePage: React.FC = () => {
   // order_type = 'cost') — re-renders reactively as the user changes the
   // Select, same pattern as PR's own order_type-driven fields.
   const orderType: 'stock' | 'cost' | undefined = Form.useWatch('order_type', form)
+  // Drives the CostCode picker's job-type filter on every line — PO's
+  // "ประเภท Job" is header-level, same watched-field pattern as orderType above.
+  const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
   const [poLoading, setPoLoading] = useState(false)
   const [poStatus, setPoStatus] = useState('')
   const [canEdit, setCanEdit] = useState(true)
@@ -118,6 +151,20 @@ const POCreatePage: React.FC = () => {
   const [projectDetails, setProjectDetails] = useState<Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }>>({})
   const [selectedProjectCode, setSelectedProjectCode] = useState<string | null>(null)
   const [items, setItems] = useState<POLineItem[]>([])
+  // job_code is a single header field shared by every line's CostCode filter
+  // (jobTypeCode above) — if the user changes it after already picking Cost
+  // Codes, those selections may no longer match the new filter, so clear
+  // them all (same pattern as PRItemsTable's jobTypeCode effect). Skip the
+  // very first render so loading an existing PO's job_code (edit mode)
+  // doesn't wipe lines' cost_subgroup_id right after they're set.
+  const isFirstJobTypeRender = useRef(true)
+  useEffect(() => {
+    if (isFirstJobTypeRender.current) {
+      isFirstJobTypeRender.current = false
+      return
+    }
+    setItems((prev) => prev.map((i) => ({ ...i, cost_subgroup_id: null, cost_code_label: null })))
+  }, [jobTypeCode])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
   const [prDetailLoading, setPrDetailLoading] = useState(false)
   // Fields use `null` (never `undefined`) to mean "no value" — Ant Design's
@@ -268,6 +315,10 @@ const POCreatePage: React.FC = () => {
           project_code: null,
           remarks: null,
           pr_date: pr.created_at,
+          // Not returned by /po/available-prs (a lightweight dropdown-only
+          // shape) — unused here; the real value comes from the full PR
+          // detail fetch in fetchPrDetail below once a PR is selected.
+          job_code: '',
         })),
       )
     } catch (err: any) {
@@ -407,10 +458,12 @@ const POCreatePage: React.FC = () => {
           vendorCode: raw.supplier_id,
           requestedBy: raw.requested_by != null ? Number(raw.requested_by) : (raw.requester_id != null ? Number(raw.requester_id) : undefined),
           deliveryLocation: raw.location_text ?? raw.delivery_address ?? undefined,
+          receiver_name: raw.receiver_name ?? undefined,
+          receiver_phone: raw.receiver_phone ?? undefined,
           warehouse_code: raw.warehouse_code ?? undefined,
           project_code: raw.project_code ?? undefined,
           order_type: raw.order_type ?? 'stock',
-          work_type: raw.work_type ?? undefined,
+          job_code: raw.job_code ?? undefined,
           approver: raw.approver_id != null ? Number(raw.approver_id) : null,
           ref: raw.ref ?? null,
           paymentTerm: raw.payment_terms ?? undefined,
@@ -498,6 +551,7 @@ const POCreatePage: React.FC = () => {
             mat_code: l.mat_code ?? '',
             mat_name: l.mat_name ?? '',
             unit_name: l.unit_name ?? '',
+            spec: l.spec ?? undefined,
             qty: l.qty_ordered ?? 0,
             unit_price: l.unit_price ?? 0,
             is_from_pr: l.pr_line_id != null,
@@ -508,6 +562,13 @@ const POCreatePage: React.FC = () => {
             // already has its own explicit type.
             disc_type: l.disc_type ?? (raw.discount_type === 'amt' ? 'amt' : 'pct'),
             wht_rate: l.wht_rate ?? undefined,
+            cost_subgroup_id: l.cost_subgroup_id ?? null,
+            // No combined "cost_code" string on purchase_order_line — build a
+            // readable label from the derived job_code/job_name + subgroup_name
+            // (same fields POLine already returns per its cost_subgroup_id comment).
+            cost_code_label: l.cost_subgroup_id
+              ? `${l.job_name || l.job_code || ''}${l.subgroup_name ? ` — ${l.subgroup_name}` : ''}`.trim() || null
+              : null,
           }))
         )
       } catch (err: any) {
@@ -593,6 +654,9 @@ const POCreatePage: React.FC = () => {
           warehouse_code: warehouseCode,
           project_code: projectCode,
           deliveryLocation: deliveryLocation,
+          // Auto-filled from the source PR's job_code, but the Select stays
+          // enabled — user can still change it before submitting.
+          job_code: raw.job_code ?? null,
         })
         // Options for these three Selects load asynchronously and may not be
         // populated yet when this fires — re-apply once each options list arrives
@@ -780,10 +844,17 @@ const POCreatePage: React.FC = () => {
           mat_code: l.mat_code,
           mat_name: l.mat_name,
           unit_name: l.unit,
+          spec: l.spec_name ?? undefined,
           qty: l.qty_remaining,
           unit_price: l.selected_unit_price ?? 0,
           is_from_pr: true,
           pr_qty_remaining: l.qty_remaining,
+          // Auto-filled from the source PR line's Cost Code, but stays
+          // editable — same auto-fill-but-editable pattern as job_code.
+          cost_subgroup_id: l.cost_subgroup_id ?? null,
+          cost_code_label: l.cost_code
+            ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
+            : null,
         })),
       ]
       return combined.map((item, idx) => ({ ...item, no: idx + 1 }))
@@ -861,10 +932,12 @@ const POCreatePage: React.FC = () => {
           // ── Header ──
           supplier_id: values.supplier_code,
           location_text: values.deliveryLocation,
+          receiver_name: values.receiver_name || undefined,
+          receiver_phone: values.receiver_phone || undefined,
           warehouse_code: values.warehouse_code || undefined,
           project_code: values.project_code || undefined,
           order_type: values.order_type || undefined,
-          work_type: values.work_type || undefined,
+          job_code: values.job_code || undefined,
           requested_by: values.requestedBy ?? undefined,
           approver_id: values.approver ?? undefined,
           ref: values.ref || undefined,
@@ -907,6 +980,7 @@ const POCreatePage: React.FC = () => {
             disc_type: item.disc_type ?? discType,
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
+            cost_subgroup_id: item.cost_subgroup_id ?? null,
           })),
 
           // NOTE: CreatePORequest (the same struct both POST /po and PUT /po/:id
@@ -1195,7 +1269,13 @@ const POCreatePage: React.FC = () => {
             style={cardStyle}
             loading={poLoading}
           >
-            <Form form={form} layout="vertical" disabled={isEdit && !canEdit}>
+            <Form
+              form={form}
+              layout="horizontal"
+              labelCol={poLabelCol}
+              wrapperCol={poWrapperCol}
+              disabled={isEdit && !canEdit}
+            >
               {/* Supplier contact fields (sales_person/contact_email/contact_phone/
                   office_phone/fax) are display-only removed on all PO screens — they're
                   live-joined from the supplier master and only meant to appear on the
@@ -1375,6 +1455,20 @@ const POCreatePage: React.FC = () => {
                       </Form.Item>
                     </Col>
 
+                    {/* ผู้รับของ */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>ผู้รับของ</span>} name="receiver_name">
+                        <Input placeholder="ระบุชื่อผู้รับของ" />
+                      </Form.Item>
+                    </Col>
+
+                    {/* เบอร์โทรผู้รับของ */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>เบอร์โทรผู้รับของ</span>} name="receiver_phone">
+                        <Input placeholder="0XX-XXX-XXXX" />
+                      </Form.Item>
+                    </Col>
+
                     {/* กำหนดส่งของ */}
                     <Col xs={24}>
                       <Form.Item label={<span style={labelStyle}>กำหนดส่งของ</span>} name="deliveryDate">
@@ -1486,16 +1580,20 @@ const POCreatePage: React.FC = () => {
                       </Form.Item>
                     </Col>
 
-                    {/* ประเภทงาน */}
+                    {/* ประเภท Job */}
                     <Col xs={24}>
                       <Form.Item
-                        label={<span style={labelStyle}>ประเภทงาน</span>}
-                        name="work_type"
+                        label={<span style={labelStyle}>ประเภท Job</span>}
+                        name="job_code"
+                        rules={[{ required: true, message: 'กรุณาเลือกประเภท Job' }]}
                       >
                         <Select
-                          placeholder="- เลือกประเภทงาน -"
-                          allowClear
-                          options={Object.entries(PO_WORK_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
+                          placeholder="- เลือกรายการ -"
+                          showSearch
+                          filterOption={(input, option) =>
+                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
                         />
                       </Form.Item>
                     </Col>
@@ -1560,6 +1658,7 @@ const POCreatePage: React.FC = () => {
                   discType={discType}
                   useVat={useVat}
                   useWht={useWht}
+                  jobTypeCode={jobTypeCode}
                 />
               </div>
               <TaxSidebarPanel

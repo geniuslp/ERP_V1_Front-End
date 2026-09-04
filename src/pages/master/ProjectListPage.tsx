@@ -106,14 +106,6 @@ const ProjectListPage: React.FC = () => {
     },
     { title: 'ชื่อโครงการ', dataIndex: 'projectName', key: 'projectName', ellipsis: true },
     {
-      title: 'ที่อยู่โครงการ',
-      dataIndex: 'locationCode',
-      key: 'locationCode',
-      ellipsis: true,
-      // Free-text project address now — displayed as-is, no lookup/display-name resolution needed.
-      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
-    },
-    {
       // Now backed by the required free-text responsible_person_name field
       // (the owner_id/users dropdown it replaces is deprecated server-side).
       title: 'ผู้รับผิดชอบหลัก',
@@ -127,20 +119,6 @@ const ProjectListPage: React.FC = () => {
       key: 'budgetAmount',
       align: 'right' as const,
       render: (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
-    },
-    {
-      title: 'ที่ปรึกษา',
-      dataIndex: 'consultantName',
-      key: 'consultantName',
-      ellipsis: true,
-      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
-    },
-    {
-      title: 'เบอร์ติดต่อของที่ปรึกษา',
-      dataIndex: 'consultantPhone',
-      key: 'consultantPhone',
-      ellipsis: true,
-      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'ระยะเวลา',

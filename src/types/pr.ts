@@ -10,6 +10,9 @@ export interface PRListItem {
   project_code: string | null
   remarks: string | null
   pr_date: string
+  // purchase_request.job_code — "ประเภท Job", shared 12-code JOB_TYPES list
+  // with PO. Required (NOT NULL) on the backend, always present.
+  job_code: string
 }
 
 export interface PRLine {
@@ -72,6 +75,9 @@ export interface PRLineWithPOStatus {
   // instead of the raw combined cost_code.
   job_code?: string | null
   job_name?: string | null
+  // Confirmed present on GET /pr/:id/lines-with-po-status (backend-confirmed) —
+  // same field name as GET /pr/:id.
+  spec_name?: string | null
 }
 
 export interface PRLinesWithPOStatusResponse {

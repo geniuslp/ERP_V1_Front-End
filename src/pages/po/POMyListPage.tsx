@@ -10,6 +10,7 @@ import { poApprovalService } from '@/services/poApprovalService'
 import EditApprovedButton from './components/EditApprovedButton'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const MENU_CODE = 'MENU_PO_MY'
 
@@ -53,6 +54,11 @@ const POMyListPage: React.FC = () => {
       ),
     },
     { title: 'ผู้ขาย', dataIndex: 'supplier_name', key: 'supplier_name' },
+    {
+      title: 'ประเภท Job',
+      key: 'job_code',
+      render: (_v: unknown, r) => (r.job_code ? (JOB_TYPES.find((jt) => jt.code === r.job_code)?.label ?? r.job_code) : '-'),
+    },
     {
       title: 'สถานะ',
       dataIndex: 'status',

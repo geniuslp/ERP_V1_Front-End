@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch, Row, Col } from 'antd'
 import type { UploadProps } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined, SearchOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
@@ -10,7 +10,6 @@ import * as XLSX from 'xlsx'
 interface Supplier {
   id: number
   supplier_name: string
-  supplier_short_name?: string
   tax_id?: string
   address?: string
   contact_name?: string
@@ -22,6 +21,8 @@ interface Supplier {
   fax?: string
   currency?: string
   sales_person?: string
+  sales_person_phone?: string
+  remarks?: string
 }
 
 // Backend identifies/edits suppliers by id (PUT/DELETE /master/suppliers/:id) —
@@ -148,6 +149,8 @@ const SupplierPage: React.FC = () => {
   const [editing, setEditing] = useState<SupplierRecord | null>(null)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   // Upload panel state
   const [parsedRows, setParsedRows] = useState<ExcelRow[]>([])
@@ -172,26 +175,53 @@ const SupplierPage: React.FC = () => {
   const [bulkAttempted, setBulkAttempted] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ count: number; created: CreatedSupplier[] } | null>(null)
 
-  const fetchSuppliers = async () => {
+  // `search` is the debounced value actually sent to the API; `searchInput`
+  // tracks the raw keystrokes so the box stays responsive while typing.
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [searching, setSearching] = useState(false)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const fetchSuppliers = useCallback(async () => {
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/master/suppliers`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        params: search ? { supplier_name: search } : undefined,
       })
       const list: Supplier[] = Array.isArray(res.data) ? res.data : res.data?.data ?? []
       setData(list.map((r) => ({ ...r, key: r.id })))
+      setCurrentPage(1)
     } catch (err: any) {
       message.error(
         err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลไม่สำเร็จ'
       )
     } finally {
       setLoading(false)
+      setSearching(false)
     }
+  }, [accessToken, search])
+
+  // debounce the search box: wait 400ms after typing stops before hitting the
+  // API, and jump back to page 1 since the result set changes.
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value)
+    setSearching(true)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(() => {
+      setCurrentPage(1)
+      setSearch(value)
+    }, 400)
   }
 
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+  }, [])
+
+  // re-runs when accessToken becomes available or (debounced) search changes
   useEffect(() => {
     fetchSuppliers()
-  }, [])
+  }, [fetchSuppliers])
 
   const resetExcelState = () => {
     setExcelFile(null)
@@ -521,45 +551,51 @@ const SupplierPage: React.FC = () => {
       <Form.Item name="supplier_name" label="ชื่อผู้ขาย" rules={[{ required: true, message: 'กรุณากรอกชื่อผู้ขาย' }]}>
         <Input placeholder="ชื่อบริษัท / ร้านค้า" />
       </Form.Item>
-      <Form.Item name="supplier_short_name" label="ชื่อย่อ">
-        <Input placeholder="ชื่อย่อผู้ขาย" />
-      </Form.Item>
       <Form.Item name="tax_id" label="เลขประจำตัวผู้เสียภาษี">
         <Input placeholder="0123456789012" />
       </Form.Item>
       <Form.Item name="address" label="ที่อยู่">
         <Input.TextArea rows={3} placeholder="ที่อยู่" />
       </Form.Item>
-      <Form.Item name="contact_name" label="ชื่อผู้ติดต่อ">
-        <Input placeholder="ชื่อผู้ติดต่อ" />
-      </Form.Item>
       <Form.Item name="contact_phone" label="เบอร์โทรผู้ติดต่อ">
         <Input placeholder="0XX-XXX-XXXX" />
       </Form.Item>
-      <Form.Item name="contact_email" label="อีเมลผู้ติดต่อ">
+      <Form.Item name="contact_email" label="อีเมล">
         <Input placeholder="email@example.com" />
       </Form.Item>
       <Form.Item name="office_phone" label="เบอร์โทรสำนักงาน">
         <Input placeholder="0X-XXX-XXXX" />
       </Form.Item>
-      <Form.Item name="fax" label="แฟกซ์">
-        <Input placeholder="0X-XXX-XXXX" />
-      </Form.Item>
-      <Form.Item name="sales_person" label="พนักงานขาย">
-        <Input placeholder="ชื่อพนักงานขาย" />
-      </Form.Item>
+      <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item name="sales_person" label="พนักงานขาย">
+            <Input placeholder="ชื่อพนักงานขาย" style={{ borderRadius: 8 }} />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item name="sales_person_phone" label="Tel">
+            <Input placeholder="0XX-XXX-XXXX" style={{ borderRadius: 8 }} />
+          </Form.Item>
+        </Col>
+      </Row>
       <Form.Item name="currency" label="สกุลเงิน">
         <Input placeholder="เช่น THB, USD" />
       </Form.Item>
       <Form.Item name="payment_terms" label="เงื่อนไขการชำระเงิน">
         <Select
           placeholder="เลือกเงื่อนไขการชำระเงิน"
-          options={[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` }))}
+          options={[
+            { label: 'เงินสด', value: 'เงินสด' },
+            ...[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` })),
+          ]}
           allowClear
         />
       </Form.Item>
       <Form.Item name="is_active" label="สถานะการใช้งาน" valuePropName="checked" initialValue={true}>
         <Switch checkedChildren="ใช้งาน" unCheckedChildren="ปิดใช้งาน" />
+      </Form.Item>
+      <Form.Item name="remarks" label="หมายเหตุ">
+        <Input.TextArea rows={3} placeholder="หมายเหตุ" />
       </Form.Item>
     </Form>
   )
@@ -767,16 +803,12 @@ const SupplierPage: React.FC = () => {
       render: (_: unknown, r: BulkRow) => bulkCellInput(r, 'contact_phone', '0XX-XXX-XXXX'),
     },
     {
-      title: 'อีเมลผู้ติดต่อ', key: 'contact_email', width: 190,
+      title: 'อีเมล', key: 'contact_email', width: 190,
       render: (_: unknown, r: BulkRow) => bulkCellInput(r, 'contact_email', 'email@example.com'),
     },
     {
       title: 'เบอร์โทรสำนักงาน', key: 'office_phone', width: 150,
       render: (_: unknown, r: BulkRow) => bulkCellInput(r, 'office_phone', '0X-XXX-XXXX'),
-    },
-    {
-      title: 'แฟกซ์', key: 'fax', width: 130,
-      render: (_: unknown, r: BulkRow) => bulkCellInput(r, 'fax', '0X-XXX-XXXX'),
     },
     {
       title: 'เงื่อนไขชำระเงิน', key: 'payment_terms', width: 140,
@@ -821,19 +853,33 @@ const SupplierPage: React.FC = () => {
       ]
 
   const columns = [
-    { title: 'ID ผู้ขาย', dataIndex: 'id', width: 130 },
-    { title: 'ชื่อผู้ขาย', dataIndex: 'supplier_name' },
+    {
+      title: 'ลำดับ',
+      key: 'no',
+      width: 80,
+      align: 'center' as const,
+      render: (_: unknown, __: SupplierRecord, index: number) =>
+        (currentPage - 1) * pageSize + index + 1,
+    },
+    {
+      title: <div style={{ textAlign: 'center' }}>ชื่อผู้ขาย</div>,
+      dataIndex: 'supplier_name',
+      width: 180,
+      render: (v: string) => (
+        <div style={{ textAlign: 'left', paddingLeft: 36 }}>
+          <Text strong style={{ fontSize: 14, color: '#1e3a8a' }}>{v}</Text>
+        </div>
+      ),
+    },
     { title: 'ผู้ติดต่อ', dataIndex: 'contact_name', width: 140 },
     { title: 'เบอร์โทร', dataIndex: 'contact_phone', width: 120 },
     { title: 'อีเมล', dataIndex: 'contact_email', width: 180, ellipsis: true },
     {
-      title: 'สถานะ',
-      dataIndex: 'is_active',
-      width: 100,
-      align: 'center' as const,
-      render: (v: boolean) => (
-        <Tag color={v ? 'green' : 'default'}>{v ? 'ใช้งาน' : 'ปิดใช้งาน'}</Tag>
-      ),
+      title: 'หมายเหตุ',
+      dataIndex: 'remarks',
+      width: 180,
+      ellipsis: true,
+      render: (v?: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: '',
@@ -862,6 +908,14 @@ const SupplierPage: React.FC = () => {
         style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}
         extra={
           <Space>
+            <Input
+              placeholder="ค้นหาชื่อร้าน / ชื่อผู้ขาย"
+              allowClear
+              prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
+              value={searchInput}
+              onChange={(e) => handleSearchInputChange(e.target.value)}
+              style={{ width: 260 }}
+            />
             <Button icon={<ImportOutlined />} onClick={openBulkModal}>
               นำเข้าซัพพลายเออร์ (Bulk)
             </Button>
@@ -873,12 +927,17 @@ const SupplierPage: React.FC = () => {
       >
         <Table
           rowKey="key"
-          loading={loading}
+          loading={loading || searching}
           dataSource={data}
           columns={columns}
           size="small"
           scroll={{ x: 900 }}
-          pagination={{ pageSize: 20, showTotal: (t) => `ทั้งหมด ${t} รายการ` }}
+          pagination={{
+            current: currentPage,
+            pageSize,
+            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+            onChange: (page, size) => { setCurrentPage(page); setPageSize(size) },
+          }}
         />
       </Card>
 

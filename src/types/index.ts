@@ -68,6 +68,7 @@ export interface CreatePRLineRequest {
   qty_requested: number
   qty_to_order: number
   cost_subgroup_id: number | null
+  deduct_stock: boolean
 }
 
 export interface CreatePRRequest {
@@ -81,9 +82,13 @@ export interface CreatePRRequest {
   project_code?: string
   order_type?: PROrderType
   pr_type?: PRType
-  // purchase_request.job_code — document-level job classification
-  // (MP/ME/MS/MF/MG/MH), nullable.
-  job_code?: string
+  // purchase_request.job_code — document-level "ประเภท Job" classification,
+  // one of the 12 JOB_TYPES codes (constants/jobTypes.ts). Required (NOT
+  // NULL) on the backend.
+  job_code: string
+  // Required only when no Memo is linked — disabled/cleared (never sent)
+  // while memo_id is set, since the Memo already carries department context.
+  dept_code?: string
   remarks?: string
   status: 'DRAFT' | 'COMPLETED'
   memo_id: number | null

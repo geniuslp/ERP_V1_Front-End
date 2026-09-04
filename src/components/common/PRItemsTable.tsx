@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Card, Table, Button, Input, InputNumber, Space, message, Spin } from 'antd'
+import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined, DeleteOutlined, PrinterOutlined, RollbackOutlined, CloseCircleFilled } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
@@ -14,6 +14,7 @@ interface PRItem {
   no: number
   code: string
   description: string
+  spec: string
   qtyPR: number
   qtyStock: number
   unit: string
@@ -24,22 +25,27 @@ interface PRItem {
   // Locks mat_code/cost_subgroup_id in place — changing material or cost code
   // requires deleting this line and adding a new one instead.
   isExisting?: boolean
+  // Whether this line should be filled from central stock first (default) or
+  // always ordered in full regardless of stock on hand.
+  deductStock: boolean
 }
 
 interface InitialPRItem {
   mat_code: string
   mat_name?: string
   unit_name?: string
+  spec_name?: string
   qty_requested: number
   qty_to_order: number
   cost_subgroup_id: number | null
   cost_code_label?: string | null
+  deduct_stock?: boolean
 }
 
 interface PRItemsTableProps {
   readonly?: boolean
   onBack?: () => void
-  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null }[]) => void
+  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean }[]) => void
   // Edit mode: seed the table from an existing PR's lines. Only applied once
   // per array identity — the parent should set this from its own fetch effect
   // exactly once, not recompute it on every render.
@@ -82,6 +88,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         no: idx + 1,
         code: it.mat_code,
         description: it.mat_name ?? '',
+        spec: it.spec_name ?? '',
         qtyPR: it.qty_requested,
         qtyStock: it.qty_to_order,
         unit: it.unit_name || 'Ea',
@@ -89,6 +96,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         costSubgroupId: it.cost_subgroup_id,
         costCodeLabel: it.cost_code_label ?? null,
         isExisting: true,
+        deductStock: it.deduct_stock ?? true,
       }))
     )
   }, [initialItems])
@@ -115,6 +123,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       qty_requested: i.qtyPR,
       qty_to_order: i.qtyStock,
       cost_subgroup_id: i.costSubgroupId,
+      deductStock: i.deductStock,
     })))
   }, [items])
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -164,6 +173,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         no,
         code: '',
         description: '',
+        spec: '',
         // qtyStock (qty_to_order) defaults to match qtyPR (qty_requested): assume
         // nothing is covered by stock until the user checks stockMap and lowers it.
         // shortfall = qty_requested - qty_to_order, so leaving this at 0 would
@@ -176,6 +186,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         remark: '',
         costSubgroupId: null,
         costCodeLabel: null,
+        deductStock: true,
       },
     ])
   }
@@ -202,8 +213,16 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
     setItems((prev) => prev.map((i) => (i.key === key ? {
       ...i,
       costSubgroupId: item.subgroupId,
-      costCodeLabel: item.costCode,
+      // Display-only — "code — name" convention (MaterialPage's SectionPill,
+      // CostCodePage's cascading dropdowns), paired with the most specific
+      // (leaf/subgroup) name. The actual submitted value stays costSubgroupId,
+      // untouched by this label.
+      costCodeLabel: item.subgroupName ? `${item.costCode} — ${item.subgroupName}` : item.costCode,
     } : i)))
+  }
+
+  const toggleDeductStock = (key: string, value: boolean) => {
+    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, deductStock: value } : i)))
   }
 
   const clearCostCode = (key: string) => {
@@ -237,6 +256,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
           ...item,
           code: m.mat_code,
           description: m.mat_name_th,
+          spec: m.spec_description ?? '',
           unit: m.unit_name || 'Ea',
         }
       })
@@ -247,12 +267,14 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         no: 0,
         code: m.mat_code,
         description: m.mat_name_th,
+        spec: m.spec_description ?? '',
         qtyPR: 1,
         qtyStock: 1,
         unit: m.unit_name || 'Ea',
         remark: '',
         costSubgroupId: null,
         costCodeLabel: null,
+        deductStock: true,
       }))
       const combined = [...filled, ...newRows]
       return combined.map((i, idx) => ({ ...i, no: idx + 1 }))
@@ -332,6 +354,17 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         ),
     },
     {
+      title: 'Spec',
+      dataIndex: 'spec',
+      align: 'center' as const,
+      render: (_: unknown, r: PRItem) =>
+        r.spec ? (
+          <span style={{ fontSize: 13 }}>{r.spec}</span>
+        ) : (
+          <span style={{ color: '#9ca3af' }}>—</span>
+        ),
+    },
+    {
       title: (
         <div style={{ textAlign: 'center' }}>
           <div>จำนวนสั่ง</div>
@@ -379,6 +412,30 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       // Always read-only — mirrors the selected material's unit_name and can
       // never be edited by the user (see handleMaterialConfirm / initialItems seeding).
       render: (_: unknown, r: PRItem) => <span style={{ fontSize: 13 }}>{r.unit || '-'}</span>,
+    },
+    {
+      title: (
+        <Tooltip title="ปิด = สั่งซื้อเต็มจำนวนเสมอ ไม่หักจากของที่มีอยู่ในคลัง">
+          <span>ตัดสต็อก</span>
+        </Tooltip>
+      ),
+      key: 'deduct_stock',
+      width: 90,
+      align: 'center' as const,
+      render: (_: unknown, r: PRItem) =>
+        readonly ? (
+          <span style={{ fontSize: 13, fontWeight: 600, color: r.deductStock ? '#16a34a' : '#dc2626' }}>
+            {r.deductStock ? 'ใช่' : 'ไม่'}
+          </span>
+        ) : (
+          <Switch
+            size="small"
+            checked={r.deductStock}
+            disabled={!r.code}
+            onChange={(checked) => toggleDeductStock(r.key, checked)}
+            style={{ backgroundColor: r.deductStock ? '#16a34a' : '#dc2626' }}
+          />
+        ),
     },
 
     ...(!readonly

@@ -15,7 +15,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import type { PODetail, PODetailResponse, POLine, POAttachment } from '@/types/po'
-import { PO_WORK_TYPE_LABEL } from '@/types/po'
+import { JOB_TYPES } from '@/constants/jobTypes'
 import { poApprovalService } from '@/services/poApprovalService'
 import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
@@ -23,6 +23,7 @@ import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
 import PrintErrorBoundary from '@/components/common/PrintErrorBoundary'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { sumLineAmtDiscounts } from '@/utils/poCalc'
 import { PaperClipOutlined } from '@ant-design/icons'
 
 
@@ -262,6 +263,16 @@ const POApprovalDetailPage: React.FC = () => {
       ),
     },
     {
+      title: 'Cost Code',
+      key: 'cost_code',
+      render: (_: unknown, r: POLine) =>
+        r.cost_subgroup_id ? (
+          <span>{[r.job_name || r.job_code, r.subgroup_name].filter(Boolean).join(' — ')}</span>
+        ) : (
+          <span style={{ color: '#9ca3af' }}>—</span>
+        ),
+    },
+    {
       title: 'Spec / Brand',
       key: 'spec_brand',
       render: (_: unknown, r: POLine) => (
@@ -454,15 +465,16 @@ const POApprovalDetailPage: React.FC = () => {
             <POStatusBadges status={po.status} statusReceive={po.status_receive} />
           </Descriptions.Item>
           <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
-          <Descriptions.Item label="รหัส Supplier">{po.supplier_id}</Descriptions.Item>
           <Descriptions.Item label="ประเภทการสั่งซื้อ">
             {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="ประเภทงาน">
-            {po.work_type ? (PO_WORK_TYPE_LABEL[po.work_type] ?? po.work_type) : '-'}
+          <Descriptions.Item label="ประเภท Job">
+            {po.job_code ? (JOB_TYPES.find((jt) => jt.code === po.job_code)?.label ?? po.job_code) : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="เงื่อนไขการชำระ">{po.payment_terms ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.location_text ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="ผู้รับของ">{po.receiver_name ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="เบอร์โทรผู้รับของ">{po.receiver_phone ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="คลัง">{po.warehouse_code ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="สกุลเงิน">{po.currency}</Descriptions.Item>
           <Descriptions.Item label="มูลค่ารวม" contentStyle={{ textAlign: 'left' }}>
@@ -475,13 +487,29 @@ const POApprovalDetailPage: React.FC = () => {
             {po.net_amount.toLocaleString('th-TH')}
           </Descriptions.Item>
           <Descriptions.Item label="ส่วนลด">
-            {po.use_discount ? `${po.discount_amount} (${po.discount_type})` : '-'}
+            {(() => {
+              // Header discount (po.use_discount/discount_amount) is only one
+              // source — a line can carry its own amt-type discount instead
+              // (purchase_order_line.disc_type/discount), which this field
+              // used to miss entirely. Same rollup PurchaseOrderPrint.tsx's
+              // "Special Discount" summary uses, so the two can't disagree.
+              const headerDisc = po.use_discount ? po.discount_amount ?? 0 : 0
+              const lineAmtDisc = sumLineAmtDiscounts(
+                (po.lines ?? []).map((l) => ({
+                  discType: l.disc_type,
+                  disc: l.discount ?? 0,
+                  qty: l.qty_ordered,
+                  unitPrice: l.unit_price,
+                })),
+              )
+              const total = headerDisc + lineAmtDisc
+              return total > 0 ? total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-'
+            })()}
           </Descriptions.Item>
           <Descriptions.Item label="ภาษีหัก ณ ที่จ่าย">
             {po.use_wht ? po.wht_amount : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="วันที่ต้องการ">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="ผู้สร้าง">{po.created_by_name}</Descriptions.Item>
+          <Descriptions.Item label="วันที่ต้องการสินค้า">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
           {/* Supplier contact fields (office_phone/sales_person/contact_email/contact_phone)
               are live-joined from the supplier master but intentionally screen-hidden here —
               they still appear in full on the printed PO (see POPrint). */}

@@ -1,14 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
-import { calcDisc, type DiscType } from '@/utils/poCalc'
+import { calcDisc, sumLineAmtDiscounts, type DiscType } from '@/utils/poCalc'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
 
 export interface POItem {
-  no: string; code?: string; desc: string; subDesc?: string
+  // code is the line's resolved Cost Code (falls back to mat_code when the
+  // line has no cost_subgroup_id) — see PrintData's line query, which joins
+  // cost_subgroup → cost_group → cost_job → cost_subject the same way
+  // pr_approval.go's PRLineItem.CostCode does. The printed column header is
+  // literally "COST CODE" (TABLE_HEAD below), so this now matches its label.
+  // spec — material_code's resolved spec_size.spec_description (PrintData's
+  // line query, same join GetDetail already uses). Empty string when the
+  // material has no spec set; appended to desc as "{desc} - {spec}" only
+  // when non-empty (see ItemRow).
+  no: string; code?: string; desc: string; spec?: string; subDesc?: string
   qty: number; unit: string; pricePerUnit: number
   // `disc` is the raw number entered on the line; its unit (percent vs baht)
   // is given by `discType` — never assume percent.
@@ -16,8 +25,21 @@ export interface POItem {
 }
 export interface POData {
   poNo: string; poDate: string; prNo: string; deliveryDate: string
-  project: string; deliveryPlace: string; job: string
-  contractDelivery: string; quotationNo: string; tel: string
+  // project is the raw project_code, kept for back-compat — the print view
+  // itself now displays projectName instead (see POInfoBox).
+  project: string
+  // Resolved via backend LEFT JOIN project ON project.project_code =
+  // po.project_code (internal/handlers/po.go PrintData) — empty string when
+  // the PO has no project_code or it doesn't match any project row.
+  projectName: string
+  deliveryPlace: string; job: string
+  quotationNo: string; tel: string
+  // purchase_order.receiver_name/receiver_phone — added to PrintData's
+  // response this session, both nullable free text. Now also what "Contract
+  // Delivery" displays (see POFooter) — that label never had a real backing
+  // field on purchase_order, so it was repurposed instead of adding a new
+  // duplicate line just to show the same receiver contact twice.
+  receiverName?: string | null; receiverPhone?: string | null
   supplier: { name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string }
   items: POItem[]
   extraDiscAmt: number; shippingAmt: number; remark: string
@@ -40,8 +62,9 @@ export interface POData {
 // production fallback. Real usage must always pass real `data` from the API.
 export const MOCK_DATA: POData = {
   poNo:'FACS-6906-0001', poDate:'15/06/2026', prNo:'PR6906-0001',
-  deliveryDate:'25/06/2569', project:'GNS-033', deliveryPlace:'โรงงานนครปฐม',
-  job:'CIVIL-01', contractDelivery:'ภายใน 14 วัน', quotationNo:'QT-2568-0042', tel:'02-805-6820',
+  deliveryDate:'25/06/2569', project:'GNS-033', projectName:'โครงการก่อสร้างโรงงานนครปฐม', deliveryPlace:'โรงงานนครปฐม',
+  receiverName:'สมชาย ใจดี', receiverPhone:'081-234-5678',
+  job:'CIVIL-01', quotationNo:'QT-2568-0042', tel:'02-805-6820',
   supplier:{ name:'บริษัท เหล็กไทย จำกัด', address1:'99/9 ถนนพระราม 2 แขวงบางมด',
     address2:'เขตจอมทอง กรุงเทพฯ 10150', termOfPayment:'Credit 30 Days', contact:'คุณสมชาย , 081-234-5678' },
   items:[
@@ -78,6 +101,7 @@ function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
     no: raw.no ?? '',
     code: raw.code,
     desc: raw.desc ?? '',
+    spec: raw.spec,
     subDesc: raw.subDesc,
     qty: raw.qty ?? 0,
     unit: raw.unit ?? '',
@@ -107,7 +131,15 @@ function normalizeData(raw: POData): POData {
   }
 }
 
-const lineAmt = (it:POItem) => { const b=it.qty*it.pricePerUnit; return b-calcDisc(b,it.disc,it.discType??'pct') }
+// Only a PERCENTAGE discount type is applied at the line level — an AMOUNT
+// (baht) discount type is deliberately NOT subtracted here. Per the revised
+// requirement, amt-type discounts don't belong on this line's Total at all;
+// they're rolled up into the summary box's header-level "Special Discount"
+// instead (see calcSummary's `disc`), so the money isn't silently dropped.
+const lineAmt = (it:POItem) => {
+  const b = it.qty*it.pricePerUnit
+  return it.discType==='amt' ? b : b-calcDisc(b,it.disc,'pct')
+}
 const lineVat = (it:POItem) => lineAmt(it)*it.vatPct/100
 const lineWht = (it:POItem) => lineAmt(it)*it.whtPct/100
 const thb = (n:number) => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -150,15 +182,28 @@ function thaiBahtText(amount:number):string {
 }
 
 function calcSummary(data:POData) {
-  // Same drift-avoidance as netPay below — prefer the backend's authoritative
-  // pre-discount/VAT/WHT total_amount over summing possibly-paginated/rounded
-  // client-side line amounts, falling back for responses/mock data without it.
-  const subtotal = data.totalAmt ?? data.items.reduce((s,it)=>s+lineAmt(it),0)
+  // Always sum the same lineAmt() every ItemRow already renders — never trust
+  // the backend's stored total_amount here. That column is only recomputed by
+  // CreatePO/UpdatePO's own write path; anything that touches purchase_order_line
+  // outside that path (a direct DB edit, a future migration, a write-path bug)
+  // leaves it stale while the line-level discount/disc_type it's supposed to
+  // reflect have already changed — exactly what caused Subtotal (14,800) to
+  // disagree with the it's-right-there sum of the printed line Totals (14,500).
+  // Summing lineAmt() here is drift-proof by construction: it's mathematically
+  // impossible for Subtotal to disagree with the table above it.
+  const subtotal = data.items.reduce((s,it)=>s+lineAmt(it),0)
   // VAT has no per-line column in the real schema (unlike WHT below) — the old
   // per-line vatPct sum always defaulted to 0. Use the backend's authoritative
   // header-level vat_amount instead, same useX-flag-gated pattern as discount.
   const totalVat = data.useVat ? (data.vatAmt ?? 0) : 0
-  const disc = data.useDiscount ? data.extraDiscAmt : 0
+  // Special Discount = the header-level discount panel's own amount (gated by
+  // useDiscount, unrelated to any line) PLUS every line's amt-type discount
+  // rolled up here — those are intentionally excluded from lineAmt() above,
+  // so without this they'd vanish from the printed total instead of showing
+  // up as a discount anywhere.
+  const lineAmtDiscSum = sumLineAmtDiscounts(
+    data.items.map(it=>({ discType: it.discType, disc: it.disc, qty: it.qty, unitPrice: it.pricePerUnit })))
+  const disc = (data.useDiscount ? data.extraDiscAmt : 0) + lineAmtDiscSum
   const afterDisc = subtotal - disc
   const whtRates = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   const whtRate = whtRates.length>0 ? whtRates[0] : 0
@@ -282,6 +327,9 @@ const POHeader = ({data,pageNum,totalPages}:{data:POData;pageNum:number;totalPag
       <div style={{textAlign:'right'}}>
         <div style={{fontSize:'18pt',fontWeight:700,color:BK,lineHeight:1.1,marginTop:'4px'}}>PURCHASE ORDER</div>
         <div style={{fontSize:'13pt',fontWeight:600,color:BK,marginTop:'6px'}}>ใบสั่งซื้อ</div>
+        <div style={{fontSize:'12pt',color:BK,marginTop:'6px',fontFamily:"'Cordia New',sans-serif"}}>
+          <b>Date Doc. :</b>&nbsp;{data.poDate}
+        </div>
       </div>
     </div>
   </div>
@@ -299,14 +347,12 @@ const POInfoBox = ({data}:{data:POData}) => (
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
       <div style={{display:'flex',gap:8}}>
-        <span><b>Po No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
-        <span style={{marginLeft:'auto'}}><b>Date Doc. :</b>&nbsp;{data.poDate}</span>
+        <span style={{fontSize:'14pt',fontWeight:700}}><b>Po No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
       </div>
       <div><b>PR No. :</b>&nbsp;{data.prNo}</div>
       <div><b>Quotation No. :</b>&nbsp;{data.quotationNo}</div>
       <div style={{display:'flex',gap:8}}>
-        <b>Project Code :</b>&nbsp;{data.project}
-        
+        <b>Project Name :</b>&nbsp;{data.projectName || data.project}
       </div>
       <div style={{display:'flex',gap:8}}>
         <b>Job Type :</b>&nbsp;{data.job}
@@ -320,20 +366,29 @@ const ItemRow = ({row}:{row:POItem}) => (
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
-      <div>{row.desc}</div>
+      <div>{row.desc}{row.spec ? ' - '+row.spec : ''}</div>
       {row.subDesc&&<div style={{color:'#555',marginTop:'1px'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
     <td style={{textAlign:'center'}}>{row.unit}</td>
     <td style={{textAlign:'right'}}>{row.pricePerUnit?thb(row.pricePerUnit):''}</td>
-    <td style={{textAlign:'center'}}>{row.disc?(row.discType==='amt'?thb(row.disc):`${row.disc}%`):''}</td>
+    {/* amt-type discounts are never shown per line — they're rolled into the
+        summary box's Special Discount instead (see calcSummary). */}
+    <td style={{textAlign:'center'}}>{row.disc && row.discType==='pct' ? `${row.disc}%` : ''}</td>
     <td style={{textAlign:'right'}}>{row.desc?thb(lineAmt(row)):''}</td>
   </tr>
 )
 
 const POFooter = ({data}:{data:POData}) => {
   const s = calcSummary(data)
-  const vatPcts = [...new Set(data.items.filter(i=>i.vatPct>0).map(i=>i.vatPct))]
+  // VAT has no per-line rate column anywhere in the schema — po.go's PrintData
+  // handler always hardcodes item VatPct to 0 (see its own comment: "PO-level
+  // VAT is a flat 7%"), same flat rate POItemsTable.tsx's own "VAT 7%" column
+  // title assumes. Deriving the printed label from items[].vatPct (as before)
+  // always found an empty set and fell back to a literal 0% — a label-only
+  // bug; the VAT *amount* was already correct (data.vatAmt). Show the real
+  // flat rate instead of re-deriving from a column that's always zero.
+  const VAT_RATE_PCT = 7
   const whtPcts = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   return (
     <>
@@ -344,14 +399,22 @@ const POFooter = ({data}:{data:POData}) => {
             {data.remark.split('\n').map((l,i)=><div key={i} style={{lineHeight:'1.2'}}>{l}</div>)}
             <div style={{marginTop:4,lineHeight:'1.2'}}>
               <div><b>Delivery Date :</b>&nbsp;{data.deliveryDate}&nbsp;&nbsp;<b>Delivery Place :</b>&nbsp;{data.deliveryPlace}</div>
-              <div><b>Contract Delivery :</b>&nbsp;{data.contractDelivery}&nbsp;&nbsp;<b>TEL :</b>&nbsp;{data.tel}</div>
+              {/* Contract Delivery had no real backing field (was a hardcoded
+                  "***" placeholder) — repurposed to show the PO's receiver
+                  contact instead of duplicating it in a separate ผู้รับของ
+                  line below (removed). */}
+              {/* TEL used to be data.tel (the supplier's own contact phone,
+                  from s.contact_phone) — repointed to receiver_phone so it
+                  matches Contract Delivery's phone instead of an unrelated
+                  number. */}
+              <div><b>Contract Delivery :</b>&nbsp;{[data.receiverName, data.receiverPhone].filter(Boolean).join(' - ') || '-'}&nbsp;&nbsp;<b>TEL :</b>&nbsp;{data.receiverPhone || '-'}</div>
             </div>
           </div>
           <div style={{width:'69.50mm',display:'flex',flexDirection:'column',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row"><span className="sum-l">Subtotal</span><span className="sum-v">{thb(s.subtotal)}</span></div>
             <div className="sum-row"><span className="sum-l">Special Discount</span><span className="sum-v">-{thb(s.disc)}</span></div>
             <div className="sum-row"><span className="sum-l">After Discount</span><span className="sum-v">{thb(s.afterDisc)}</span></div>
-            {(vatPcts.length>0?vatPcts:[0]).map(v=><div key={v} className="sum-row"><span className="sum-l">Value Added Tax {v}%</span><span className="sum-v">+{thb(s.totalVat)}</span></div>)}
+            <div className="sum-row"><span className="sum-l">Value Added Tax {VAT_RATE_PCT}%</span><span className="sum-v">+{thb(s.totalVat)}</span></div>
             {data.shippingAmt>0&&<div className="sum-row"><span className="sum-l">ค่าขนส่ง</span><span className="sum-v">+{thb(data.shippingAmt)}</span></div>}
             {(whtPcts.length>0?whtPcts:[0]).map(w=><div key={w} className="sum-row"><span className="sum-l">Withholding Tax {w}%</span><span className="sum-v">-{thb(s.totalWht)}</span></div>)}
             <div style={{flex:1,display:'flex'}}>
@@ -377,7 +440,7 @@ const POFooter = ({data}:{data:POData}) => {
           {AUTH_COLS.map((col,i)=>(
             <div key={i} className="auth-col">
               <div className="auth-head">
-                
+
               </div>
               <div className="auth-body">
                 <div style={{fontWeight:600}}>{col.label}</div>

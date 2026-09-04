@@ -7,10 +7,10 @@
 // is NOT a unique filter key; subject_code must be constrained too.
 // `filterJobCode: null` means "show all CostCode options, unfiltered".
 //
-// 007–011 (FS10101 / FP10101 / FB10101 / DE10102 / RE10102) are intentionally
-// NOT included yet — on hold pending purchasing team confirmation. Add them
-// here as new entries (with their confirmed filterSubjectCode/filterJobCode)
-// when ready; no other code should need to change.
+// FS/FP/FB/DE/RE added per the PR+PO "ประเภท Job" requirement — these are
+// stock/dead-stock/return classifications, not cost-code-linked job types,
+// so filterSubjectCode/filterJobCode are null (unfiltered CostCode picker),
+// same as 'G'.
 export interface JobTypeOption {
   code: string
   label: string
@@ -25,5 +25,10 @@ export const JOB_TYPES: JobTypeOption[] = [
   { code: 'MF', label: 'MF - Fire Protection', filterSubjectCode: 'M', filterJobCode: 'F' },
   { code: 'MG', label: 'MG - GAS System', filterSubjectCode: 'M', filterJobCode: 'G' },
   { code: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room', filterSubjectCode: 'M', filterJobCode: 'H' },
+  { code: 'FS', label: 'FS - Stock FAC-S', filterSubjectCode: null, filterJobCode: null },
+  { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCode: null, filterJobCode: null },
+  { code: 'FB', label: 'FB - Stock FAC-BO', filterSubjectCode: null, filterJobCode: null },
+  { code: 'DE', label: 'DE - Dead Stock', filterSubjectCode: null, filterJobCode: null },
+  { code: 'RE', label: 'RE - Return Project', filterSubjectCode: null, filterJobCode: null },
   { code: 'G', label: 'G - General Code', filterSubjectCode: null, filterJobCode: null },
 ]

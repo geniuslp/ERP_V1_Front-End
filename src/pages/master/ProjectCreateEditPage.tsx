@@ -57,14 +57,11 @@ const ProjectCreateEditPage: React.FC = () => {
         form.setFieldsValue({
           project_code: p.project_code,
           project_name: p.project_name,
-          location_code: p.location_code,
           dept_code: p.dept_code,
           responsible_person_name: p.responsible_person_name,
           project_owner_name: p.project_owner_name,
           job_codes: p.job_codes ?? [],
           budget_amount: p.budget_amount ?? 0,
-          consultant_name: p.consultant_name,
-          consultant_phone: p.consultant_phone,
           date_range: p.start_date && p.end_date
             ? [dayjs(p.start_date), dayjs(p.end_date)]
             : undefined,
@@ -92,8 +89,6 @@ const ProjectCreateEditPage: React.FC = () => {
     const payload = {
       project_code:  values.project_code,
       project_name:  values.project_name,
-      // Free-text project address — sent as-is, no location master lookup.
-      location_code: values.location_code ?? undefined,
       dept_code:     values.dept_code ?? undefined,
       // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
       responsible_person_name: values.responsible_person_name,
@@ -101,8 +96,6 @@ const ProjectCreateEditPage: React.FC = () => {
       project_owner_name: values.project_owner_name ?? undefined,
       job_codes:     values.job_codes ?? [],
       budget_amount: values.budget_amount ?? 0,
-      consultant_name: values.consultant_name ?? undefined,
-      consultant_phone: values.consultant_phone ?? undefined,
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
       end_date:      endDate ? endDate.format('YYYY-MM-DD') : undefined,
       status:        values.status ?? 'ACTIVE',
@@ -164,12 +157,6 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* Free-text project address — no longer an FK/lookup against the location master. */}
-              <Form.Item label="ที่อยู่โครงการ" name="location_code">
-                <Input placeholder="กรอกที่อยู่โครงการ" />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
               {/* Reuses GET /departments (permissionMatrixService.getDepartments) — the same
                   source UsersPage.tsx/PermissionMatrix already use, no new endpoint. */}
               <Form.Item label="แผนก" name="dept_code">
@@ -225,16 +212,6 @@ const ProjectCreateEditPage: React.FC = () => {
                   parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
                   placeholder="0.00"
                 />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="ที่ปรึกษาโครงการ" name="consultant_name">
-                <Input placeholder="ชื่อบริษัท/บุคคลที่ปรึกษา (ถ้ามี)" />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="เบอร์ติดต่อของที่ปรึกษา" name="consultant_phone">
-                <Input placeholder="เบอร์โทรที่ปรึกษา (ถ้ามี)" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>

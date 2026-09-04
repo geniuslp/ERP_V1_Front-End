@@ -16,6 +16,8 @@ import axios from 'axios'
 import type { User, Memo, PROrderType, CreatePRRequest } from '@/types'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { permissionMatrixService } from '@/services/permissionMatrix.service'
+import type { Department } from '@/types/permission.types'
 
 const MENU_CODE = 'MENU_PR_CREATE'
 
@@ -37,6 +39,7 @@ interface LineItem {
   qty_requested: number
   qty_to_order: number
   cost_subgroup_id: number | null
+  deductStock: boolean
   [key: string]: any
 }
 
@@ -55,6 +58,7 @@ interface InitialLineItem {
   qty_to_order: number
   cost_subgroup_id: number | null
   cost_code_label?: string | null
+  deduct_stock?: boolean
 }
 
 /* ── responsive styles injected once ─────────────────────────────── */
@@ -124,6 +128,12 @@ const PRCreatePage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = Boolean(id)
+  // Set once a brand-new PR is saved as DRAFT from this page (create mode).
+  // Lets a second "บันทึกร่าง" click PUT the same record instead of POSTing
+  // a duplicate — without switching into the `isEdit` route/branch, whose
+  // save button has different semantics (always force-resubmits to
+  // COMPLETED, per the reopened-PR edit flow).
+  const [createdId, setCreatedId] = useState<number | null>(null)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [form] = Form.useForm()
   const attachmentsRef = useRef<AttachedFile[]>([])
@@ -140,6 +150,10 @@ const PRCreatePage: React.FC = () => {
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
   const [warehousesLoading, setWarehousesLoading] = useState(false)
+  // Same master data / service call as the "แผนก" dropdown on the Add User
+  // page (UsersPage.tsx) — permissionMatrixService.getDepartments.
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [departmentsLoading, setDepartmentsLoading] = useState(false)
   const [prNumber, setPrNumber] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [initialLineItems, setInitialLineItems] = useState<InitialLineItem[] | undefined>(undefined)
@@ -153,6 +167,9 @@ const PRCreatePage: React.FC = () => {
   const [remark, setRemark] = useState('')
   const orderType: PROrderType | undefined = Form.useWatch('order_type', form)
   const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
+  // Mutually exclusive with selectedMemo — see the "แผนก" Field (disabled by
+  // selectedMemo) and the Memo Reference trigger below (disabled by this).
+  const deptCode: string | undefined = Form.useWatch('dept_code', form)
   const [printData, setPrintData] = useState<PRData | null>(null)
 
   useEffect(() => {
@@ -182,6 +199,14 @@ const PRCreatePage: React.FC = () => {
       }
     }
     fetchUsers()
+  }, [])
+
+  useEffect(() => {
+    setDepartmentsLoading(true)
+    permissionMatrixService.getDepartments(accessToken as string)
+      .then(setDepartments)
+      .catch(() => message.error('โหลดรายชื่อแผนกไม่สำเร็จ'))
+      .finally(() => setDepartmentsLoading(false))
   }, [])
 
   useEffect(() => {
@@ -279,6 +304,7 @@ const PRCreatePage: React.FC = () => {
           pr_type: raw.pr_type || 'PO_WO',
           job_code: raw.job_code || undefined,
           requested_by: raw.requester_id ?? raw.requested_by,
+          dept_code: raw.dept_code || undefined,
         })
         setRemark(raw.remarks ?? '')
         setInitialLineItems(
@@ -286,12 +312,14 @@ const PRCreatePage: React.FC = () => {
             mat_code: l.mat_code,
             mat_name: l.mat_name,
             unit_name: l.unit_name,
+            spec_name: l.spec_name,
             qty_requested: l.qty_requested,
             qty_to_order: l.qty_to_order,
             cost_subgroup_id: l.cost_subgroup_id ?? null,
             cost_code_label: l.cost_code
               ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
               : null,
+            deduct_stock: l.deduct_stock ?? true,
           }))
         )
         // attachments is { pr: [...], memo: [...] } — pr = files uploaded
@@ -348,7 +376,7 @@ const PRCreatePage: React.FC = () => {
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
     setSubmitting(true)
     try {
-      const { location_text, required_date, project_code, order_type, pr_type, job_code, warehouse_code, requested_by } =
+      const { location_text, required_date, project_code, order_type, pr_type, job_code, warehouse_code, requested_by, dept_code } =
         await form.validateFields()
 
       // 1. Upload newly-added files.
@@ -385,6 +413,9 @@ const PRCreatePage: React.FC = () => {
         order_type,
         pr_type,
         job_code,
+        // undefined (not sent) while a Memo is linked — the field is disabled
+        // and cleared in that state, never required, never submitted.
+        dept_code: selectedMemo ? undefined : (dept_code || undefined),
         remarks: remark,
         status: isEdit ? 'DRAFT' : status,
         memo_id: selectedMemo?.id ? Number(selectedMemo.id) : null,
@@ -394,6 +425,7 @@ const PRCreatePage: React.FC = () => {
           qty_requested: item.qty_requested,
           qty_to_order: item.qty_to_order,
           cost_subgroup_id: item.cost_subgroup_id,
+          deduct_stock: item.deductStock,
         })),
         attachments: [...existingAttachments, ...uploadedFiles],
       }
@@ -413,6 +445,23 @@ const PRCreatePage: React.FC = () => {
           content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว`,
         })
         navigate(`/pr/${id}`)
+      } else if (status === 'DRAFT') {
+        if (createdId != null) {
+          // Already created earlier in this session — PUT to update it in
+          // place instead of POSTing a duplicate. No forced re-submit here
+          // (unlike the isEdit branch above) — this keeps the PR as DRAFT.
+          await axios.put(`${BASE_URL}/pr/${createdId}`, payload, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+        } else {
+          const res = await axios.post(`${BASE_URL}/pr`, payload, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+          const raw = res.data?.data ?? res.data
+          if (raw?.id != null) setCreatedId(Number(raw.id))
+        }
+        message.success('บันทึกร่าง PR สำเร็จ')
+        // No navigation — stay on this page so the user can keep editing.
       } else {
         await axios.post(`${BASE_URL}/pr`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -606,12 +655,11 @@ const PRCreatePage: React.FC = () => {
                 )}
               </Field>
 
-              <Field label="ประเภท Job">
-                <Form.Item name="job_code" noStyle>
+              <Field label="ประเภท Job" required>
+                <Form.Item name="job_code" noStyle rules={[{ required: true, message: 'กรุณาเลือกประเภท Job' }]}>
                   <Select
                     placeholder="- เลือกรายการ -"
                     style={{ width: '100%' }}
-                    allowClear
                     showSearch
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -730,23 +778,69 @@ const PRCreatePage: React.FC = () => {
                 </Form.Item>
               </Field>
 
+              {/* Required only when no Memo is linked — a linked Memo already
+                  carries its own department context, so this is disabled and
+                  cleared (never auto-filled) the moment a Memo is selected,
+                  and re-enabled/re-required the moment it's cleared. */}
+              <Field label="แผนก" required={!selectedMemo}>
+                <Form.Item
+                  name="dept_code"
+                  noStyle
+                  rules={selectedMemo ? [] : [{ required: true, message: 'กรุณาเลือกแผนก' }]}
+                >
+                  <Select
+                    placeholder="- เลือกแผนก -"
+                    style={{ width: '100%' }}
+                    loading={departmentsLoading}
+                    showSearch
+                    allowClear
+                    disabled={!!selectedMemo}
+                    filterOption={(input, option) =>
+                      String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
+                    onChange={(v) => {
+                      // Defensive: department can only be enabled/changeable
+                      // while selectedMemo is already null, so this should
+                      // never actually find a Memo set — but clear it anyway
+                      // if it somehow is, matching the reverse direction's
+                      // own defensive clear in the Memo picker's onSelect.
+                      if (v && selectedMemo) {
+                        setSelectedMemo(null)
+                        form.setFieldValue('memo_id', undefined)
+                        form.setFieldValue('memo_no_ref', undefined)
+                      }
+                    }}
+                  />
+                </Form.Item>
+                {selectedMemo && (
+                  <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 4 }}>
+                    ปิดใช้งานเนื่องจากเลือก Memo แล้ว — ล้าง Memo Reference เพื่อเลือกแผนก
+                  </div>
+                )}
+              </Field>
+
               {/* Approval no longer happens on PR — it happens via Memo instead
                   (memo.status: DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / CANCELLED).
                   The approver is now selected on the Memo, not here. */}
 
+              {/* Mutually exclusive with dept_code — locked (and never
+                  openable) the moment a department is picked, the same way
+                  the "แผนก" field locks the moment a Memo is picked. */}
               <Field label="Memo Reference" alignTop>
                 <div
-                  onClick={() => setMemoOpen(true)}
-                  title="คลิกเพื่อเลือก Memo"
+                  onClick={() => { if (!deptCode) setMemoOpen(true) }}
+                  title={deptCode ? 'ปิดใช้งานเนื่องจากเลือกแผนกแล้ว' : 'คลิกเพื่อเลือก Memo'}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    cursor: 'pointer',
+                    cursor: deptCode ? 'not-allowed' : 'pointer',
                     border: `1.5px dashed ${selectedMemo ? '#bfdbfe' : '#93c5fd'}`,
                     borderRadius: 8,
                     padding: '6px 10px',
-                    background: selectedMemo ? '#f8faff' : '#eff6ff',
+                    background: deptCode ? '#f3f4f6' : (selectedMemo ? '#f8faff' : '#eff6ff'),
+                    opacity: deptCode ? 0.6 : 1,
                     transition: 'all 0.15s',
                   }}
                 >
@@ -774,6 +868,11 @@ const PRCreatePage: React.FC = () => {
                     />
                   </Tooltip>
                 </div>
+                {deptCode && (
+                  <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 4 }}>
+                    ปิดใช้งานเนื่องจากเลือกแผนกแล้ว — ล้างแผนกเพื่อเลือก Memo
+                  </div>
+                )}
 
                 {selectedMemo && selectedMemo.attachments && selectedMemo.attachments.length > 0 && (
                   <div style={{ marginTop: 8 }}>
@@ -1043,6 +1142,9 @@ const PRCreatePage: React.FC = () => {
           if (memo.deliveryLocation) {
             form.setFieldValue('location_text', memo.deliveryLocation)
           }
+          // Never auto-filled from the Memo — just disabled+cleared while a
+          // Memo is linked (see the "แผนก" Field above).
+          form.setFieldValue('dept_code', undefined)
           setSelectedMemo(memo)
         }}
       />

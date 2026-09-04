@@ -7,12 +7,14 @@ import type { UploadProps } from 'antd'
 import {
   AppstoreOutlined, CheckCircleOutlined, TagsOutlined,
   DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined,
-  PlusOutlined, CloseOutlined, SaveOutlined,
+  PlusOutlined, CloseOutlined, SaveOutlined, SearchOutlined, CopyOutlined,
 } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { JOB_TYPES, type JobTypeOption } from '@/constants/jobTypes'
+import CostCodeJobTypeModal from './CostCodeJobTypeModal'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -33,11 +35,36 @@ interface CostCodeRecord {
 }
 
 // ── manual insert-row helpers ─────────────────────────────────────
-const SectionPill: React.FC<{ color: string; bg: string; label: string }> = ({ color, bg, label }) => (
-  <span style={{ display: 'inline-block', background: bg, color, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 4, marginBottom: 6 }}>
-    {label}
-  </span>
-)
+// onClick makes the pill act as a "copy this value down" trigger (used by
+// CostCodeLookupRow only — InsertCostCodeRow's own pills stay static, no
+// onClick passed). Same pattern as SectionPill in MaterialPage.tsx.
+const SectionPill: React.FC<{ color: string; bg: string; label: string; onClick?: () => void; title?: string; icon?: React.ReactNode }> =
+  ({ color, bg, label, onClick, title, icon }) => {
+    const [hover, setHover] = useState(false)
+    return (
+      <span
+        onClick={onClick}
+        onMouseEnter={() => onClick && setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={title}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          background: bg, color, fontSize: 10, fontWeight: 700,
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+          padding: onClick ? '3px 9px' : '2px 8px', borderRadius: 4,
+          marginBottom: 6,
+          border: onClick ? `1px solid ${color}55` : 'none',
+          cursor: onClick ? 'pointer' : 'default',
+          boxShadow: hover ? '0 0 0 1px currentColor' : 'none',
+          opacity: hover ? 0.85 : 1,
+          transition: 'box-shadow 0.15s, opacity 0.15s',
+        }}
+      >
+        {icon}
+        {label}
+      </span>
+    )
+  }
 
 const FL: React.FC<{ text: string; required?: boolean }> = ({ text, required }) => (
   <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>
@@ -163,6 +190,151 @@ const InsertCostCodeRow: React.FC<InsertCostCodeRowProps> = ({ row, index, onCha
   </div>
 )
 
+// ── reference/lookup row (browse-only, never writes into InsertCostCodeRow
+// on its own) ───────────────────────────────────────────────────────
+// Same visual pattern AND cascade shape as ReferenceLookupRow in
+// MaterialPage.tsx: a strict linear FK chain, confirmed live against
+// information_schema — cost_job.subject_id → cost_subject.id,
+// cost_group.job_id → cost_job.id, cost_subgroup.group_id → cost_group.id.
+// fullCostCodeList (from GET /master/cost-code/full) is a flat list of
+// complete leaf (subgroup-level) records, each already carrying all four
+// levels' code+name together — so the cascade is derived by simple
+// client-side filtering on that one already-loaded array, no per-level API
+// calls needed (same trick CostCodeSelectionModal.tsx already relies on for
+// its own Group filter).
+interface CostCodeLookupRowProps {
+  data: CostCodeRecord[]
+  onCopyColumn: (patch: Partial<PendingCostCodeRow>) => void
+}
+
+// One distinct-by-code option per value of a given field within an
+// already-filtered slice of the flat list (e.g. only the rows matching the
+// currently selected parent level(s)).
+const dedupOptions = (data: CostCodeRecord[], codeKey: keyof CostCodeRecord, nameKey: keyof CostCodeRecord) => {
+  const seen = new Map<string, string>()
+  data.forEach((d) => {
+    const code = String(d[codeKey] ?? '')
+    if (code && !seen.has(code)) seen.set(code, String(d[nameKey] ?? ''))
+  })
+  return Array.from(seen.entries())
+    .map(([code, name]) => ({ value: code, code, name, label: name ? `${code} — ${name}` : code }))
+    .sort((a, b) => a.code.localeCompare(b.code))
+}
+
+const CostCodeLookupRow: React.FC<CostCodeLookupRowProps> = ({ data, onCopyColumn }) => {
+  const [subjectCode, setSubjectCode] = useState<string | undefined>()
+  const [jobCode, setJobCode] = useState<string | undefined>()
+  const [groupCode, setGroupCode] = useState<string | undefined>()
+  const [subgroupCode, setSubgroupCode] = useState<string | undefined>()
+
+  // Subject: always the full distinct set, no filter.
+  const subjectOptions = React.useMemo(() => dedupOptions(data, 'subjectCode', 'subjectName'), [data])
+
+  // Job: only rows under the selected Subject.
+  const jobOptions = React.useMemo(
+    () => subjectCode ? dedupOptions(data.filter((d) => d.subjectCode === subjectCode), 'jobCode', 'jobName') : [],
+    [data, subjectCode],
+  )
+
+  // Group: only rows under the selected Subject + Job.
+  const groupOptions = React.useMemo(
+    () => (subjectCode && jobCode)
+      ? dedupOptions(data.filter((d) => d.subjectCode === subjectCode && d.jobCode === jobCode), 'groupCode', 'groupName')
+      : [],
+    [data, subjectCode, jobCode],
+  )
+
+  // Subgroup: only rows under the selected Subject + Job + Group.
+  const subgroupOptions = React.useMemo(
+    () => (subjectCode && jobCode && groupCode)
+      ? dedupOptions(
+          data.filter((d) => d.subjectCode === subjectCode && d.jobCode === jobCode && d.groupCode === groupCode),
+          'subgroupCode', 'subgroupName',
+        )
+      : [],
+    [data, subjectCode, jobCode, groupCode],
+  )
+
+  const selectedSubject = subjectOptions.find((o) => o.code === subjectCode)
+  const selectedJob = jobOptions.find((o) => o.code === jobCode)
+  const selectedGroup = groupOptions.find((o) => o.code === groupCode)
+  const selectedSubgroup = subgroupOptions.find((o) => o.code === subgroupCode)
+
+  // Selecting a higher level resets everything below it — same reset
+  // discipline as InsertRow's Group/Sub Group/Material onChange in MaterialPage.
+  const handleSubjectChange = (v?: string) => {
+    setSubjectCode(v)
+    setJobCode(undefined); setGroupCode(undefined); setSubgroupCode(undefined)
+  }
+  const handleJobChange = (v?: string) => {
+    setJobCode(v)
+    setGroupCode(undefined); setSubgroupCode(undefined)
+  }
+  const handleGroupChange = (v?: string) => {
+    setGroupCode(v)
+    setSubgroupCode(undefined)
+  }
+
+  const copySubject = () => {
+    if (!selectedSubject) return message.warning('กรุณาเลือก Subject ก่อนคัดลอก')
+    onCopyColumn({ subjectCode: selectedSubject.code, subjectName: selectedSubject.name })
+  }
+  const copyJob = () => {
+    if (!selectedJob) return message.warning('กรุณาเลือก Job ก่อนคัดลอก')
+    onCopyColumn({ jobCode: selectedJob.code, jobName: selectedJob.name })
+  }
+  const copyGroup = () => {
+    if (!selectedGroup) return message.warning('กรุณาเลือก Group ก่อนคัดลอก')
+    onCopyColumn({ groupCode: selectedGroup.code, groupName: selectedGroup.name })
+  }
+  const copySubgroup = () => {
+    if (!selectedSubgroup) return message.warning('กรุณาเลือก Subgroup ก่อนคัดลอก')
+    onCopyColumn({ subgroupCode: selectedSubgroup.code, subgroupName: selectedSubgroup.name })
+  }
+
+  const field = (
+    label: string, color: string, bg: string,
+    options: { value: string; label: string }[], placeholder: string,
+    value: string | undefined, onChange: (v?: string) => void, onCopy: () => void,
+    disabled: boolean,
+  ) => (
+    <div style={{ flex: '1 1 200px', minWidth: 190, marginLeft: 10, marginRight: 10 }}>
+      <SectionPill color={color} bg={bg} label={label} icon={<CopyOutlined style={{ fontSize: 10 }} />}
+        onClick={onCopy} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
+      <Select
+        size="small" style={{ width: '100%' }} placeholder={disabled ? 'เลือกระดับก่อนหน้าก่อน' : placeholder}
+        showSearch allowClear disabled={disabled}
+        filterOption={(input, option) => (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
+        options={options}
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  )
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', background: '#fffbeb',
+      border: '1px dashed #f59e0b', borderRadius: 10, padding: '12px 14px',
+      marginBottom: 12, gap: 0,
+    }}>
+      {/* label — visually distinct from InsertCostCodeRow's numbered-circle column */}
+      <div style={{ flex: '0 0 46px', paddingTop: 22, textAlign: 'center', marginRight: 12 }}>
+        <SearchOutlined style={{ fontSize: 16, color: '#b45309' }} />
+        <div style={{ fontSize: 9, color: '#b45309', marginTop: 3, lineHeight: 1.2, fontWeight: 700 }}>ดูข้อมูล</div>
+      </div>
+
+      {field('Subject', '#2563eb', '#dbeafe', subjectOptions, 'เลือก Subject', subjectCode, handleSubjectChange, copySubject, false)}
+      <VSep />
+      {field('Job', '#0284c7', '#e0f2fe', jobOptions, 'เลือก Job', jobCode, handleJobChange, copyJob, !subjectCode)}
+      <VSep />
+      {field('Group', '#4f46e5', '#e0e7ff', groupOptions, 'เลือก Group', groupCode, handleGroupChange, copyGroup, !jobCode)}
+      <VSep />
+      {field('Subgroup', '#7c3aed', '#ede9fe', subgroupOptions, 'เลือก Subgroup', subgroupCode, setSubgroupCode, copySubgroup, !groupCode)}
+    </div>
+  )
+}
+
 // ── file import helpers ──────────────────────────────────────────
 // Cost_Code.xlsx has no usable header row — columns are read by fixed
 // position (A..H), and row 1 (partial labels) is skipped via range: 1.
@@ -231,6 +403,8 @@ const readFileAsRows = (file: File): Promise<ParsedRow[]> =>
 // ── main page ────────────────────────────────────────────────────
 const CostCodePage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  // Job Type tile grid → modal state (section a).
+  const [selectedJobType, setSelectedJobType] = useState<JobTypeOption | null>(null)
   const [data, setData] = useState<CostCodeRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
@@ -239,6 +413,16 @@ const CostCodePage: React.FC = () => {
   const [subgroupCount, setSubgroupCount] = useState(0)
   const [filterGroupCode, setFilterGroupCode] = useState<string | undefined>()
   const [filterSubgroupCode, setFilterSubgroupCode] = useState<string | undefined>()
+
+  // Full, unpaginated cost-code list — used ONLY to populate the browse row's
+  // four Subject/Job/Group/Subgroup dropdowns (CostCodeLookupRow), which need
+  // every distinct value in the system, not just whatever page the main
+  // table currently has loaded via `data`/fetchCostCodes (limit: 10). Reads
+  // GET /master/cost-code/full — the same endpoint already used successfully
+  // (no defensive pick() needed) by CostCodeSelectionModal.tsx and
+  // POLineItemsPage.tsx, so subject_code/job_code/group_code/subgroup_code
+  // are confirmed-real field names here, not guesses.
+  const [fullCostCodeList, setFullCostCodeList] = useState<CostCodeRecord[]>([])
 
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -255,13 +439,21 @@ const CostCodePage: React.FC = () => {
       setTotal(res.data?.total ?? res.data?.data?.total ?? list.length)
 
       if (import.meta.env.DEV && list.length > 0) {
+        // console.debug is filtered out at default DevTools log levels in
+        // some browsers — console.log so this is impossible to miss.
         // eslint-disable-next-line no-console
-        console.debug('[cost-code] sample list item shape:', list[0])
+        console.log('[cost-code] RAW record #0 (exact backend shape):', list[0])
+        // eslint-disable-next-line no-console
+        console.log('[cost-code] RAW record #0 keys:', Object.keys(list[0] ?? {}))
       }
 
       // Backend field names haven't been pinned down yet — read defensively
       // across snake_case / camelCase / nested-object shapes so the group
       // and subgroup filters populate regardless of the exact API contract.
+      // `subgroup_id`/`subgroupId` candidates added for the row-id fallback
+      // below to match the sibling /master/cost-code/full endpoint's shape
+      // (CostCodeSelectionModal.tsx keys its rows on `subgroup_id` — this
+      // list endpoint may not carry a bare `id` field at all, only that).
       const pick = (obj: any, ...keys: string[]) => {
         for (const k of keys) {
           const v = k.split('.').reduce((o, part) => o?.[part], obj)
@@ -270,13 +462,19 @@ const CostCodePage: React.FC = () => {
         return ''
       }
 
-      const mapped: CostCodeRecord[] = list.map((c: any) => {
+      const mapped: CostCodeRecord[] = list.map((c: any, idx: number) => {
         const subjectCode  = pick(c, 'subject_code', 'subjectCode', 'subject.code')
         const jobCode      = pick(c, 'job_code', 'jobCode', 'job.code')
         const groupCode    = pick(c, 'group_code', 'groupCode', 'group.code', 'cost_group_code')
         const subgroupCode = pick(c, 'subgroup_code', 'subGroupCode', 'subgroup.code', 'cost_subgroup_code')
+        // Row key: try a real unique id first (id, then subgroup_id — this
+        // table's natural key, per the sibling /full endpoint), then the
+        // concatenated codes, then the array index as a last resort so two
+        // rows can never collide on '' the way they did before.
+        const rowId = pick(c, 'id', 'subgroup_id', 'subgroupId')
+        const key = rowId || `${subjectCode}${jobCode}${groupCode}${subgroupCode}` || `row-${idx}`
         return {
-          key: String(c.id ?? `${subjectCode}${jobCode}${groupCode}${subgroupCode}`),
+          key,
           subjectCode, subjectName: pick(c, 'subject_name', 'subjectName', 'subject.name'),
           jobCode,     jobName:     pick(c, 'job_name', 'jobName', 'job.name'),
           groupCode,   groupName:   pick(c, 'group_name', 'groupName', 'group.name', 'cost_group_name'),
@@ -288,6 +486,24 @@ const CostCodePage: React.FC = () => {
       setData(mapped)
       setActiveCount(mapped.filter((m) => m.isActive).length)
       setSubgroupCount(mapped.filter((m) => m.subgroupCode).length)
+
+      // Diagnostic: the browse-row dropdowns (CostCodeLookupRow) require a
+      // non-empty *Code field to produce any option at all — if `pick()`
+      // above isn't matching the real backend key for a code field (even
+      // though it matches the *Name field fine), this will show empty
+      // strings here and explain why a dropdown has zero options.
+      if (import.meta.env.DEV && mapped.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log('[cost-code] mapped sample (post-pick — check for blank *Code fields):', mapped[0])
+        const blankCodeCounts = {
+          subjectCode: mapped.filter((m) => !m.subjectCode).length,
+          jobCode: mapped.filter((m) => !m.jobCode).length,
+          groupCode: mapped.filter((m) => !m.groupCode).length,
+          subgroupCode: mapped.filter((m) => !m.subgroupCode).length,
+        }
+        // eslint-disable-next-line no-console
+        console.log(`[cost-code] blank-code counts out of ${mapped.length} records:`, blankCodeCounts)
+      }
     } catch {
       message.error('โหลดข้อมูล Cost Code ไม่สำเร็จ')
     } finally {
@@ -296,6 +512,27 @@ const CostCodePage: React.FC = () => {
   }, [accessToken, page])
 
   useEffect(() => { fetchCostCodes() }, [fetchCostCodes])
+
+  // Fetch the full unpaginated list once — feeds only CostCodeLookupRow.
+  useEffect(() => {
+    if (!accessToken) return
+    axios.get(`${BASE_URL}/master/cost-code/full`, { headers: authHeader })
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        setFullCostCodeList(
+          (Array.isArray(list) ? list : []).map((c: any) => ({
+            key: String(c.subgroup_id ?? c.id ?? `${c.subject_code}${c.job_code}${c.group_code}${c.subgroup_code}`),
+            subjectCode: c.subject_code ?? '', subjectName: c.subject_name ?? '',
+            jobCode: c.job_code ?? '', jobName: c.job_name ?? '',
+            groupCode: c.group_code ?? '', groupName: c.group_name ?? '',
+            subgroupCode: c.subgroup_code ?? '', subgroupName: c.subgroup_name ?? '',
+            costCode: c.cost_code ?? '',
+            isActive: c.is_active ?? true,
+          })),
+        )
+      })
+      .catch(() => setFullCostCodeList([]))
+  }, [accessToken])
 
   // distinct group_name values from the already-loaded list, deduplicated
   const groupOptions = React.useMemo(() =>
@@ -354,12 +591,6 @@ const CostCodePage: React.FC = () => {
           {r.subgroupCode && <Text code style={{ fontSize: 13 }}>{r.subgroupCode}</Text>}
           <div style={{ fontSize: 14, fontWeight: 500, color: '#111827', marginTop: 3 }}>{r.subgroupName}</div>
         </div>
-      ),
-    },
-    {
-      title: 'Status', dataIndex: 'isActive', width: 90,
-      render: (v: boolean) => (
-        <Tag color={v ? 'success' : 'error'} style={{ borderRadius: 20, fontSize: 13 }}>{v ? 'ใช้งาน' : 'ปิด'}</Tag>
       ),
     },
   ]
@@ -534,6 +765,44 @@ const CostCodePage: React.FC = () => {
 
       <div style={{ padding: '0 0 32px', overflowX: 'hidden' }}>
 
+        {/* ── (a) Job Type grid — the 12 fixed codes from constants/jobTypes.ts.
+            Click opens the Cost Code modal scoped to that Job Type's subject/job
+            (or an Empty state for the unbacked codes — see CostCodeJobTypeModal). */}
+        <div style={{ ...panelStyle, marginBottom: 20 }}>
+          <div style={panelHead}>
+            <div>
+              <Title level={5} style={{ margin: 0 }}>ประเภท Job</Title>
+              <Text style={{ fontSize: 12, color: '#9ca3af' }}>คลิกเพื่อจัดการ Group / Subgroup ของแต่ละประเภท</Text>
+            </div>
+          </div>
+          <div style={{ padding: '16px 20px' }}>
+            <Row gutter={[12, 12]}>
+              {JOB_TYPES.map((jt) => (
+                <Col xs={24} sm={12} md={8} lg={6} key={jt.code}>
+                  <div
+                    onClick={() => setSelectedJobType(jt)}
+                    style={{
+                      border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px',
+                      cursor: 'pointer', background: '#fff', transition: 'box-shadow 0.15s, border-color 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(37,99,235,0.12)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none' }}
+                  >
+                    <Tag color="blue" style={{ margin: 0, fontWeight: 700 }}>{jt.code}</Tag>
+                    <div style={{ marginTop: 6, fontSize: 13, color: '#111827' }}>{jt.label}</div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </div>
+        </div>
+
+        <CostCodeJobTypeModal
+          open={!!selectedJobType}
+          onClose={() => setSelectedJobType(null)}
+          jobType={selectedJobType}
+        />
+
         {/* stats */}
         <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
           {[
@@ -550,10 +819,19 @@ const CostCodePage: React.FC = () => {
           ))}
         </Row>
 
-        {/* records — block layout */}
+        {/* ── (b) full flat browse table — unchanged pattern, still shows every
+            subject (M, S, L, OH, ...), not just the 12 Job Types above. This is
+            the only reachable UI for subjects/jobs outside the 12-code list
+            (S/L/OH — confirmed still in active use), so it's kept exactly as-is
+            rather than filtered or removed. */}
         <div style={{ ...panelStyle, marginBottom: 20 }}>
           <div style={{ ...panelHead, flexWrap: 'wrap', gap: 10 }}>
-            <Title level={5} style={{ margin: 0 }}>รายการ Cost Code ทั้งหมด</Title>
+            <div>
+              <Title level={5} style={{ margin: 0 }}>รายการ Cost Code ทั้งหมด</Title>
+              <Text style={{ fontSize: 12, color: '#9ca3af' }}>
+                รวมทุก Subject — ใช้สำหรับ Subject/Job อื่นนอกเหนือจาก 12 ประเภท Job ด้านบน (เช่น S, L, OH)
+              </Text>
+            </div>
             <Space wrap>
               <Select allowClear placeholder="กรองตาม Group" style={{ width: 240 }} options={groupOptions}
                 value={filterGroupCode} onChange={handleFilterGroupChange} />
@@ -596,6 +874,15 @@ const CostCodePage: React.FC = () => {
 
           <div style={{ padding: '16px 20px', overflowX: 'auto' }}>
             <div style={{ minWidth: 1000 }}>
+              {/* Reference/lookup row — browse-only, independent state, never
+                  touches pendingRows on its own. See CostCodeLookupRow above. */}
+              <Text style={{ fontSize: 11, color: '#b45309', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                🔍 ดูข้อมูล (สำหรับค้นหาอ้างอิงเท่านั้น ไม่ใช่การเพิ่มข้อมูล)
+              </Text>
+              <CostCodeLookupRow
+                data={fullCostCodeList}
+                onCopyColumn={(patch) => setPendingRows((prev) => prev.map((r) => ({ ...r, ...patch })))}
+              />
               {pendingRows.map((row, idx) => (
                 <InsertCostCodeRow key={row.rowKey} row={row} index={idx}
                   onChange={updateRow} onRemove={removeRow} canRemove={pendingRows.length > 1} />

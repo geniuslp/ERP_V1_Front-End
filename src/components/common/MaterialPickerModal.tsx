@@ -216,9 +216,9 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
         const lookup = stockLookups[r.mat_code]
         return (
           <div>
-            <div style={{ fontWeight: 500, fontSize: 13 }}>{v}</div>
+            <div style={{ fontWeight: 400, fontSize: 13 }}>{v}</div>
             {r.spec_description && (
-              <div style={{ fontSize: 11, color: '#6b7280' }}>{r.spec_description}</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#1f2937' }}>{r.spec_description}</div>
             )}
             {showStockLookup && selectedKeys.includes(r.mat_code) && (
               <div style={{ marginTop: 2 }}>
@@ -401,9 +401,9 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
               <div style={{ fontWeight: 700, fontSize: 14, color: '#2563eb', wordBreak: 'break-all' }}>
                 {row.mat_code}
               </div>
-              <div style={{ marginTop: 2, fontSize: 13, color: '#1f2937' }}>{row.mat_name_th}</div>
+              <div style={{ marginTop: 2, fontWeight: 400, fontSize: 13, color: '#1f2937' }}>{row.mat_name_th}</div>
               {row.spec_description && (
-                <div style={{ marginTop: 2, fontSize: 12, color: '#6b7280' }}>{row.spec_description}</div>
+                <div style={{ marginTop: 2, fontWeight: 700, fontSize: 13, color: '#1f2937' }}>{row.spec_description}</div>
               )}
               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <Tag style={{ fontSize: 11 }}>{row.unit_name}</Tag>

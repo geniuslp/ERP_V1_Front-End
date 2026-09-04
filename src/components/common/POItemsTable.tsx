@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react'
 import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin } from 'antd'
 import {
   SearchOutlined, DeleteOutlined, LinkOutlined, FileTextOutlined,
-  CalculatorOutlined, LeftOutlined, RightOutlined,
+  CalculatorOutlined, LeftOutlined, RightOutlined, CloseCircleFilled,
 } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
+import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
@@ -22,6 +23,11 @@ interface POItemsTableProps {
   discType?: 'pct' | 'amt'
   useVat?: boolean
   useWht?: boolean
+  // Document-level "ประเภท Job" value (PO header field) — passed down so the
+  // CostCode picker can filter its options, same as PRItemsTable's jobTypeCode.
+  // PO's job_code is header-level (one per PO), so every line shares this
+  // same filter context.
+  jobTypeCode?: string
 }
 
 const POItemsTable: React.FC<POItemsTableProps> = ({
@@ -30,9 +36,12 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   useDisc = false, discType = 'pct',
   useVat = false,
   useWht = false,
+  jobTypeCode,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
+  // key of the row whose Cost Code selection modal is open; null = closed
+  const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
   const [stockLoading, setStockLoading] = useState(false)
@@ -77,11 +86,33 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   const renumber = (rows: POLineItem[]) => rows.map((r, idx) => ({ ...r, no: idx + 1 }))
 
   const updateItem = (key: string, field: keyof POLineItem, value: string | number | null) => {
-    onChange(items.map((i) => (i.key === key ? { ...i, [field]: value } : i)))
+    onChange(items.map((i) => {
+      if (i.key !== key) return i
+      const updated = { ...i, [field]: value }
+      // mat_code cleared → drop any Cost Code selection, same guard as PRItemsTable.
+      if (field === 'mat_code' && !value) {
+        updated.cost_subgroup_id = null
+        updated.cost_code_label = null
+      }
+      return updated
+    }))
   }
 
   const removeItem = (key: string) => {
     onChange(renumber(items.filter((i) => i.key !== key)))
+  }
+
+  const handleCostCodeSelect = (key: string, item: CostCodeItem) => {
+    onChange(items.map((i) => (i.key === key ? {
+      ...i,
+      cost_subgroup_id: item.subgroupId,
+      // Display-only — same "code — name" convention as PRItemsTable.
+      cost_code_label: item.subgroupName ? `${item.costCode} — ${item.subgroupName}` : item.costCode,
+    } : i)))
+  }
+
+  const clearCostCode = (key: string) => {
+    onChange(items.map((i) => (i.key === key ? { ...i, cost_subgroup_id: null, cost_code_label: null } : i)))
   }
 
   const handleMaterialConfirm = (materials: Material[]) => {
@@ -95,6 +126,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       mat_code: m.mat_code,
       mat_name: m.mat_name_th,
       unit_name: m.unit_name || 'Ea',
+      spec: m.spec_description ?? '',
       qty: 1,
       unit_price: 0,
       is_from_pr: false,
@@ -247,6 +279,33 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       render: (v: number) => <span style={{ fontSize: 13, color: '#374151' }}>{v}</span>,
     },
     {
+      title: 'Cost Code',
+      key: 'cost_subgroup_id',
+      width: 200,
+      align: 'center' as const,
+      render: (_: unknown, r: POLineItem) => (
+        <Space size={4} style={{ width: '100%' }}>
+          <Button
+            size="small"
+            style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            disabled={!r.mat_code}
+            onClick={() => setCostCodeModalRowKey(r.key)}
+            title={r.cost_code_label ?? undefined}
+          >
+            {r.mat_code ? (r.cost_code_label ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
+          </Button>
+          {r.cost_code_label && (
+            <Button
+              size="small"
+              type="text"
+              icon={<CloseCircleFilled style={{ color: '#9ca3af' }} />}
+              onClick={() => clearCostCode(r.key)}
+            />
+          )}
+        </Space>
+      ),
+    },
+    {
       title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
       width: 130,
@@ -284,6 +343,17 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           <span style={{ fontSize: 13 }}>{r.mat_name}</span>
         </Space>
       ),
+    },
+    {
+      title: 'Spec',
+      dataIndex: 'spec',
+      align: 'center' as const,
+      render: (_: unknown, r: POLineItem) =>
+        r.spec ? (
+          <span style={{ fontSize: 13 }}>{r.spec}</span>
+        ) : (
+          <span style={{ color: '#9ca3af' }}>—</span>
+        ),
     },
     {
       title: 'หน่วย',
@@ -420,7 +490,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         pagination={false}
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — เลือก PR หรือค้นหาวัสดุเพื่อเริ่มต้น' }}
-        scroll={{ x: 800 }}
+        scroll={{ x: 1100 }}
         expandable={{
           expandedRowKeys: expandedKeys,
           showExpandColumn: false,
@@ -520,6 +590,15 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
         showStockLookup
+      />
+
+      <CostCodeSelectionModal
+        open={costCodeModalRowKey !== null}
+        onClose={() => setCostCodeModalRowKey(null)}
+        onSelect={(item) => {
+          if (costCodeModalRowKey) handleCostCodeSelect(costCodeModalRowKey, item)
+        }}
+        jobTypeCode={jobTypeCode}
       />
     </div>
   )
