@@ -49,6 +49,7 @@ const MaterialDetailPage = lazy(() => import('@/pages/master/MaterialDetailPage'
 const CostCodePage = lazy(() => import('@/pages/master/CostCodePage'))
 const LocationPage = lazy(() => import('@/pages/master/LocationPage'))
 const SupplierPage = lazy(() => import('@/pages/master/SupplierPage'))
+const CustomerPage = lazy(() => import('@/pages/master/CustomerPage'))
 const StockListPage = lazy(() => import('@/pages/master/StockListPage'))
 const ProjectListPage = lazy(() => import('@/pages/master/ProjectListPage'))
 const ProjectCreateEditPage = lazy(() => import('@/pages/master/ProjectCreateEditPage'))
@@ -195,6 +196,7 @@ const AppRoutes: React.FC = () => (
               <Route path="/master/cost-code" element={<CostCodePage />} />
               <Route path="/master/location" element={<LocationPage />} />
               <Route path="/master/supplier" element={<SupplierPage />} />
+              <Route path="/master/customer" element={<CustomerPage />} />
               <Route path="/master/stock" element={<StockListPage />} />
               <Route path="/master/projects" element={<ProjectListPage />} />
               <Route path="/master/projects/create" element={<ProjectCreateEditPage key="create" />} />

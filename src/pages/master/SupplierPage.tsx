@@ -6,6 +6,7 @@ import PageHeader from '@/components/common/PageHeader'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 import * as XLSX from 'xlsx'
+import { PAYMENT_TERM_OPTIONS } from '@/constants/paymentTerms'
 
 interface Supplier {
   id: number
@@ -601,10 +602,7 @@ const SupplierPage: React.FC = () => {
       <Form.Item name="payment_terms" label="เงื่อนไขการชำระเงิน">
         <Select
           placeholder="เลือกเงื่อนไขการชำระเงิน"
-          options={[
-            { label: 'เงินสด', value: 'เงินสด' },
-            ...[7, 15, 30, 45, 90].map((d) => ({ label: `${d} วัน`, value: `${d} วัน` })),
-          ]}
+          options={PAYMENT_TERM_OPTIONS}
           allowClear
         />
       </Form.Item>

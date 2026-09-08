@@ -13,8 +13,13 @@ export interface Project {
   // deprecated: superseded by responsiblePersonName, kept for backward compat only
   ownerId?: number
   ownerName?: string
-  // "เจ้าของโครงการ" — free text, distinct from ownerId/ownerName
+  // "เจ้าของโครงการ" — deprecated free-text field, kept for backward-compat
+  // display/payload only; the form now uses customerId/customerName below.
   projectOwnerName?: string
+  // "เจ้าของโครงการ" — customer FK dropdown (GET /customer), replaces the
+  // free-text projectOwnerName above as the field the form actually edits.
+  customerId?: number
+  customerName?: string
   // "ผู้รับผิดชอบหลัก" — free text, required on write; replaces the old owner_id dropdown
   responsiblePersonName?: string
   jobCodes?: string[]

@@ -12,6 +12,12 @@ import type { Department } from '@/types/permission.types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
+interface CustomerOption {
+  cus_id: number
+  customer_code: string
+  customer_name: string
+}
+
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   border: 'none',
@@ -33,6 +39,14 @@ const ProjectCreateEditPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentsLoading, setDepartmentsLoading] = useState(false)
+  const [customers, setCustomers] = useState<CustomerOption[]>([])
+  const [customersLoading, setCustomersLoading] = useState(false)
+  // The old free-text "เจ้าของโครงการ" value (project_owner_name), preserved
+  // for existing records but no longer editable via this form — kept out of
+  // the Form's state so the customer_id dropdown fully replaces it as the
+  // field the user interacts with, while the payload still passes it through
+  // unchanged (per backend still accepting/storing it).
+  const [legacyProjectOwnerName, setLegacyProjectOwnerName] = useState<string | undefined>()
 
   // Reuses the same GET /departments source as UsersPage.tsx/PermissionMatrix —
   // no separate department endpoint for this form.
@@ -45,6 +59,25 @@ const ProjectCreateEditPage: React.FC = () => {
       .finally(() => setDepartmentsLoading(false))
   }, [accessToken])
 
+  // "เจ้าของโครงการ" dropdown — same source as CustomerPage.tsx (GET /customer),
+  // fetched in full (large page_size) like the department/supplier dropdowns
+  // elsewhere in this codebase.
+  useEffect(() => {
+    if (!accessToken) return
+    setCustomersLoading(true)
+    axios.get(`${BASE_URL}/customer`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { page: 1, page_size: 1000 },
+    })
+      .then((res) => {
+        const body = res.data?.data ?? res.data
+        const list: CustomerOption[] = Array.isArray(body) ? body : body?.items ?? body?.data ?? []
+        setCustomers(list)
+      })
+      .catch(() => message.error('โหลดข้อมูลลูกค้าไม่สำเร็จ'))
+      .finally(() => setCustomersLoading(false))
+  }, [accessToken])
+
   useEffect(() => {
     if (!isEdit) return
     const fetchProject = async () => {
@@ -54,12 +87,13 @@ const ProjectCreateEditPage: React.FC = () => {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         const p = res.data?.data ?? res.data
+        setLegacyProjectOwnerName(p.project_owner_name ?? undefined)
         form.setFieldsValue({
           project_code: p.project_code,
           project_name: p.project_name,
           dept_code: p.dept_code,
           responsible_person_name: p.responsible_person_name,
-          project_owner_name: p.project_owner_name,
+          customer_id: p.customer_id ?? undefined,
           job_codes: p.job_codes ?? [],
           budget_amount: p.budget_amount ?? 0,
           date_range: p.start_date && p.end_date
@@ -92,8 +126,13 @@ const ProjectCreateEditPage: React.FC = () => {
       dept_code:     values.dept_code ?? undefined,
       // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
       responsible_person_name: values.responsible_person_name,
-      // "เจ้าของโครงการ" — free text, distinct from responsible_person_name above
-      project_owner_name: values.project_owner_name ?? undefined,
+      // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
+      // replacing the old project_owner_name free-text input.
+      customer_id: values.customer_id ?? undefined,
+      // project_owner_name is no longer editable from this form, but is passed
+      // through unchanged for existing records so it isn't silently dropped
+      // from the payload if the backend still stores/reads it.
+      project_owner_name: legacyProjectOwnerName,
       job_codes:     values.job_codes ?? [],
       budget_amount: values.budget_amount ?? 0,
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
@@ -183,9 +222,21 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* "เจ้าของโครงการ" — free text, distinct from responsible_person_name above */}
-              <Form.Item label="เจ้าของโครงการ" name="project_owner_name">
-                <Input placeholder="ชื่อเจ้าของโครงการ" />
+              {/* "เจ้าของโครงการ" — customer dropdown (GET /customer), same
+                  source/pattern as CustomerPage.tsx. Replaces the old
+                  project_owner_name free-text input; distinct from
+                  responsible_person_name above. */}
+              <Form.Item label="เจ้าของโครงการ" name="customer_id">
+                <Select
+                  placeholder="— เลือกลูกค้า —"
+                  loading={customersLoading}
+                  showSearch
+                  allowClear
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={customers.map((c) => ({ value: c.cus_id, label: `${c.customer_code} - ${c.customer_name}` }))}
+                />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>

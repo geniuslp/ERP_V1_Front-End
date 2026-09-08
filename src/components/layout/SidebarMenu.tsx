@@ -97,6 +97,10 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PETTY_CASH_LIST: <SearchOutlined />,
   MENU_PETTY_CASH_CREATE: <PlusOutlined />,
   MENU_PETTY_CASH_APPROVAL: <CheckCircleOutlined />,
+  // Customer Master (ลูกค้า) — DB menu row (menu_code=MENU_MASTER_CUSTOMER,
+  // parent=MENU_MASTER, menu_path=/master/customer) still needs to be created
+  // by an admin; this only maps the icon once that row exists.
+  MENU_MASTER_CUSTOMER: <TeamOutlined />,
 }
 
 interface VisibleMenuNode extends PermMenu {
