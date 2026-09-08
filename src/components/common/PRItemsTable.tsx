@@ -164,6 +164,22 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.map((i: any) => i.code).join(',')])
 
+  // Zero-stock lines must never carry deductStock=true — force it off in state
+  // (not just visually) whenever a row's looked-up qty is exactly 0.
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false
+      const next = prev.map((i) => {
+        if (i.code && stockMap[i.code] === 0 && i.deductStock) {
+          changed = true
+          return { ...i, deductStock: false }
+        }
+        return i
+      })
+      return changed ? next : prev
+    })
+  }, [stockMap])
+
   const addItem = () => {
     const no = items.length + 1
     setItems((prev) => [
@@ -400,7 +416,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
             ? <Spin size="small" />
             : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
         }
-        const color = qty <= 0 ? '#dc2626' : '#16a34a'
+        const color = qty === 0 ? '#dc2626' : '#16a34a'
         return <span style={{ color, fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
       },
     },
@@ -431,7 +447,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
           <Switch
             size="small"
             checked={r.deductStock}
-            disabled={!r.code}
+            disabled={!r.code || stockMap[r.code] === 0}
             onChange={(checked) => toggleDeductStock(r.key, checked)}
             style={{ backgroundColor: r.deductStock ? '#16a34a' : '#dc2626' }}
           />

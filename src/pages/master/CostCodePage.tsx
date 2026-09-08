@@ -819,47 +819,6 @@ const CostCodePage: React.FC = () => {
           ))}
         </Row>
 
-        {/* ── (b) full flat browse table — unchanged pattern, still shows every
-            subject (M, S, L, OH, ...), not just the 12 Job Types above. This is
-            the only reachable UI for subjects/jobs outside the 12-code list
-            (S/L/OH — confirmed still in active use), so it's kept exactly as-is
-            rather than filtered or removed. */}
-        <div style={{ ...panelStyle, marginBottom: 20 }}>
-          <div style={{ ...panelHead, flexWrap: 'wrap', gap: 10 }}>
-            <div>
-              <Title level={5} style={{ margin: 0 }}>รายการ Cost Code ทั้งหมด</Title>
-              <Text style={{ fontSize: 12, color: '#9ca3af' }}>
-                รวมทุก Subject — ใช้สำหรับ Subject/Job อื่นนอกเหนือจาก 12 ประเภท Job ด้านบน (เช่น S, L, OH)
-              </Text>
-            </div>
-            <Space wrap>
-              <Select allowClear placeholder="กรองตาม Group" style={{ width: 240 }} options={groupOptions}
-                value={filterGroupCode} onChange={handleFilterGroupChange} />
-              <Select allowClear placeholder="กรองตาม Subgroup" style={{ width: 240 }} options={subgroupOptions}
-                value={filterSubgroupCode} onChange={(v) => setFilterSubgroupCode(v)} disabled={!filterGroupCode} />
-              <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
-                Export Excel
-              </Button>
-            </Space>
-          </div>
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <Table
-              dataSource={filteredData} columns={columns} size="middle"
-              loading={loading}
-              pagination={{
-                current: page,
-                pageSize: 10,
-                total,
-                showSizeChanger: false,
-                showTotal: (t) => `ทั้งหมด ${t} รายการ`,
-                onChange: (p) => setPage(p),
-                responsive: true,
-              }}
-              rowKey="key" scroll={{ x: 1000 }}
-            />
-          </div>
-        </div>
-
         {/* insert rows */}
         <div style={{ ...panelStyle, marginBottom: 20 }}>
           <div style={panelHead}>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal, Alert, Spin } from 'antd'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
@@ -146,7 +146,7 @@ const PRCreatePage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
   const [warehousesLoading, setWarehousesLoading] = useState(false)
@@ -171,6 +171,43 @@ const PRCreatePage: React.FC = () => {
   // selectedMemo) and the Memo Reference trigger below (disabled by this).
   const deptCode: string | undefined = Form.useWatch('dept_code', form)
   const [printData, setPrintData] = useState<PRData | null>(null)
+
+  // Drives job_code's option filtering below — watching the form value (rather
+  // than a Select onChange) means this reacts uniformly whether project_code
+  // changes from direct user selection, from picking a Memo (which sets
+  // project_code — see MemoSidebarPanel onSelect below), or from loading an
+  // existing PR into edit mode (fetchExisting's form.setFieldsValue).
+  const projectCode: string | undefined = Form.useWatch('project_code', form)
+
+  // job_code options restricted to the selected project's allowed job_codes[].
+  // Falls back to the full JOB_TYPES list when no project is selected, the
+  // project isn't found yet (projects still loading), or the project has no
+  // job_codes data — "no restriction data" is treated as "no restriction",
+  // never as "lock the user out".
+  const jobOptions = useMemo(() => {
+    const allOptions = JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))
+    if (!projectCode) return []
+    const project = projects.find((p) => p.value === projectCode)
+    if (!project || !project.jobCodes || project.jobCodes.length === 0) return allOptions
+    const filtered = allOptions.filter((o) => project.jobCodes.includes(o.value))
+    return filtered.length > 0 ? filtered : allOptions
+  }, [projectCode, projects])
+
+  // Keep job_code valid against the (possibly newly restricted) jobOptions —
+  // clear a now-invalid selection, or auto-select the sole remaining option.
+  useEffect(() => {
+    const validCodes = jobOptions.map((o) => o.value)
+    const currentJobCode = form.getFieldValue('job_code')
+    if (jobOptions.length === 1) {
+      if (currentJobCode !== jobOptions[0].value) {
+        form.setFieldValue('job_code', jobOptions[0].value)
+      }
+    } else if (currentJobCode && !validCodes.includes(currentJobCode)) {
+      form.setFieldValue('job_code', undefined)
+      message.info('ประเภทงานเดิมไม่ตรงกับโครงการนี้ กรุณาเลือกใหม่')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobOptions])
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -225,6 +262,11 @@ const PRCreatePage: React.FC = () => {
           label: p.project_code
             ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
             : (p.project_name ?? p.name ?? String(p.id)),
+          // Project's allowed "ประเภทงาน" codes — same field ProjectListPage.tsx
+          // reads off this same GET /master/projects response (mapProject's
+          // `jobCodes: raw.job_codes ?? []`). Used to filter/restrict the
+          // job_code Select below.
+          jobCodes: p.job_codes ?? [],
         })))
       } catch (err: any) {
         message.error(
@@ -658,13 +700,14 @@ const PRCreatePage: React.FC = () => {
               <Field label="ประเภท Job" required>
                 <Form.Item name="job_code" noStyle rules={[{ required: true, message: 'กรุณาเลือกประเภท Job' }]}>
                   <Select
-                    placeholder="- เลือกรายการ -"
+                    placeholder={projectCode ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการก่อน'}
                     style={{ width: '100%' }}
                     showSearch
+                    disabled={!projectCode}
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
-                    options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+                    options={jobOptions}
                   />
                 </Form.Item>
               </Field>

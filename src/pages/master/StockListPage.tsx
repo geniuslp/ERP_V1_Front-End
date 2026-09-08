@@ -319,16 +319,20 @@ const StockListPage: React.FC = () => {
 
   const columns = [
     {
-      title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 140,
+      title: 'Cost Code', dataIndex: 'costCode', key: 'costCode', width: 130, align: 'center' as const,
+      render: (v: string | null | undefined) => v || '-',
+    },
+    {
+      title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 140, align: 'center' as const,
       render: (v: string) => <Text style={{ color: '#2563eb', fontWeight: 600 }}>{v}</Text>,
     },
-    { title: 'ชื่อ Item', dataIndex: 'itemName', key: 'itemName', align: 'center' as const },
-    { title: 'หน่วยนับ', dataIndex: 'unit', key: 'unit', width: 100 },
+    { title: 'รายละเอียด', dataIndex: 'itemName', key: 'itemName', align: 'center' as const },
+    { title: 'คงเหลือ', dataIndex: 'qty', key: 'qty', width: 110, align: 'center' as const },
+    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 100, align: 'center' as const },
     {
-      title: 'ราคาต้นทุนต่อหน่วย', dataIndex: 'unitCost', key: 'unitCost', width: 150, align: 'right' as const,
+      title: 'ราคา', dataIndex: 'unitCost', key: 'unitCost', width: 150, align: 'center' as const,
       render: (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
     },
-    { title: 'จำนวนคงเหลือ', dataIndex: 'qty', key: 'qty', width: 110, align: 'right' as const },
   ]
 
   return (

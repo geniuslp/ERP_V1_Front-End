@@ -307,7 +307,7 @@ const App: React.FC = () => (
   <Provider store={store}>
     <ConfigProvider theme={antdTheme} locale={thTH}>
       <AntApp>
-        <BrowserRouter>
+        <BrowserRouter basename="/erp">
           <AppRoutes />
         </BrowserRouter>
       </AntApp>

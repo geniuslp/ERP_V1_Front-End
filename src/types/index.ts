@@ -261,6 +261,8 @@ export interface StockItem {
   isActive: boolean
   createdAt: string
   updatedAt: string
+  // Not currently returned by GET /stock/items — see StockListPage.tsx / StockItemListPage.tsx.
+  costCode?: string | null
 }
 
 export interface StockImportRowError {
@@ -311,6 +313,11 @@ export interface GRNPoListItem {
   status: string
   currency: string
   net_amount?: number
+  // purchase_order.project_code — header-level (order_type='cost' only), same
+  // field as PODetail.project_code in types/po.ts. This page hits the same
+  // GET /po/:id endpoint under a narrower local type, so it's typed here too
+  // rather than shown per-line — a PO only has one project, not one per line.
+  project_code?: string
 }
 
 // Matches models.POLine's actual JSON tags (internal/models/models.go) as
@@ -324,6 +331,12 @@ export interface GRNPoLine {
   qty_ordered: number
   qty_received: number
   current_stock_qty: number | null
+  // Resolved combined Cost Code, same field already confirmed present on
+  // GET /po/:id per-line (see POLine.cost_code in types/po.ts, added same
+  // session as POApprovalDetailPage's Cost Code column) — this page reads
+  // the identical endpoint under its own narrower type, so it's carried
+  // through here rather than re-fetched.
+  cost_code?: string | null
 }
 
 export interface GRNPoDetail extends Omit<GRNPoListItem, 'net_amount'> {
@@ -359,6 +372,10 @@ export interface GRNCreatePayload {
   warehouse_code: string
   supplier_code: string
   delivery_note?: string
+  // เลขที่ Invoice — required client-side on GoodsReceiptDetailPage's form,
+  // NOT confirmed accepted/persisted by POST /grn/receive yet. Flag to
+  // backend if it needs to be stored; sent defensively either way.
+  invoice_no?: string
   lines: GRNCreateLine[]
 }
 

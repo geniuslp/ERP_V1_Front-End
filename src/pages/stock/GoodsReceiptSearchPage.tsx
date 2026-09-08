@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Card, Select, Spin, message } from 'antd'
+import { Card, Select, Spin, message, Table } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -14,8 +14,15 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-// Confirmed real contract (internal/handlers/po.go GetReceivablePOs) — no
-// supplier_name field, only supplier_code.
+// ⚠️ Confirmed real contract as of last check (internal/handlers/po.go
+// GetReceivablePOs) — no supplier_name/net_amount/project_name fields, only
+// supplier_code. GET /po/search (GoodsReceiptHandler.SearchApprovedPO, a
+// different endpoint backing the separate/unrouted GoodsReceiptPage.tsx) was
+// confirmed to have added these three fields, but this page calls
+// GET /po/receivable, not /po/search — that addition does NOT necessarily
+// apply here. Flag to backend: GetReceivablePOs needs the same three fields
+// added before this table can show real data. Kept optional so the table
+// below picks them up automatically the moment backend adds them here too.
 interface EligiblePO {
   po_id: number
   po_no: string
@@ -23,6 +30,9 @@ interface EligiblePO {
   supplier_code: string
   status: string
   status_receive: string
+  supplier_name?: string
+  net_amount?: number
+  project_name?: string
 }
 
 // GET /po/receivable?search=&page=&page_size= — backend-filtered to
@@ -86,9 +96,9 @@ const GoodsReceiptSearchPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="รับเข้า"
+        title="รับสินค้าจากใบสั่งซื้อ PO"
         subtitle="เลือก PO ที่อนุมัติแล้วและยังรับสินค้าไม่ครบ เพื่อบันทึกรับเข้าสินค้า"
-        breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: 'รับเข้า' }]}
+        breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: 'รับสินค้าจากใบสั่งซื้อ PO' }]}
       />
 
       <Card style={cardStyle}>
@@ -126,6 +136,40 @@ const GoodsReceiptSearchPage: React.FC = () => {
               </span>
             </div>
           )}
+        />
+
+        <Table<EligiblePO>
+          style={{ marginTop: 20 }}
+          rowKey="po_id"
+          loading={fetching}
+          dataSource={options}
+          pagination={false}
+          locale={{ emptyText: 'ไม่พบ PO ที่รอรับเข้า' }}
+          onRow={(po) => ({
+            onClick: () => navigate(`/stock/receiving/${po.po_id}`),
+            style: { cursor: 'pointer' },
+          })}
+          columns={[
+            { title: 'PO No', dataIndex: 'po_no', key: 'po_no' },
+            {
+              title: 'ชื่อร้านค้า',
+              dataIndex: 'supplier_name',
+              key: 'supplier_name',
+              render: (v?: string | null) => v || '-',
+            },
+            {
+              title: 'Amount',
+              dataIndex: 'net_amount',
+              key: 'net_amount',
+              render: (v?: number | null) => (v != null ? v.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'),
+            },
+            {
+              title: 'ชื่อโครงการ',
+              dataIndex: 'project_name',
+              key: 'project_name',
+              render: (v?: string | null) => v || '-',
+            },
+          ]}
         />
       </Card>
     </div>

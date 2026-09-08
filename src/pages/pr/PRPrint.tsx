@@ -18,12 +18,13 @@ export interface PRItem {
   // same way PRItemsTable/PRDetailPage already do:
   // `${cost_code}${cost_subgroup_name ? ` — ${cost_subgroup_name}` : ''}`
   costCode?: string
+  // No longer rendered in the print table (Mat Code column removed) — kept
+  // on the data shape since callers still pass it, just unused here.
   matCode?: string
   desc: string
-  // Item spec/specification text — shown as a second line under the
-  // description in the print table. Source: PR line's `spec_name` field
-  // (see types/pr.ts PRLine.spec_name) — NOT currently wired through by
-  // PRDetailPage.tsx's handlePrint, which this file was told not to touch.
+  // Spec description, appended inline after `desc` as "desc — spec".
+  // Source: PR line's `spec_name` field (see types/pr.ts PRLine.spec_name),
+  // wired through by PRDetailPage.tsx's handlePrint.
   spec?: string
   qty: number
   unit: string
@@ -146,19 +147,19 @@ const AUTH_COLS = [
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
-    <td /><td /><td /><td /><td /><td /><td />
+    <td /><td /><td /><td /><td /><td />
   </tr>
 )
 
 const TABLE_COLS = (
   <colgroup>
-    <col style={{ width: '11mm' }} /><col style={{ width: '28mm' }} /><col style={{ width: '24mm' }} />
+    <col style={{ width: '11mm' }} /><col style={{ width: '28mm' }} />
     <col /><col style={{ width: '18mm' }} /><col style={{ width: '16mm' }} /><col style={{ width: '30mm' }} />
   </colgroup>
 )
 const TABLE_HEAD = (
   <thead><tr>
-    {['No', 'Cost Code', 'Mat Code', 'รายละเอียด', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
+    {['No', 'Cost Code', 'รายละเอียด', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
   </tr></thead>
 )
 
@@ -227,10 +228,8 @@ const ItemRow = ({ row }: { row: PRItem }) => (
   <tr>
     <td style={{ textAlign: 'center' }}>{row.no}</td>
     <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeForPrint(row.costCode)}</td>
-    <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap' }}>{row.matCode}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-      {row.desc}
-      {row.spec && <div style={{ color: '#444' }}>{row.spec}</div>}
+      {row.desc}{row.spec ? ` — ${row.spec}` : ''}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>
@@ -327,7 +326,7 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
           <table className="pr-tbl">{TABLE_COLS}
             <thead ref={refThead}>{TABLE_HEAD.props.children}</thead>
             <tbody><tr ref={refRow}>
-              <td>1</td><td>CC-001</td><td>CODE</td><td>Sample desc</td>
+              <td>1</td><td>CC-001</td><td>Sample desc</td>
               <td>10</td><td>เส้น</td><td>—</td>
             </tr></tbody>
           </table>

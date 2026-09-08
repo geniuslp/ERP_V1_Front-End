@@ -63,6 +63,9 @@ const normalizeItem = (r: any): StockItem => ({
   isActive: r.is_active ?? r.isActive,
   createdAt: r.created_at ?? r.createdAt,
   updatedAt: r.updated_at ?? r.updatedAt,
+  // Not present in current API responses — mapped defensively so it starts
+  // flowing through automatically if/when backend adds it.
+  costCode: r.cost_code ?? r.costCode ?? null,
 })
 
 // Mirror of normalizeItem for the request direction — confirmed against the create

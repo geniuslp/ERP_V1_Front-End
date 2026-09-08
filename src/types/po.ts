@@ -86,6 +86,12 @@ export interface POLine {
   cost_subgroup_id?: number | null
   job_code?: string | null
   job_name?: string
+  // Resolved combined Cost Code (subject_code + job_code + group_code + subgroup_code),
+  // e.g. "MP01010" — added to GET /po/:id alongside the existing cost_subgroup_id, same
+  // resolution as PR's cost_code and PO print-data's code field. Null when
+  // cost_subgroup_id is null (no cost code assigned to this line).
+  cost_code?: string | null
+  cost_subgroup_name?: string | null
 }
 
 export interface POAttachment {
@@ -159,6 +165,13 @@ export interface PODetail {
   revision_round?: number
   // purchase_order.order_type — same 'stock'/'cost' domain as PR's order_type.
   order_type?: 'stock' | 'cost'
+  // ⚠️ NOT present on GET /po/:id as of this session — neither project_code
+  // nor project_name is returned, unlike POListItem.project_code (confirmed
+  // on GET /po list). project_name specifically needs a join (project table
+  // has no name on purchase_order itself); flag to backend if the header
+  // project display is wanted here. Kept optional so it renders once added.
+  project_code?: string
+  project_name?: string
   // purchase_order.job_code — header-level "ประเภท Job", shares the 12-code
   // JOB_TYPES constant (constants/jobTypes.ts) with PR's job_code. Replaces
   // the old work_type column (single-letter P/E/S/F/G/H, 6 values, renamed

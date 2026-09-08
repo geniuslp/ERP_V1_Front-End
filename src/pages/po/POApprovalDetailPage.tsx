@@ -244,6 +244,12 @@ const POApprovalDetailPage: React.FC = () => {
       width: 70,
     },
     {
+      title: 'Cost Code',
+      key: 'cost_code',
+      render: (_: unknown, r: POLine) =>
+        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+    },
+    {
       title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
       key: 'mat_code',
@@ -261,16 +267,6 @@ const POApprovalDetailPage: React.FC = () => {
           </div>
         </div>
       ),
-    },
-    {
-      title: 'Cost Code',
-      key: 'cost_code',
-      render: (_: unknown, r: POLine) =>
-        r.cost_subgroup_id ? (
-          <span>{[r.job_name || r.job_code, r.subgroup_name].filter(Boolean).join(' — ')}</span>
-        ) : (
-          <span style={{ color: '#9ca3af' }}>—</span>
-        ),
     },
     {
       title: 'Spec / Brand',
@@ -461,6 +457,7 @@ const POApprovalDetailPage: React.FC = () => {
             )}
           </Descriptions.Item>
           <Descriptions.Item label="วันที่">{po.po_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="โครงการ">{po.project_name || '-'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             <POStatusBadges status={po.status} statusReceive={po.status_receive} />
           </Descriptions.Item>

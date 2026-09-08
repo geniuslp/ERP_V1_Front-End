@@ -98,27 +98,30 @@ const ProjectListPage: React.FC = () => {
       title: 'รหัสโครงการ',
       dataIndex: 'projectCode',
       key: 'projectCode',
+      width: '10%',
       render: (code: string, record: Project) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/master/projects/${record.id}/edit`)}>
           {code}
         </a>
       ),
     },
-    { title: 'ชื่อโครงการ', dataIndex: 'projectName', key: 'projectName', ellipsis: true },
+    { title: 'ชื่อโครงการ', dataIndex: 'projectName', key: 'projectName', width: '30%', ellipsis: true },
     {
       // Now backed by the required free-text responsible_person_name field
       // (the owner_id/users dropdown it replaces is deprecated server-side).
       title: 'ผู้รับผิดชอบหลัก',
       dataIndex: 'responsiblePersonName',
       key: 'responsiblePersonName',
+      width: '15%',
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'มูลค่าโครงการ',
       dataIndex: 'budgetAmount',
       key: 'budgetAmount',
+      width: '7%',
       align: 'right' as const,
-      render: (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+      render: (val: number) => `${(val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'ระยะเวลา',
@@ -129,12 +132,6 @@ const ProjectListPage: React.FC = () => {
         const end   = record.endDate   ? dayjs(record.endDate).format('DD/MM/YY')   : '—'
         return `${start} - ${end}`
       },
-    },
-    {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      render: (val: ProjectStatus) => <Tag color={statusColor[val]}>{statusLabel[val]}</Tag>,
     },
     {
       title: 'จัดการ',
@@ -152,6 +149,13 @@ const ProjectListPage: React.FC = () => {
           </Popconfirm>
         </Space>
       ),
+    },
+    {
+      title: 'สถานะ',
+      dataIndex: 'status',
+      key: 'status',
+      align: 'right' as const,
+      render: (val: ProjectStatus) => <Tag color={statusColor[val]}>{statusLabel[val]}</Tag>,
     },
   ]
 

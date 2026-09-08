@@ -35,6 +35,12 @@ interface ApiStockItem {
   is_active: boolean
   created_at: string
   updated_at: string
+  // ⚠️ NOT currently returned by GET /stock/items — cost coding lives on
+  // transaction lines (PR/PO), not on the material/stock-item master record,
+  // so there is no existing backend field to map this from. Kept optional so
+  // the column renders "-" today and picks the value up for free the moment
+  // backend adds a cost_code (or similar) field to this endpoint's response.
+  cost_code?: string | null
 }
 
 const { useBreakpoint } = Grid
@@ -58,7 +64,6 @@ const StockItemListPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [itemType, setItemType] = useState<ApiItemType | undefined>()
-  const [isActive, setIsActive] = useState<boolean | undefined>()
 
   const [scanModal, setScanModal] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -121,7 +126,7 @@ const StockItemListPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/stock/items`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { search: search || undefined, item_type: itemType, is_active: isActive, page_size: 100 },
+        params: { search: search || undefined, item_type: itemType, page_size: 100 },
       })
       const body = res.data?.data
       const raw = Array.isArray(res.data) ? res.data : Array.isArray(body) ? body : body?.data
@@ -167,7 +172,6 @@ const StockItemListPage: React.FC = () => {
   const handleReset = () => {
     setSearch('')
     setItemType(undefined)
-    setIsActive(undefined)
   }
 
   const stopScanner = async () => {
@@ -257,54 +261,49 @@ const StockItemListPage: React.FC = () => {
     }
   }, [scanModal])
 
-  useEffect(() => { fetchData() }, [search, itemType, isActive])
+  useEffect(() => { fetchData() }, [search, itemType])
 
   const columns = [
     {
-      title: 'Item Code',
+      title: 'Cost Code',
+      dataIndex: 'cost_code',
+      key: 'cost_code',
+      width: 130,
+      align: 'center' as const,
+      render: (val: string | null | undefined) => val || '-',
+    },
+    {
+      title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
       key: 'mat_code',
+      align: 'center' as const,
       render: (code: string, record: ApiStockItem) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/stock/items/${record.id}/edit`)}>
           {code}
         </a>
       ),
     },
-    { title: 'Item Name', dataIndex: 'item_name', key: 'item_name', ellipsis: true },
+    { title: 'รายละเอียด', dataIndex: 'item_name', key: 'item_name', ellipsis: true, align: 'center' as const },
     {
-      title: 'Category',
-      dataIndex: 'category_name',
-      key: 'category_name',
-      render: (val?: string | null) => val || <span style={{ color: '#9ca3af' }}>—</span>,
-    },
-    {
-      title: 'Type',
-      dataIndex: 'item_type',
-      key: 'item_type',
-      render: (val: ApiItemType) => (
-        <Tag color={val === 'RETURNABLE' ? 'blue' : 'orange'}>
-          {val === 'RETURNABLE' ? 'Returnable' : 'Consumable'}
-        </Tag>
-      ),
-    },
-    { title: 'Unit', dataIndex: 'unit', key: 'unit' },
-    {
-      title: 'Qty',
+      title: 'คงเหลือ',
       dataIndex: 'qty',
       key: 'qty',
-      align: 'right' as const,
+      align: 'center' as const,
       render: (val: number) => val?.toLocaleString(),
     },
+    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 100, align: 'center' as const },
     {
-      title: 'Status',
-      dataIndex: 'is_active',
-      key: 'is_active',
-      render: (val: boolean) => <Tag color={val ? 'green' : 'default'}>{val ? 'Active' : 'Inactive'}</Tag>,
+      title: 'ราคา',
+      dataIndex: 'unit_cost',
+      key: 'unit_cost',
+      align: 'center' as const,
+      render: (val: number) => val?.toLocaleString(undefined, { minimumFractionDigits: 2 }),
     },
     {
       title: 'Actions',
       key: 'actions',
       width: 130,
+      align: 'center' as const,
       render: (_: any, record: ApiStockItem) => (
         <Space>
           <Tooltip title="Edit">
@@ -374,17 +373,6 @@ const StockItemListPage: React.FC = () => {
             options={[
               { value: 'RETURNABLE', label: 'Returnable' },
               { value: 'CONSUMABLE', label: 'Consumable' },
-            ]}
-          />
-          <Select
-            placeholder="Status"
-            value={isActive}
-            onChange={setIsActive}
-            allowClear
-            style={isMobile ? { width: '100%' } : { width: 130 }}
-            options={[
-              { value: true, label: 'Active' },
-              { value: false, label: 'Inactive' },
             ]}
           />
           <Button type="primary" block={isMobile} icon={<SearchOutlined />} onClick={fetchData}>Search</Button>

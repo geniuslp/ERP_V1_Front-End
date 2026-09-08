@@ -306,7 +306,7 @@ const PRDetailPage: React.FC = () => {
       status: pr.status,
       items: pr.lines.map((l) => ({
         no: String(l.lineNo),
-        costCode: l.costCode ? `${l.costCode}${l.costSubgroupName ? ` — ${l.costSubgroupName}` : ''}` : '',
+        costCode: l.costCode ?? '',
         matCode: l.matCode,
         desc: l.matName ?? '',
         spec: l.specName ?? '',
@@ -317,19 +317,14 @@ const PRDetailPage: React.FC = () => {
     })
   }
 
-  // whether any line has a cost code assigned — hides the column entirely on older PRs
-  const hasCostCode = pr?.lines.some((l) => l.costCode || l.costSubgroupName) ?? false
-
   const lineColumns = [
     { title: 'No.', dataIndex: 'lineNo', key: 'lineNo', width: 60, align: 'center' as const },
-    ...(hasCostCode
-      ? [{
-          title: 'Cost Code', key: 'costCode', width: 180,
-          render: (_: unknown, r: PRLineItem) => r.costCode
-            ? <Text code>{r.costCode}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
-            : <Text type="secondary">—</Text>,
-        }]
-      : []),
+    {
+      title: 'Cost Code', key: 'costCode', width: 180,
+      render: (_: unknown, r: PRLineItem) => r.costCode
+        ? <Text code>{r.costCode}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
+        : <Text type="secondary">-</Text>,
+    },
     { title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130 },
     {
       title: 'รายการ', key: 'matName',

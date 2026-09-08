@@ -115,6 +115,25 @@ const TD: React.CSSProperties = {
 
 const { Text } = Typography
 
+// Thai-first sort: group Thai-named suppliers before Latin-named ones, each
+// group sorted alphabetically within itself. A plain Intl.Collator('th') on
+// mixed Thai/Latin input doesn't guarantee this grouping — ICU's 'th'
+// tailoring only reorders Thai characters relative to each other and falls
+// back to root collation (Latin-first) for everything else — so the Thai/
+// Latin split is done explicitly here, with each group then sorted by its
+// own locale-aware collator.
+const isThaiText = (s: string) => /^[฀-๿]/.test(s.trim())
+const thaiCollator = new Intl.Collator('th')
+const latinCollator = new Intl.Collator('en')
+const compareSupplierName = (a: string, b: string) => {
+  const aName = a ?? ''
+  const bName = b ?? ''
+  const aThai = isThaiText(aName)
+  const bThai = isThaiText(bName)
+  if (aThai !== bThai) return aThai ? -1 : 1
+  return aThai ? thaiCollator.compare(aName, bName) : latinCollator.compare(aName, bName)
+}
+
 const toBoolean = (v: string) =>
   v === '' || v.toLowerCase() === 'true' || v === '1' || v === 'ใช้งาน'
 
@@ -190,7 +209,8 @@ const SupplierPage: React.FC = () => {
         params: search ? { supplier_name: search } : undefined,
       })
       const list: Supplier[] = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setData(list.map((r) => ({ ...r, key: r.id })))
+      const sorted = [...list].sort((a, b) => compareSupplierName(a.supplier_name, b.supplier_name))
+      setData(sorted.map((r) => ({ ...r, key: r.id })))
       setCurrentPage(1)
     } catch (err: any) {
       message.error(
@@ -557,9 +577,6 @@ const SupplierPage: React.FC = () => {
       <Form.Item name="address" label="ที่อยู่">
         <Input.TextArea rows={3} placeholder="ที่อยู่" />
       </Form.Item>
-      <Form.Item name="contact_phone" label="เบอร์โทรผู้ติดต่อ">
-        <Input placeholder="0XX-XXX-XXXX" />
-      </Form.Item>
       <Form.Item name="contact_email" label="อีเมล">
         <Input placeholder="email@example.com" />
       </Form.Item>
@@ -573,7 +590,7 @@ const SupplierPage: React.FC = () => {
           </Form.Item>
         </Col>
         <Col span={12}>
-          <Form.Item name="sales_person_phone" label="Tel">
+          <Form.Item name="sales_person_phone" label="เบอร์ติดต่อ">
             <Input placeholder="0XX-XXX-XXXX" style={{ borderRadius: 8 }} />
           </Form.Item>
         </Col>
@@ -862,7 +879,7 @@ const SupplierPage: React.FC = () => {
         (currentPage - 1) * pageSize + index + 1,
     },
     {
-      title: <div style={{ textAlign: 'center' }}>ชื่อผู้ขาย</div>,
+      title: <div style={{ textAlign: 'center' }}>ชื่อบริษัท</div>,
       dataIndex: 'supplier_name',
       width: 180,
       render: (v: string) => (
@@ -871,7 +888,7 @@ const SupplierPage: React.FC = () => {
         </div>
       ),
     },
-    { title: 'ผู้ติดต่อ', dataIndex: 'contact_name', width: 140 },
+    { title: 'ผู้ติดต่อ', dataIndex: 'sales_person', width: 140 },
     { title: 'เบอร์โทร', dataIndex: 'contact_phone', width: 120 },
     { title: 'อีเมล', dataIndex: 'contact_email', width: 180, ellipsis: true },
     {

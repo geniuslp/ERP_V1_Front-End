@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin, Select } from 'antd'
+import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin } from 'antd'
 import { InboxOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -34,13 +34,8 @@ const GoodsReceiptDetailPage: React.FC = () => {
   const [lines, setLines] = useState<ReceiptLine[]>([])
   const [saving, setSaving] = useState(false)
 
-  // Physical warehouse being received into — independent of (never defaulted
-  // from) the PO's own location_text, which is shown alongside purely as
-  // reference text. See task: no auto-defaulting, to avoid assuming intent.
-  const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
-  const [warehousesLoading, setWarehousesLoading] = useState(false)
-  const [warehouseCode, setWarehouseCode] = useState<string | undefined>(undefined)
-  const [warehouseError, setWarehouseError] = useState<string | undefined>(undefined)
+  const [invoiceNo, setInvoiceNo] = useState('')
+  const [invoiceError, setInvoiceError] = useState<string | undefined>(undefined)
 
   const [scoreModalOpen, setScoreModalOpen] = useState(false)
   const [scoreGrnId, setScoreGrnId] = useState<number | null>(null)
@@ -85,28 +80,6 @@ const GoodsReceiptDetailPage: React.FC = () => {
     return () => { cancelled = true }
   }, [poId, accessToken])
 
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      setWarehousesLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setWarehouses(list.map((w: any) => ({
-          value: w.warehouse_code ?? w.code,
-          label: w.warehouse_name ?? w.name ?? w.warehouse_code ?? w.code,
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดรายชื่อคลังไม่สำเร็จ')
-      } finally {
-        setWarehousesLoading(false)
-      }
-    }
-    fetchWarehouses()
-  }, [accessToken])
-
   const setLineAddQty = (poLineId: number, val: number | null) => {
     setLines((prev) => prev.map((l) => (l.po_line_id === poLineId ? { ...l, add_qty: val ?? 0 } : l)))
   }
@@ -114,15 +87,12 @@ const GoodsReceiptDetailPage: React.FC = () => {
   const handleSave = async () => {
     if (!po) return
 
-    // The physical receiving warehouse is required and independent of the
-    // PO's own location_text (shown as reference only, never used to
-    // pre-select this) — block submit with an inline error if unset.
-    if (!warehouseCode) {
-      setWarehouseError('กรุณาเลือกคลังที่รับเข้า')
-      message.warning('กรุณาเลือกคลังที่รับเข้า')
+    if (!invoiceNo.trim()) {
+      setInvoiceError('กรุณากรอกเลขที่ Invoice')
+      message.warning('กรุณากรอกเลขที่ Invoice')
       return
     }
-    setWarehouseError(undefined)
+    setInvoiceError(undefined)
 
     if (lines.some((l) => l.add_qty < 0)) {
       message.warning('จำนวนที่รับเข้าต้องไม่ติดลบ')
@@ -143,12 +113,11 @@ const GoodsReceiptDetailPage: React.FC = () => {
         `${BASE_URL}/grn/receive`,
         {
           po_id: po.po_id,
-          // The user-selected physical warehouse, not po.warehouse_code —
-          // purchase_order.warehouse_code/location_text are never touched by
-          // this endpoint and are purely informational reference here.
-          warehouse_code: warehouseCode,
+          // No warehouse_code sent — backend resolves the receiving
+          // warehouse from the PO's own warehouse_code directly.
           // supplier_id removed — backend now derives it server-side from
           // the PO and no longer accepts/needs it in this request.
+          invoice_no: invoiceNo.trim(),
           lines: receivingLines,
         },
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -197,6 +166,12 @@ const GoodsReceiptDetailPage: React.FC = () => {
   }
 
   const columns = [
+    {
+      title: 'Cost Code',
+      dataIndex: 'cost_code',
+      key: 'cost_code',
+      render: (val: string | null | undefined) => val || '-',
+    },
     { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
     { title: 'ชื่อวัสดุ', dataIndex: 'mat_name', key: 'mat_name', ellipsis: true },
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qty_ordered', key: 'qty_ordered', align: 'right' as const },
@@ -234,12 +209,12 @@ const GoodsReceiptDetailPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="บันทึกรับเข้า"
+        title="บันทึกรับเข้าสินค้าจากใบสั่งซื้อ PO"
         subtitle={po ? `PO: ${po.po_no}` : undefined}
         breadcrumbs={[
           { title: 'Home' },
           { title: 'Stock Management' },
-          { title: 'รับเข้า' },
+          { title: 'รับสินค้าจากใบสั่งซื้อ PO' },
           { title: po?.po_no || '...' },
         ]}
         extra={
@@ -276,6 +251,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
               <Descriptions.Item key="supplier" label="Supplier">{po.supplier_name || '—'}</Descriptions.Item>
               <Descriptions.Item key="warehouse_code" label="คลัง (ตาม PO)">{po.warehouse_code || '—'}</Descriptions.Item>
               <Descriptions.Item key="location_text" label="สถานที่ (ตาม PO)">{po.location_text || '—'}</Descriptions.Item>
+              <Descriptions.Item key="project_code" label="รหัส Project">{po.project_code || '-'}</Descriptions.Item>
               <Descriptions.Item key="status" label="สถานะ PO">{po.status}</Descriptions.Item>
               <Descriptions.Item key="currency" label="สกุลเงิน">{po.currency}</Descriptions.Item>
               <Descriptions.Item key="net_amount" label="มูลค่าสุทธิ">{(po.net_amount ?? 0).toLocaleString()}</Descriptions.Item>
@@ -284,27 +260,20 @@ const GoodsReceiptDetailPage: React.FC = () => {
 
           <Card style={{ ...cardStyle, marginBottom: 20 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>
-              คลังที่รับเข้าจริง <span style={{ color: '#ff4d4f' }}>*</span>
+              เลขที่ Invoice <span style={{ color: '#ff4d4f' }}>*</span>
             </div>
-            <Select
-              placeholder="— เลือกคลังที่รับเข้า —"
+            <Input
+              placeholder="เลขที่ Invoice"
               style={{ width: 280 }}
-              status={warehouseError ? 'error' : undefined}
-              loading={warehousesLoading}
-              value={warehouseCode}
-              onChange={(v) => {
-                setWarehouseCode(v)
-                setWarehouseError(undefined)
+              status={invoiceError ? 'error' : undefined}
+              value={invoiceNo}
+              onChange={(e) => {
+                setInvoiceNo(e.target.value)
+                setInvoiceError(undefined)
               }}
-              options={warehouses}
             />
-            {warehouseError && (
-              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>{warehouseError}</div>
-            )}
-            {po.location_text && (
-              <div style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
-                ตามใบสั่งซื้อ: {po.location_text}
-              </div>
+            {invoiceError && (
+              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>{invoiceError}</div>
             )}
           </Card>
 
@@ -327,7 +296,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
                 onClick={handleSave}
                 style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}
               >
-                บันทึกรับเข้า
+                บันทึกรับเข้าสินค้าจากใบสั่งซื้อ PO
               </PermissionButton>
             </div>
           </Card>
