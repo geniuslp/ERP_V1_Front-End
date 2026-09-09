@@ -67,11 +67,19 @@ const { Text, Title } = Typography
 // endpoint; the file is never uploaded raw, only the parsed+validated rows
 // are POSTed as JSON to a /bulk endpoint) ──────────────────────────────
 // Matches the backend-generated template's real header exactly (confirmed
-// against GET /master/projects/import/template) — singular "job_code", and
-// no "status" column since is_active always defaults to true on import.
+// against GET /master/projects/import/template) — no "dept_code" column
+// exists in the file; the job-code header is "job Code" (space + capital C),
+// not "job_code"; and no "status" column since is_active always defaults to
+// true on import. "Project location_code", "consultant_name" and
+// "consultant_phone" are present as columns but not hard-required — the
+// Create/Edit form (ProjectCreateEditPage.tsx) doesn't mark location_code as
+// required and has no consultant_name/consultant_phone fields at all, so
+// these stay optional (checked for header presence only, not in
+// REQUIRED_FIELDS below).
 const FILE_COLS = [
-  'project_code', 'project_name', 'dept_code', 'responsible_person_name',
-  'customer_code', 'job_code', 'budget_amount', 'start_date', 'end_date',
+  'project_code', 'project_name', 'customer_code', 'Project location_code',
+  'start_date', 'end_date', 'budget_amount', 'job Code',
+  'consultant_name', 'consultant_phone', 'responsible_person_name',
 ]
 
 // Template is now generated server-side (GET /master/projects/import/template)
@@ -104,10 +112,12 @@ interface ParsedRow {
   data: {
     project_code: string
     project_name: string
-    dept_code: string
     responsible_person_name: string
     customer_code: string
     customer_id: number | null
+    location_code: string
+    consultant_name: string
+    consultant_phone: string
     job_codes: string[]
     budget_amount: number
     start_date: string
@@ -119,6 +129,11 @@ interface ParsedRow {
 const isBlank = (v: string) => v.trim() === ''
 const REQUIRED_FIELDS = ['project_code', 'project_name', 'responsible_person_name', 'budget_amount'] as const
 
+// Mirrors the backend's same toggle exactly — customer_code / job_code
+// existence checks are disabled system-wide while data is still being
+// migrated/cleaned up, without deleting the check logic itself.
+const ENABLE_IMPORT_EXISTENCE_CHECKS = false // TODO: re-enable once system goes live
+
 const parseRows = (
   rows: Record<string, string>[],
   customers: CustomerRaw[],
@@ -126,13 +141,24 @@ const parseRows = (
   validJobCodes: string[],
 ): ParsedRow[] =>
   rows.map((cols, i) => {
-    const get = (f: string) => String(cols[f] ?? '').trim()
+    // Header cells can carry stray leading/trailing whitespace (e.g. the real
+    // template's budget_amount header is " budget_amount ") — the
+    // header-presence check tolerates this by trimming both sides, but a
+    // direct cols[f] lookup would not, since sheet_to_json keys each row by
+    // the literal (untrimmed) header string. Normalize once per row so every
+    // field read via get() is whitespace-tolerant, not just budget_amount.
+    const normalizedCols: Record<string, string> = {}
+    for (const key of Object.keys(cols)) normalizedCols[key.trim()] = cols[key]
+    const get = (f: string) => String(normalizedCols[f] ?? '').trim()
     const project_code = get('project_code')
     const project_name = get('project_name')
-    const dept_code = get('dept_code')
     const responsible_person_name = get('responsible_person_name')
     const customer_code = get('customer_code')
-    const job_codes_raw = get('job_code')
+    const location_code = get('Project location_code')
+    const consultant_name = get('consultant_name')
+    const consultant_phone = get('consultant_phone')
+    // Header is "job Code" (space + capital C), not "job_code" — see FILE_COLS comment.
+    const job_codes_raw = get('job Code')
     const budget_amount_raw = get('budget_amount')
     const start_date = get('start_date')
     const end_date = get('end_date')
@@ -141,11 +167,14 @@ const parseRows = (
     const status = 'ACTIVE'
 
     const cust = customer_code ? customers.find((c) => c.customer_code === customer_code) : undefined
-    const job_codes = job_codes_raw ? job_codes_raw.split(',').map((s) => s.trim()).filter(Boolean) : []
+    // Cell values like "MP / ME / MS / MG / OH" use "/" as the separator, not
+    // "," — split on either, matching the backend's same tolerant split.
+    const job_codes = job_codes_raw ? job_codes_raw.split(/[,/]/).map((s) => s.trim()).filter(Boolean) : []
 
     const data = {
-      project_code, project_name, dept_code, responsible_person_name,
+      project_code, project_name, responsible_person_name,
       customer_code, customer_id: cust?.cus_id ?? null,
+      location_code, consultant_name, consultant_phone,
       job_codes,
       budget_amount: Number(budget_amount_raw) || 0,
       start_date, end_date, status,
@@ -155,15 +184,14 @@ const parseRows = (
     if (missing.length > 0)
       return { row: i + 2, valid: false, error: `ข้อมูลไม่ครบในฟิลด์: ${missing.join(', ')}`, data }
 
-    if (customer_code && !cust)
+    if (ENABLE_IMPORT_EXISTENCE_CHECKS && customer_code && !cust)
       return { row: i + 2, valid: false, error: `ไม่พบลูกค้ารหัส "${customer_code}"`, data }
 
-    if (dept_code && !validDeptCodes.includes(dept_code))
-      return { row: i + 2, valid: false, error: `ไม่พบแผนกรหัส "${dept_code}"`, data }
-
-    const invalidJobCodes = job_codes.filter((jc) => !validJobCodes.includes(jc))
-    if (invalidJobCodes.length > 0)
-      return { row: i + 2, valid: false, error: `ประเภทงานไม่ถูกต้อง: ${invalidJobCodes.join(', ')}`, data }
+    if (ENABLE_IMPORT_EXISTENCE_CHECKS) {
+      const invalidJobCodes = job_codes.filter((jc) => !validJobCodes.includes(jc))
+      if (invalidJobCodes.length > 0)
+        return { row: i + 2, valid: false, error: `ประเภทงานไม่ถูกต้อง: ${invalidJobCodes.join(', ')}`, data }
+    }
 
     return { row: i + 2, valid: true, data }
   })
@@ -186,7 +214,8 @@ const readFileAsRows = (
         const json: Record<string, string>[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
         if (json.length === 0) { resolve([]); return }
         const presentCols = Object.keys(json[0])
-        const missing = FILE_COLS.filter((col) => !presentCols.includes(col))
+        const trimmedPresentCols = presentCols.map((c) => c.trim())
+        const missing = FILE_COLS.filter((col) => !trimmedPresentCols.includes(col.trim()))
         if (missing.length > 0) {
           const err = new Error(missing.join(','))
           err.name = MISSING_COLS_ERROR
@@ -585,22 +614,16 @@ const ProjectListPage: React.FC = () => {
                     ),
                   },
                   {
-                    title: 'แผนก / ประเภทงาน', key: 'deptJob', width: 180,
+                    title: 'ประเภทงาน', key: 'job', width: 180,
                     render: (_: unknown, r: ParsedRow) => {
-                      const deptBad = !!r.data.dept_code && !deptCodes.includes(r.data.dept_code)
-                      const badJobCodes = r.data.job_codes.filter((jc) => !validJobCodes.includes(jc))
-                      return (
-                        <div style={{ fontSize: 12 }}>
-                          {r.data.dept_code
-                            ? <span style={{ color: deptBad ? '#f87171' : undefined }}>{r.data.dept_code}{deptBad ? ' (ไม่พบ)' : ''}</span>
-                            : '—'}
-                          {r.data.job_codes.length > 0 && (
-                            <div style={{ color: badJobCodes.length > 0 ? '#f87171' : undefined }}>
-                              {r.data.job_codes.join(', ')}{badJobCodes.length > 0 ? ` (ไม่ถูกต้อง: ${badJobCodes.join(', ')})` : ''}
-                            </div>
-                          )}
+                      const badJobCodes = ENABLE_IMPORT_EXISTENCE_CHECKS
+                        ? r.data.job_codes.filter((jc) => !validJobCodes.includes(jc))
+                        : []
+                      return r.data.job_codes.length > 0 ? (
+                        <div style={{ fontSize: 12, color: badJobCodes.length > 0 ? '#f87171' : undefined }}>
+                          {r.data.job_codes.join(', ')}{badJobCodes.length > 0 ? ` (ไม่ถูกต้อง: ${badJobCodes.join(', ')})` : ''}
                         </div>
-                      )
+                      ) : <span style={{ fontSize: 12 }}>—</span>
                     },
                   },
                   {
@@ -608,7 +631,9 @@ const ProjectListPage: React.FC = () => {
                     render: (_: unknown, r: ParsedRow) => (
                       <div style={{ fontSize: 12 }}>
                         {r.data.customer_code
-                          ? (r.data.customer_id ? r.data.customer_code : <span style={{ color: '#f87171' }}>{r.data.customer_code} (ไม่พบ)</span>)
+                          ? (r.data.customer_id || !ENABLE_IMPORT_EXISTENCE_CHECKS
+                              ? r.data.customer_code
+                              : <span style={{ color: '#f87171' }}>{r.data.customer_code} (ไม่พบ)</span>)
                           : '—'}
                       </div>
                     ),

@@ -144,7 +144,17 @@ const ProjectCreateEditPage: React.FC = () => {
       }
       navigate('/master/projects')
     } catch (err: any) {
-      message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
+      if (err?.response?.status === 409) {
+        // project_code cannot be changed while other documents (PO/requisition/
+        // petty cash) still reference it — backend sends either a generic
+        // fallback message or an itemized one (e.g. "2 purchase orders, 1
+        // requisition"); show whichever comes back verbatim, same
+        // field-level-error pattern CustomerPage.tsx uses for its own 409.
+        const conflictMessage = err?.response?.data?.message || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
+        form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
+      } else {
+        message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -172,7 +182,7 @@ const ProjectCreateEditPage: React.FC = () => {
                 name="project_code"
                 rules={[{ required: true, message: 'กรุณากรอกรหัสโครงการ' }]}
               >
-                <Input disabled={isEdit} placeholder="เช่น XM-400" />
+                <Input placeholder="เช่น XM-400" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
