@@ -55,12 +55,11 @@ interface LocalParsedRow {
 
 type MergedPreviewRow = BulkPreviewRow & { unit?: string; qty?: string; unitCost?: string }
 
-// Collapsed to a 2-way ok/code_not_found distinction on the frontend —
-// name_mismatch is dropped entirely; the user now visually compares "Item
-// Name" (file) against "วัสดุและ Spec" (database) themselves instead of the
-// system pre-judging a match. If the backend's `status` field still returns
-// a 3-way value including 'name_mismatch', it's ignored here — `code_found`
-// (a plain boolean, always 2-way) is the only thing driving this tag.
+// Backend's PreviewImportExcel response is now a 2-way ok/code_not_found
+// distinction only — name_matched/name_mismatch are no longer returned at
+// all. The user visually compares "รายละเอียด (จากไฟล์)" (file) against
+// "วัสดุและ Spec" (database) themselves instead of the system pre-judging a
+// match. `code_found` (a plain boolean) is what drives this tag.
 const statusTag = (codeFound: boolean) =>
   codeFound ? <Tag color="success">พร้อมนำเข้า</Tag> : <Tag color="error">ไม่พบรหัสวัสดุ</Tag>
 
@@ -253,7 +252,7 @@ const StockListPage: React.FC = () => {
         if (notFound.length > 0) {
           console.log(
             `[Import Preview] ${notFound.length} mat_code(s) not found in material_code:`,
-            notFound.map((r) => ({ row_no: r.row_no, mat_code: r.mat_code, file_name: r.file_name })),
+            notFound.map((r) => ({ row_no: r.row_no, mat_code: r.mat_code, description_store: r.description_store })),
           )
         }
       } catch (err: any) {
@@ -326,7 +325,14 @@ const StockListPage: React.FC = () => {
       title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 140, align: 'center' as const,
       render: (v: string) => <Text style={{ color: '#2563eb', fontWeight: 600 }}>{v}</Text>,
     },
-    { title: 'รายละเอียด', dataIndex: 'itemName', key: 'itemName', align: 'center' as const },
+    {
+      title: 'รายละเอียด', dataIndex: 'description', key: 'description', align: 'center' as const,
+      render: (v: string | undefined) => v || '-',
+    },
+    {
+      title: 'รายละเอียดคลัง', dataIndex: 'descriptionStore', key: 'descriptionStore', align: 'center' as const,
+      render: (v: string | null | undefined) => v || '-',
+    },
     { title: 'คงเหลือ', dataIndex: 'qty', key: 'qty', width: 110, align: 'center' as const },
     { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 100, align: 'center' as const },
     {
@@ -526,10 +532,11 @@ const StockListPage: React.FC = () => {
                   render: (v: string) => v || <Text type="danger">—</Text>,
                 },
                 {
-                  // Purely from the file, independent of any database match —
-                  // sits next to "วัสดุและ Spec" so the user can visually
-                  // compare the two instead of the system pre-judging a match.
-                  title: 'Item Name', dataIndex: 'file_name', key: 'file_name', ellipsis: true,
+                  // Purely from the file (raw Excel DESCRIPTION cell text),
+                  // independent of any database match — sits next to "วัสดุและ
+                  // Spec" so the user can visually compare the two instead of
+                  // the system pre-judging a match.
+                  title: 'รายละเอียด (จากไฟล์)', dataIndex: 'description_store', key: 'description_store', ellipsis: true,
                   render: (v: string) => v || <Text type="danger">—</Text>,
                 },
                 {
@@ -537,7 +544,7 @@ const StockListPage: React.FC = () => {
                   render: (_: unknown, r: MergedPreviewRow) => {
                     // This column represents DATABASE data only — show master
                     // name+spec when matched, otherwise a plain dash. Never fall
-                    // back to file_name; that belongs to the "Item Name" column.
+                    // back to description_store; that belongs to the "รายละเอียด (จากไฟล์)" column.
                     if (r.code_found && r.master) {
                       const text = [r.master.mat_name, r.master.spec_description].filter(Boolean).join(' — ')
                       return text || <Text type="danger">—</Text>

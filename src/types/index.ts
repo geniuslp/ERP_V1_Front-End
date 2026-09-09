@@ -263,6 +263,9 @@ export interface StockItem {
   updatedAt: string
   // Not currently returned by GET /stock/items — see StockListPage.tsx / StockItemListPage.tsx.
   costCode?: string | null
+  // Raw Excel DESCRIPTION cell text, distinct from `description` (item spec).
+  // Confirmed by the backend as now part of GET /stock/items' response.
+  descriptionStore?: string | null
 }
 
 export interface StockImportRowError {

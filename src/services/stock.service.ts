@@ -66,6 +66,7 @@ const normalizeItem = (r: any): StockItem => ({
   // Not present in current API responses — mapped defensively so it starts
   // flowing through automatically if/when backend adds it.
   costCode: r.cost_code ?? r.costCode ?? null,
+  descriptionStore: r.description_store ?? r.descriptionStore ?? null,
 })
 
 // Mirror of normalizeItem for the request direction — confirmed against the create
@@ -151,18 +152,16 @@ export interface BulkPreviewMaster {
 export interface BulkPreviewRow {
   row_no: number
   mat_code: string
-  file_name: string
+  description_store: string
   code_found: boolean
   master: BulkPreviewMaster | null
-  name_matched: boolean
-  status: 'ok' | 'code_not_found' | 'name_mismatch'
+  status: 'ok' | 'code_not_found'
 }
 
 export interface BulkPreviewSummary {
   total: number
   ok: number
   code_not_found: number
-  name_mismatch: number
 }
 
 export interface BulkPreviewResult {
@@ -289,7 +288,7 @@ export const stockService = {
 
   previewImport: async (token: string, file: File): Promise<BulkPreviewResult> => {
     if (useMock) {
-      return { rows: [], summary: { total: 0, ok: 0, code_not_found: 0, name_mismatch: 0 } }
+      return { rows: [], summary: { total: 0, ok: 0, code_not_found: 0 } }
     }
     const formData = new FormData()
     formData.append(IMPORT_FILE_FIELD, file)
@@ -299,7 +298,7 @@ export const stockService = {
     const r = res.data?.data ?? res.data
     return {
       rows: Array.isArray(r?.rows) ? r.rows : [],
-      summary: r?.summary ?? { total: 0, ok: 0, code_not_found: 0, name_mismatch: 0 },
+      summary: r?.summary ?? { total: 0, ok: 0, code_not_found: 0 },
     }
   },
 

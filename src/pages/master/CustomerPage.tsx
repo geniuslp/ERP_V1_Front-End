@@ -430,7 +430,7 @@ const CustomerPage: React.FC = () => {
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
         <Space style={{ marginBottom: 16 }}>
           <Input
-            placeholder="ค้นหาชื่อ / รหัสลูกค้า"
+            placeholder="ค้นหาชื่อ / รหัส / ผู้ติดต่อ / หมายเหตุลูกค้า"
             allowClear
             prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
             value={searchInput}
