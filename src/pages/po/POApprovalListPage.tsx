@@ -35,13 +35,20 @@ const POApprovalListPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('PENDING_APPROVAL')
   const [search, setSearch] = useState('')
 
+  // The "รออนุมัติ" default view must include PENDING_REAPPROVAL rows too
+  // (POs bounced back and resubmitted) — not just PENDING_APPROVAL. Backend
+  // now supports a comma-separated `status` value on GET /po, so this is a
+  // single call rather than two merged paged calls.
   const fetchList = async () => {
     setLoading(true)
     try {
+      const status = statusFilter === 'PENDING_APPROVAL'
+        ? 'PENDING_APPROVAL,PENDING_REAPPROVAL'
+        : statusFilter || undefined
       const res = await poApprovalService.getList(accessToken, {
-        status: statusFilter || undefined,
+        status,
         page,
-        limit: 20,
+        page_size: 20,
       })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])

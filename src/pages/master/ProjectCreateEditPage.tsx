@@ -7,8 +7,6 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
-import { permissionMatrixService } from '@/services/permissionMatrix.service'
-import type { Department } from '@/types/permission.types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -37,8 +35,6 @@ const ProjectCreateEditPage: React.FC = () => {
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [departmentsLoading, setDepartmentsLoading] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [customersLoading, setCustomersLoading] = useState(false)
   // The old free-text "เจ้าของโครงการ" value (project_owner_name), preserved
@@ -47,17 +43,6 @@ const ProjectCreateEditPage: React.FC = () => {
   // field the user interacts with, while the payload still passes it through
   // unchanged (per backend still accepting/storing it).
   const [legacyProjectOwnerName, setLegacyProjectOwnerName] = useState<string | undefined>()
-
-  // Reuses the same GET /departments source as UsersPage.tsx/PermissionMatrix —
-  // no separate department endpoint for this form.
-  useEffect(() => {
-    if (!accessToken) return
-    setDepartmentsLoading(true)
-    permissionMatrixService.getDepartments(accessToken)
-      .then(setDepartments)
-      .catch(() => message.error('โหลดข้อมูลแผนกไม่สำเร็จ'))
-      .finally(() => setDepartmentsLoading(false))
-  }, [accessToken])
 
   // "เจ้าของโครงการ" dropdown — same source as CustomerPage.tsx (GET /customer),
   // fetched in full (large page_size) like the department/supplier dropdowns
@@ -91,7 +76,7 @@ const ProjectCreateEditPage: React.FC = () => {
         form.setFieldsValue({
           project_code: p.project_code,
           project_name: p.project_name,
-          dept_code: p.dept_code,
+          location_code: p.location_code,
           responsible_person_name: p.responsible_person_name,
           customer_id: p.customer_id ?? undefined,
           job_codes: p.job_codes ?? [],
@@ -123,7 +108,11 @@ const ProjectCreateEditPage: React.FC = () => {
     const payload = {
       project_code:  values.project_code,
       project_name:  values.project_name,
-      dept_code:     values.dept_code ?? undefined,
+      // "ที่อยู่โครงการ" — location_code is now a free-text project address
+      // (no longer validated/joined against the location master), per the
+      // backend's Create/Update Swagger description. Same field/column as
+      // before, just relabeled/re-typed on the frontend.
+      location_code: values.location_code || undefined,
       // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
       responsible_person_name: values.responsible_person_name,
       // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
@@ -196,19 +185,13 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* Reuses GET /departments (permissionMatrixService.getDepartments) — the same
-                  source UsersPage.tsx/PermissionMatrix already use, no new endpoint. */}
-              <Form.Item label="แผนก" name="dept_code">
-                <Select
-                  placeholder="— เลือกแผนก —"
-                  loading={departmentsLoading}
-                  showSearch
-                  allowClear
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
-                />
+              {/* location_code repurposed as free-text project address per the
+                  backend's Create/Update Swagger description — no longer
+                  validated/joined against the location master. Same field,
+                  just relabeled/re-typed here (was never a Select in this
+                  form to begin with). */}
+              <Form.Item label="ที่อยู่โครงการ" name="location_code">
+                <Input.TextArea rows={2} placeholder="ที่อยู่โครงการ" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>

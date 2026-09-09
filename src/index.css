@@ -38,6 +38,13 @@ body {
   background: #ffe0de !important;
 }
 
+/* GRN receiving checklist — unchecked lines are grayed out and excluded
+   from the submitted request; the dimming is purely visual. */
+.grn-line-unchecked > td {
+  background: #fafafa !important;
+  color: #9ca3af;
+}
+
 /* Saved-attachment filename links (PO/PR/Memo) — click opens/downloads the file */
 .attachment-filename-link {
   text-decoration: none;

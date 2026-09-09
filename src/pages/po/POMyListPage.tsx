@@ -27,7 +27,7 @@ const POMyListPage: React.FC = () => {
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
     try {
-      const res = await poApprovalService.getList(accessToken, { page: p, limit: l, my: true })
+      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, my: true })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)

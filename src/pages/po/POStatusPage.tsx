@@ -42,7 +42,7 @@ const POStatusPage: React.FC = () => {
     try {
       const res = await poApprovalService.getList(accessToken, {
         page: p,
-        limit: l,
+        page_size: l,
         po_no: f.po_no || undefined,
         supplier: f.supplier || undefined,
         created_by_name: f.created_by_name || undefined,

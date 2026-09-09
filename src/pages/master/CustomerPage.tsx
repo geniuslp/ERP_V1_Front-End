@@ -254,8 +254,7 @@ const CustomerPage: React.FC = () => {
     setSaving(true)
     try {
       if (editing) {
-        const { customer_code, ...updateValues } = values
-        await axios.put(`${BASE_URL}/customer/${editing.cus_id}`, updateValues, {
+        await axios.put(`${BASE_URL}/customer/${editing.cus_id}`, values, {
           headers: authHeader,
         })
         message.success('แก้ไขข้อมูลลูกค้าสำเร็จ')
@@ -273,7 +272,7 @@ const CustomerPage: React.FC = () => {
         setTotal((prev) => prev + 1)
       }
     } catch (err: any) {
-      if (!editing && err?.response?.status === 409) {
+      if (err?.response?.status === 409) {
         form.setFields([{ name: 'customer_code', errors: ['รหัสลูกค้านี้ถูกใช้งานแล้ว กรุณาใช้รหัสอื่น'] }])
       } else {
         message.error(
@@ -608,10 +607,10 @@ const CustomerPage: React.FC = () => {
           <Form.Item
             name="customer_code"
             label="รหัสลูกค้า"
-            rules={editing ? [] : [{ required: true, message: 'กรุณากรอกรหัสลูกค้า' }]}
-            extra={editing ? undefined : 'รหัสลูกค้าต้องไม่ซ้ำกับที่มีอยู่ในระบบ'}
+            rules={[{ required: true, message: 'กรุณากรอกรหัสลูกค้า' }]}
+            extra="รหัสลูกค้าต้องไม่ซ้ำกับที่มีอยู่ในระบบ"
           >
-            <Input placeholder="เช่น CUS-000001" disabled={!!editing} style={{ borderRadius: 8 }} />
+            <Input placeholder="เช่น CUS-000001" style={{ borderRadius: 8 }} />
           </Form.Item>
           <Form.Item name="customer_name" label="ชื่อลูกค้า" rules={[{ required: true, message: 'กรุณากรอกชื่อลูกค้า' }]}>
             <Input placeholder="ชื่อบริษัท / ลูกค้า" style={{ borderRadius: 8 }} />

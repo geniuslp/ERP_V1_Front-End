@@ -383,6 +383,38 @@ export interface GRNCreateResult {
   grn_id: number
   grn_no: string
   po_status: string
+  // Line-level receive status the backend computes cumulatively across all
+  // GRNs against this PO (RECEIVED | PARTIALLY_RECEIVED) — distinct from
+  // po_status above (the PO's overall approval/lifecycle status). Optional
+  // since not yet confirmed present on every response; falls back to
+  // po_status for display if absent.
+  status_receive?: string
+}
+
+// ─── PO search (older /po/search + /grn/receive flow, GoodsReceiptPage.tsx) ──
+// Mirrors the fields GoodsReceiptPage.tsx already reads from the real
+// response (qty_ordered/qty_received per line are what drive the "เหลือรับ"
+// / over-receive guard — no separate receivable-lines endpoint needed since
+// /po/search already returns them).
+export interface POSearchLine {
+  po_line_id: number
+  mat_code: string
+  item_name: string
+  qty_ordered: number
+  qty_received: number
+  current_stock_qty: number | null
+}
+
+export interface POSearchResult {
+  po_id: number
+  po_no: string
+  supplier_code: string
+  warehouse_code?: string
+  status: string
+  currency: string
+  net_amount?: number
+  expected_date?: string | null
+  lines?: POSearchLine[]
 }
 
 export interface GRNScorePayload {

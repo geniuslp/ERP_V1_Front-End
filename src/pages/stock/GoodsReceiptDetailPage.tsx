@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin } from 'antd'
+import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin, Checkbox } from 'antd'
 import { InboxOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -22,6 +22,9 @@ interface ReceiptLine extends Omit<GRNPoLine, 'current_stock_qty' | 'line_id'> {
   po_line_id: number
   current_stock: number | null
   add_qty: number
+  // Only checked lines are included in the submitted request — unchecking a
+  // line excludes it regardless of whatever is left in its qty input.
+  checked: boolean
 }
 
 const GoodsReceiptDetailPage: React.FC = () => {
@@ -68,6 +71,8 @@ const GoodsReceiptDetailPage: React.FC = () => {
             po_line_id: (l as any).line_id,
             current_stock: (l as any).current_stock ?? null,
             add_qty: Math.max(0, l.qty_ordered - l.qty_received),
+            // Checked by default on every line.
+            checked: true,
           }))
         )
       } catch (err: any) {
@@ -84,6 +89,10 @@ const GoodsReceiptDetailPage: React.FC = () => {
     setLines((prev) => prev.map((l) => (l.po_line_id === poLineId ? { ...l, add_qty: val ?? 0 } : l)))
   }
 
+  const setLineChecked = (poLineId: number, checked: boolean) => {
+    setLines((prev) => prev.map((l) => (l.po_line_id === poLineId ? { ...l, checked } : l)))
+  }
+
   const handleSave = async () => {
     if (!po) return
 
@@ -94,16 +103,19 @@ const GoodsReceiptDetailPage: React.FC = () => {
     }
     setInvoiceError(undefined)
 
-    if (lines.some((l) => l.add_qty < 0)) {
+    const checkedLines = lines.filter((l) => l.checked)
+    if (checkedLines.some((l) => l.add_qty < 0)) {
       message.warning('จำนวนที่รับเข้าต้องไม่ติดลบ')
       return
     }
-    const receivingLines: GRNCreateLine[] = lines
+    // Only CHECKED lines are included — unchecked lines are omitted from the
+    // request entirely, regardless of what's left in their qty input.
+    const receivingLines: GRNCreateLine[] = checkedLines
       .filter((l) => l.add_qty > 0)
       .map((l) => ({ po_line_id: l.po_line_id, mat_code: l.mat_code, add_qty: l.add_qty }))
 
     if (receivingLines.length === 0) {
-      message.warning('กรุณาระบุจำนวนที่รับเข้าอย่างน้อย 1 รายการ')
+      message.warning('กรุณาเลือกและระบุจำนวนที่รับเข้าอย่างน้อย 1 รายการ')
       return
     }
 
@@ -190,6 +202,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
         <InputNumber
           min={0}
           value={record.add_qty}
+          disabled={!record.checked}
           onChange={(val) => setLineAddQty(record.po_line_id, val)}
           style={{ width: 110 }}
         />
@@ -200,9 +213,26 @@ const GoodsReceiptDetailPage: React.FC = () => {
       key: 'will_be',
       align: 'right' as const,
       render: (_: any, record: ReceiptLine) => {
-        const total = (record.current_stock ?? 0) + (record.add_qty || 0)
-        return <span style={{ fontWeight: 600, color: '#2563eb' }}>{total.toLocaleString()}</span>
+        const addQty = record.checked ? (record.add_qty || 0) : 0
+        const total = (record.current_stock ?? 0) + addQty
+        return (
+          <span style={{ fontWeight: 600, color: record.checked ? '#2563eb' : '#9ca3af' }}>
+            {total.toLocaleString()}
+          </span>
+        )
       },
+    },
+    {
+      title: '',
+      key: 'checked',
+      width: 44,
+      align: 'center' as const,
+      render: (_: any, record: ReceiptLine) => (
+        <Checkbox
+          checked={record.checked}
+          onChange={(e) => setLineChecked(record.po_line_id, e.target.checked)}
+        />
+      ),
     },
   ]
 
@@ -249,7 +279,6 @@ const GoodsReceiptDetailPage: React.FC = () => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item key="supplier" label="Supplier">{po.supplier_name || '—'}</Descriptions.Item>
-              <Descriptions.Item key="warehouse_code" label="คลัง (ตาม PO)">{po.warehouse_code || '—'}</Descriptions.Item>
               <Descriptions.Item key="location_text" label="สถานที่ (ตาม PO)">{po.location_text || '—'}</Descriptions.Item>
               <Descriptions.Item key="project_code" label="รหัส Project">{po.project_code || '-'}</Descriptions.Item>
               <Descriptions.Item key="status" label="สถานะ PO">{po.status}</Descriptions.Item>
@@ -284,6 +313,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
               dataSource={lines}
               pagination={false}
               locale={{ emptyText: 'ไม่มีรายการใน PO นี้' }}
+              rowClassName={(record: ReceiptLine) => (record.checked ? '' : 'grn-line-unchecked')}
             />
 
             <div style={{ textAlign: 'right', marginTop: 20 }}>

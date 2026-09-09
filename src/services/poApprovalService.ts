@@ -18,7 +18,12 @@ export const poApprovalService = {
     params: {
       status?: string
       page?: number
-      limit?: number
+      // Matches the backend's actual pagination param name — confirmed by
+      // POListResponse.data.page_size, which is what GET /po echoes back in
+      // its response. The previous "limit" name was silently ignored (the
+      // backend defaulted its own page size instead), masking any UI page-
+      // size-changer as fully broken.
+      page_size?: number
       my?: boolean
       po_no?: string
       supplier?: string
