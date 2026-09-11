@@ -8,14 +8,13 @@ import type {
   GRNv2Detail,
 } from '@/types'
 
-// 🔴 MOCK MODE — flip to false once the backend deploys GET /po/receivable
-// and GET /po/:id/receivable-lines (confirmed NOT live as of the 2026-07-27
-// session — see CLAUDE.md "หน้า รับเข้า (GRN receiving)"). Every function
-// below already calls the real endpoint it will use in production; only the
-// `if (GRN_RECEIVING_MOCK_MODE)` short-circuits need deleting once the
-// backend confirms these are live — the page code calling this service does
-// not need to change at all.
-export const GRN_RECEIVING_MOCK_MODE = true
+// 🔴 MOCK MODE — GET /po/:id/receivable-lines confirmed LIVE and working
+// (backend investigation, this session): POHandler.GetReceivableLines
+// (po.go:2866) is fully implemented, routed, and correctly returns
+// unit_price. Mock mode is now off; MOCK_RECEIVABLE_POS/MOCK_RECEIVABLE_LINES
+// are kept dormant below for dev/testing convenience (flip the flag back to
+// true to use them without touching any other code).
+export const GRN_RECEIVING_MOCK_MODE = false
 
 const mockDelay = <T>(data: T): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(data), 300))
@@ -37,14 +36,14 @@ const MOCK_RECEIVABLE_LINES: Record<number, ReceivablePoLinesResponse> = {
   101: {
     po_id: 101, po_no: 'PO-2026-0101', supplier_code: 'SUP001', warehouse_code: 'WH01',
     lines: [
-      { po_line_id: 1001, line_no: 1, mat_code: 'MAT-001', mat_name: 'สินค้าตัวอย่าง A', qty_ordered: 100, qty_received: 0, qty_remaining: 100, unit_name: 'ชิ้น' },
-      { po_line_id: 1002, line_no: 2, mat_code: 'MAT-002', mat_name: 'สินค้าตัวอย่าง B', qty_ordered: 50, qty_received: 0, qty_remaining: 50, unit_name: 'กล่อง' },
+      { po_line_id: 1001, line_no: 1, mat_code: 'MAT-001', mat_name: 'สินค้าตัวอย่าง A', qty_ordered: 100, qty_received: 0, qty_remaining: 100, unit_price: 125.5, unit_name: 'ชิ้น' },
+      { po_line_id: 1002, line_no: 2, mat_code: 'MAT-002', mat_name: 'สินค้าตัวอย่าง B', qty_ordered: 50, qty_received: 0, qty_remaining: 50, unit_price: 2340, unit_name: 'กล่อง' },
     ],
   },
   102: {
     po_id: 102, po_no: 'PO-2026-0102', supplier_code: 'SUP002', warehouse_code: 'WH01',
     lines: [
-      { po_line_id: 2001, line_no: 1, mat_code: 'MAT-003', mat_name: 'สินค้าตัวอย่าง C', qty_ordered: 200, qty_received: 80, qty_remaining: 120, unit_name: 'ชิ้น' },
+      { po_line_id: 2001, line_no: 1, mat_code: 'MAT-003', mat_name: 'สินค้าตัวอย่าง C', qty_ordered: 200, qty_received: 80, qty_remaining: 120, unit_price: 89.25, unit_name: 'ชิ้น' },
     ],
   },
 }
@@ -84,8 +83,49 @@ export const grnReceivingService = {
       if (!found) throw new Error('ไม่พบ PO หรือไม่มีรายการที่รับได้ (mock)')
       return mockDelay(found)
     }
-    const res = await api.get(`/po/${poId}/receivable-lines`)
-    return res.data?.data
+
+    // GET /po/:id/receivable-lines returns a flat array of lines only — no PO
+    // header (po_no/warehouse_code/supplier) — so the header comes from a
+    // separate GET /po/:id call and the two are combined into the shape this
+    // page expects. Also note the real line objects key their id as
+    // `line_id`, not `po_line_id` (the mock's naming) — remapped below.
+    const [poRes, linesRes] = await Promise.all([
+      api.get(`/po/${poId}`),
+      api.get(`/po/${poId}/receivable-lines`),
+    ])
+    const po = poRes.data?.data
+    const rawLines: Array<{
+      line_id: number
+      po_id: number
+      line_no: number
+      mat_code: string
+      mat_name?: string | null
+      qty_ordered: number
+      qty_received: number
+      qty_remaining: number
+      unit_price: number
+      status: string
+    }> = linesRes.data?.data ?? []
+
+    return {
+      po_id: po?.po_id ?? poId,
+      po_no: po?.po_no ?? '',
+      // purchase_order no longer carries a supplier_code (clean-break migration
+      // to supplier_id, per backend CLAUDE.md) — supplier_name is the closest
+      // available label for this field.
+      supplier_code: po?.supplier_name ?? '',
+      warehouse_code: po?.warehouse_code ?? undefined,
+      lines: rawLines.map((l) => ({
+        po_line_id: l.line_id,
+        line_no: l.line_no,
+        mat_code: l.mat_code,
+        mat_name: l.mat_name ?? '',
+        qty_ordered: l.qty_ordered,
+        qty_received: l.qty_received,
+        qty_remaining: l.qty_remaining,
+        unit_price: l.unit_price ?? 0,
+      })),
+    }
   },
 
   createGrnDraft: async (payload: GRNv2CreatePayload): Promise<GRNv2CreateResult> => {

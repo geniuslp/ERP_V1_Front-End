@@ -461,6 +461,7 @@ export interface ReceivablePoLine {
   qty_ordered: number
   qty_received: number
   qty_remaining: number
+  unit_price: number
   unit_name?: string
 }
 

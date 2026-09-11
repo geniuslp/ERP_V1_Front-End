@@ -73,10 +73,16 @@ interface PRItemsTableProps {
   // Document-level "ประเภท Job" value (PR header field, e.g. 'MP', 'G') — passed
   // down so the CostCode picker can filter its options to that job type.
   jobTypeCode?: string
+  // Document-level "ประเภทการสั่งซื้อ" (PR header field: 'stock' | 'cost') —
+  // passed down so an existing line's Cost Code stays editable for
+  // order_type 'stock' (no PO-split/stock-reservation dependency on cost
+  // code there); mat_code itself stays locked on existing lines regardless
+  // of order_type. See PRItemsTable.tsx cost-code column disabled logic.
+  orderType?: 'stock' | 'cost'
 }
 
 const PRItemsTable: React.FC<PRItemsTableProps> = ({
-  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint, jobTypeCode,
+  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint, jobTypeCode, orderType,
 }) => {
   const [items, setItems] = useState<PRItem[]>([])
 
@@ -101,21 +107,11 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
     )
   }, [initialItems])
 
-  // Job type is a single document-level field (PR header), shared by every line's
-  // CostCode filter — see jobTypeCode prop above. If the user changes it after
-  // already picking CostCodes, those selections may no longer match the new
-  // filter, so clear them all (same pattern as department clearing role in
-  // UsersPage.tsx: clear, never auto-remap). Skip the very first render so
-  // loading an existing PR's job_code (edit mode) doesn't wipe initialItems'
-  // cost_subgroup_id right after it's set.
-  const isFirstJobTypeRender = useRef(true)
-  useEffect(() => {
-    if (isFirstJobTypeRender.current) {
-      isFirstJobTypeRender.current = false
-      return
-    }
-    setItems((prev) => prev.map((i) => ({ ...i, costSubgroupId: null, costCodeLabel: null })))
-  }, [jobTypeCode])
+  // Job type is a single document-level field (PR header), used only to filter
+  // the CostCode picker's *options* (see jobTypeCode prop above / the modal
+  // below) when the user is choosing a new cost code. Changing job type must
+  // never clear a line's already-selected cost code — that's the user's call
+  // to make via the CostCode button/select, not something this table imposes.
 
   useEffect(() => {
     onItemsChange?.(items.map((i) => ({
@@ -320,13 +316,13 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
             <Button
               size="small"
               style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              disabled={!r.code || r.isExisting}
+              disabled={!r.code || (r.isExisting && orderType !== 'stock')}
               onClick={() => setCostCodeModalRowKey(r.key)}
               title={r.costCodeLabel ?? undefined}
             >
               {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
             </Button>
-            {r.costCodeLabel && !r.isExisting && (
+            {r.costCodeLabel && (!r.isExisting || orderType === 'stock') && (
               <Button
                 size="small"
                 type="text"

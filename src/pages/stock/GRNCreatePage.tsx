@@ -128,6 +128,14 @@ const GRNCreatePage: React.FC = () => {
       render: (v: number) => <span style={{ fontWeight: 600 }}>{v.toLocaleString()}</span>,
     },
     {
+      title: 'ราคา/หน่วย',
+      dataIndex: 'unit_price',
+      key: 'unit_price',
+      align: 'right' as const,
+      // Read-only — the PO's agreed price, shown for reference only while receiving.
+      render: (v: number | null | undefined) => <span>{(v ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>,
+    },
+    {
       title: 'จำนวนที่รับ (qty_accepted)',
       key: 'qty_accepted',
       align: 'right' as const,
@@ -165,7 +173,7 @@ const GRNCreatePage: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="กำลังแสดงข้อมูลจำลอง (mock) — รอ backend deploy GET /po/:id/receivable-lines, POST /grn, POST /grn/:id/confirm"
+          message="กำลังแสดงข้อมูลจำลอง (mock) — ตั้งค่า GRN_RECEIVING_MOCK_MODE = false ใน grnReceivingService.ts เพื่อใช้ backend จริง"
         />
       )}
 

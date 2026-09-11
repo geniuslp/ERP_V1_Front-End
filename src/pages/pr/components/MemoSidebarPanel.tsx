@@ -9,6 +9,7 @@ import dayjs from 'dayjs'
 import MemoStatusBadge from '@/pages/memo/components/MemoStatusBadge'
 import { useAppSelector } from '@/store'
 import type { Memo } from '@/types'
+import { resolveFileUrl } from '@/utils/fileUrl'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -268,7 +269,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                   {detailMemo.attachments.map((f) => (
                     <a
                       key={f.filePath}
-                      href={f.filePath}
+                      href={resolveFileUrl(f.filePath)}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{

@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
+import { resolveFileUrl } from '@/utils/fileUrl'
 import { useAppSelector } from '@/store'
 import type { PODetail, PODetailResponse, POLine, POAttachment } from '@/types/po'
 import { JOB_TYPES } from '@/constants/jobTypes'
@@ -71,7 +72,7 @@ const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({
             <Space>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
-                href={a.file_path}
+                href={resolveFileUrl(a.file_path)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 13, color: '#1e40af' }}

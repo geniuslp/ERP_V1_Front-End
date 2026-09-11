@@ -9,6 +9,7 @@ import { useAppSelector } from '@/store'
 import { usePermissionContext } from '@/contexts/PermissionContext'
 import PRPrint, { type PRData } from './PRPrint'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { resolveFileUrl } from '@/utils/fileUrl'
 
 const { Text } = Typography
 
@@ -155,7 +156,7 @@ const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: bo
             <Space>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
-                href={a.filePath}
+                href={resolveFileUrl(a.filePath)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 13, color: '#1e40af' }}

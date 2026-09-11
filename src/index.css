@@ -38,6 +38,28 @@ body {
   background: #ffe0de !important;
 }
 
+/* PRStatusPage.tsx — row tint by purchase_request.status. Light tints of
+   DESIGN.md's success (#16a34a) / warning (#d97706) tokens, not the
+   saturated tokens themselves, so status badge text and other cell content
+   stay readable against the row background. Explicit :hover overrides
+   needed because .ant-table-tbody > tr:hover > td above would otherwise
+   win on specificity and flash every row to the same blue on hover. */
+.pr-row-fulfilled > td {
+  background: #f0fdf4 !important;
+}
+
+.pr-row-fulfilled:hover > td {
+  background: #dcfce7 !important;
+}
+
+.pr-row-partial > td {
+  background: #fefce8 !important;
+}
+
+.pr-row-partial:hover > td {
+  background: #fef3c7 !important;
+}
+
 /* GRN receiving checklist — unchecked lines are grayed out and excluded
    from the submitted request; the dimming is purely visual. */
 .grn-line-unchecked > td {

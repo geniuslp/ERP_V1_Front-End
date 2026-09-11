@@ -1,7 +1,7 @@
 import axios from 'axios'
+import { resolveFileUrl } from '@/utils/fileUrl'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
-const FILE_BASE_URL = (BASE_URL ?? '').replace(/\/api\/v1\/?$/, '')
 
 export interface StockItemImage {
   id: number
@@ -13,11 +13,8 @@ export interface StockItemImage {
   created_at: string
 }
 
-export const resolveImageUrl = (filePath?: string | null): string | undefined => {
-  if (!filePath) return undefined
-  if (/^https?:\/\//i.test(filePath)) return filePath
-  return `${FILE_BASE_URL}/${filePath.replace(/^\/+/, '')}`
-}
+// Re-exported under its original name so existing imports keep working.
+export const resolveImageUrl = resolveFileUrl
 
 // getUserMedia requires a secure context (HTTPS or localhost). This app is
 // currently served over plain HTTP in some environments, so this must be a

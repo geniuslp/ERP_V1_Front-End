@@ -173,7 +173,16 @@ The protocol that actually worked:
 **หน้าค้นหา PO สำหรับสร้าง GRN** ควรเรียก endpoint ที่ backend filter ให้แล้ว (ดูฝั่ง backend
 `CLAUDE.md` หัวข้อ session 2026-07-27) — ผลลัพธ์คือ PO ที่ status อยู่ใน
 `APPROVED / SENT / PARTIALLY_RECEIVED` และยังมีอย่างน้อย 1 บรรทัดที่ `OPEN`/`PARTIAL`
-**⚠️ endpoint นี้ยังไม่มีจริงฝั่ง backend ณ session นี้ — ต้องรอ backend ทำก่อนถึงจะต่อ UI ได้**
+
+🔴 **อัปเดต (session นี้) — `GET /po/:id/receivable-lines` confirmed LIVE, ไม่ใช่ "ยังไม่มีจริง"
+อีกต่อไป.** ตรวจสอบฝั่ง backend แล้ว: `POHandler.GetReceivableLines` (po.go:2866) implement
+เต็มแล้ว, routed แล้ว, และ scan `unit_price` ถูกต้อง. `grnReceivingService.ts` เปลี่ยนเป็น
+`GRN_RECEIVING_MOCK_MODE = false` แล้ว. ⚠️ ข้อควรระวังตอนต่อจริง: endpoint นี้คืนแค่ array ของ
+lines ล้วน ๆ (ไม่มี po_no/warehouse_code/supplier ติดมาด้วย), และ field id ของแต่ละ line ชื่อ
+`line_id` ไม่ใช่ `po_line_id` เหมือนใน mock — `getReceivableLines()` เลย fetch `GET /po/:id`
+เพิ่มมาประกบเอา header (po_no/warehouse_code) แล้ว remap `line_id → po_line_id` ให้ตรงกับ type
+เดิมที่หน้า `GRNCreatePage.tsx` ใช้อยู่ (ไม่ต้องแก้โค้ดหน้า page เลย). PO ไม่มี `supplier_code`
+แล้ว (clean-break migration ไป `supplier_id`) จึงใช้ `supplier_name` แทนใน field นี้.
 
 **ฟอร์มกรอก GRN**: บรรทัดที่โหลดมาต้องมี field "จำนวนคงเหลือที่รับได้"
 (`qty_ordered - qty_received`) ไว้กัน user กรอกเกิน (over-receive) ฝั่ง UI ก่อนส่ง ไม่ใช่พึ่ง backend
@@ -194,10 +203,17 @@ renders a logo/remote image.**
 `approver_id` — the in-flight approval just continues against the edited content.
 
 **PR line editing restrictions.** `PRItemsTable.tsx` — a line loaded from the existing PR
-(`isExisting: true`) locks `mat_code` and `cost_subgroup_id`; only `qty_requested` and delete stay
-available on it. Lines added fresh during the current edit session have no such lock. Don't
-"simplify" this by making all rows equally editable — the lock is intentional (existing lines may
-already have stock reservations / PO splits against them).
+(`isExisting: true`) locks `mat_code`; only `qty_requested` and delete stay available on it. Lines
+added fresh during the current edit session have no such lock. Don't "simplify" this by making all
+rows equally editable — the lock is intentional (existing lines may already have stock
+reservations / PO splits against them).
+
+**`cost_subgroup_id` lock on existing lines is narrower (2026-09-10 update).** It stays locked for
+`order_type === 'cost'` (stock-reservation/PO-split dependency applies there), but is editable for
+`order_type === 'stock'` on an existing `DRAFT` line — no PO-split/reservation dependency ties cost
+code to stock-type PRs. `PRItemsTable` takes an `orderType` prop (passed from `PRCreatePage.tsx`'s
+watched `order_type` form field) and only disables the Cost Code button when
+`r.isExisting && orderType !== 'stock'`.
 
 **PR edit-mode save now actually re-submits.** `PRCreatePage.tsx`'s "บันทึกการแก้ไข" (save edit)
 now calls `PUT /pr/:id` followed by `POST /pr/:id/submit`. Previously it only called `PUT`, so a PR
@@ -260,6 +276,28 @@ text input — suppliers no longer have a user-entered code). **Explicitly NOT t
 `supplier_code` usage on different tables; don't assume they're part of this migration without
 separately verifying their backend state.
 
+**Supplier Excel import/export headers (frontend session).** `SupplierPage.tsx`'s `EXCEL_HEADERS`
+(shared by the downloadable import template, the Excel-file import parsing in `handleBulkImport`/
+`handlePanelConfirmImport`, and the "Export Excel" button) use this English header set, in this
+order:
+```
+supplier_name | tax_id | address | contact_name | contact_tel | contact_phone | contact_email |
+payment_terms | currency | Remark
+```
+`is_active` is deliberately **not** part of this set (removed from both import parsing and
+export — it's still a real field on the `Supplier` edit form/table, just not importable/exportable
+via Excel). The three contact-related headers don't map 1:1 to their similarly-named internal
+field — mind the remap when touching this code:
+- `contact_name` (header) → `sales_person` (API field)
+- `contact_tel` (header) → `sales_person_phone` (API field)
+- `contact_phone` (header) → `office_phone` (API field)
+- `contact_email` → `contact_email` (unchanged)
+- `Remark` (header, capitalized) → `remarks` (API field)
+
+`Remark` is capitalized (not `remark`) to match the header text exactly — `sheet_to_json` keys
+parsed rows by the literal header cell text, case-sensitive, so the template, parsing, and export
+must all agree on `Remark` exactly.
+
 **Print button stale-state bugfix.** `POCreatePage.tsx`'s print guard checked a `savedPoId` state
 that was never populated after a successful Create — the response-parsing fallback chain was
 missing the `po_id` key (the field name every other PO response actually uses; the code was
@@ -279,6 +317,49 @@ DB มี stock tracking 2 ระบบแยกกัน ไม่มี FK เ
 
 ถ้าเจองาน "หน้าจอ stock" หรือ "หน้าจอ inventory" ใหม่ ให้เช็คกับทีมก่อนว่าหมายถึงระบบไหน — ชื่อ
 คล้ายกันมากจนสับสนได้ง่าย
+
+---
+
+## 🔴 PR warehouse_code — now derived server-side from project, not user-selected (frontend session)
+
+**`PRCreatePage.tsx` no longer has a "คลังสินค้า" (warehouse) Select at all.** Backend now derives
+`warehouse_code` server-side from `project.warehouse_code`, which is only populated for 4 dedicated
+"warehouse projects" (`2026-WH-001..004` = บางแค/ศาลายา/บางบ่อ/ปราจีน) and **rejects any
+`warehouse_code` the client sends directly**. The frontend payload no longer includes
+`warehouse_code` at all (was previously read from a user-facing Select shown only for
+`order_type === 'stock'`).
+
+**`project_code` is now REQUIRED when `order_type === 'stock'`** (previously optional/unused for
+that type) — enforced via a Form.Item rule mirroring the backend's validation, so the user sees an
+inline error before submit rather than a raw API rejection. The "โครงการ" Select's options are
+filtered client-side: only the 4 warehouse-project codes when `order_type === 'stock'`, the normal
+customer-project list (warehouse-projects excluded) otherwise.
+
+**⚠️ This filter is a hardcoded 4-code allowlist (`WAREHOUSE_PROJECT_CODES` in
+`PRCreatePage.tsx`), not a backend-provided flag.** `GET /master/projects` does not currently
+return any field (`project_type`, `is_warehouse_project`, `warehouse_code`, etc.) that
+distinguishes warehouse-projects from real customer projects — checked across every place this
+repo consumes that endpoint (`PRCreatePage.tsx`, `ProjectListPage.tsx`'s `mapProject`). If the
+backend ever adds/removes a warehouse-project or exposes a real distinguishing field, this
+hardcoded list needs a matching update (or ideally, backend should add a proper flag so the
+frontend doesn't need to hardcode project codes at all).
+
+**Update — `POCreatePage.tsx` migrated too (same session, follow-up request).** The no-PR PO
+create/edit flow now matches PR exactly: no warehouse Select ever existed in this page's JSX (only
+dead state/fetch — `warehouses`/`warehousesLoading`/`GET /master/warehouses` — that was never wired
+to a visible field; removed), `project_code` is required when `order_type === 'stock'` **and no PR
+is linked** (`!selectedPrId`), and the same `WAREHOUSE_PROJECT_CODES` allowlist (kept in sync
+manually between the two files — see the ⚠️ above) filters the "โครงการ" Select's options the same
+way.
+
+**PR-linked PO path is intentionally different and was left alone**, per explicit scope: when
+`selectedPrId` is set, `project_code` stays disabled/driven by the linked PR (no new required rule
+— the PR already enforces its own), and `warehouse_code` **is still sent** in the submit payload,
+carried over from the linked PR's own (already backend-derived) value via the existing
+`prAutoFill`/`fetchPrDetail` effect — this is correct and intentional, not a leftover: a PO created
+from a stock-type PR inherits that PR's already-correct `warehouse_code` rather than re-deriving it
+from a PO-level project selection. The no-PR payload path (`selectedPrId` falsy) never sends
+`warehouse_code` at all, matching PR's behavior.
 
 ---
 

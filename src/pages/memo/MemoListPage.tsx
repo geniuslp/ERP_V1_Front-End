@@ -212,9 +212,9 @@ const MemoListPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="ใบบันทึกขอซื้อ (Memo)"
-        subtitle="รายการใบบันทึกขอซื้อ (Memo)"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }]}
+        title="ตรวจสอบสถานะ Memo"
+        subtitle="ติดตามสถานะใบบันทึกขอซื้อ (Memo) ทั้งหมด"
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: 'ตรวจสอบสถานะ' }]}
         extra={
           <PermissionGate menuCode="MENU_MEMO_CREATE" action="write" mode="hide">
             <Button

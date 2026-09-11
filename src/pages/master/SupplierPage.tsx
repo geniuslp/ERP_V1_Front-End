@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch, Row, Col } from 'antd'
 import type { UploadProps } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
@@ -69,16 +69,24 @@ const makeEmptyBulkRow = (): BulkRow => ({
 })
 const makeEmptyBulkRows = (n: number) => Array.from({ length: n }, makeEmptyBulkRow)
 
+// Excel header names differ from the internal/API field names for the
+// contact columns — see parseExcelRows below for the exact mapping
+// (contact_name → sales_person, contact_tel → sales_person_phone,
+// contact_phone → office_phone). Fields here are named after the outgoing
+// API field, not the Excel header, to match the rest of this file's usage
+// (bulk-import payload, export).
 interface ExcelRow {
   rowNum: number
   supplier_name: string
   tax_id: string
   address: string
-  contact_name: string
-  contact_phone: string
+  sales_person: string
+  sales_person_phone: string
+  office_phone: string
   contact_email: string
   payment_terms: string
-  is_active: string
+  currency: string
+  remarks: string
   errors: string[]
 }
 
@@ -86,9 +94,12 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 
 // The supplier's id is NOT part of the template/import payload — the backend
 // auto-assigns it (PK) per row and returns it in the bulk-import response instead.
+// is_active is deliberately NOT part of this header set (removed — no longer
+// collected via import/export).
 const EXCEL_HEADERS = [
   'supplier_name', 'tax_id', 'address',
-  'contact_name', 'contact_phone', 'contact_email', 'payment_terms', 'is_active',
+  'contact_name', 'contact_tel', 'contact_phone', 'contact_email',
+  'payment_terms', 'currency', 'Remark',
 ]
 
 interface CreatedSupplier {
@@ -135,9 +146,6 @@ const compareSupplierName = (a: string, b: string) => {
   return aThai ? thaiCollator.compare(aName, bName) : latinCollator.compare(aName, bName)
 }
 
-const toBoolean = (v: string) =>
-  v === '' || v.toLowerCase() === 'true' || v === '1' || v === 'ใช้งาน'
-
 const parseExcelRows = (raw: Record<string, unknown>[]): ExcelRow[] =>
   raw.map((row, i) => {
     const g = (k: string) => String(row[k] ?? '').trim()
@@ -152,11 +160,15 @@ const parseExcelRows = (raw: Record<string, unknown>[]): ExcelRow[] =>
       supplier_name,
       tax_id: g('tax_id'),
       address: g('address'),
-      contact_name: g('contact_name'),
-      contact_phone: g('contact_phone'),
+      // Excel header → API field: contact_name → sales_person,
+      // contact_tel → sales_person_phone, contact_phone → office_phone.
+      sales_person: g('contact_name'),
+      sales_person_phone: g('contact_tel'),
+      office_phone: g('contact_phone'),
       contact_email,
       payment_terms: g('payment_terms'),
-      is_active: g('is_active'),
+      currency: g('currency'),
+      remarks: g('Remark'),
       errors,
     }
   })
@@ -176,7 +188,6 @@ const SupplierPage: React.FC = () => {
   const [parsedRows, setParsedRows] = useState<ExcelRow[]>([])
   const [uploadFileName, setUploadFileName] = useState('')
   const [importSubmitting, setImportSubmitting] = useState(false)
-  const [panelResult, setPanelResult] = useState<{ imported: number; duplicates: number; created: CreatedSupplier[] } | null>(null)
 
   // Excel import state (modal tab)
   const [activeTab, setActiveTab] = useState('form')
@@ -185,7 +196,6 @@ const SupplierPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState('')
-  const [importSummary, setImportSummary] = useState<{ imported: number; duplicates: number; created: CreatedSupplier[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Bulk import (editable table) modal state
@@ -250,7 +260,6 @@ const SupplierPage: React.FC = () => {
     setIsDragging(false)
     setImporting(false)
     setImportProgress('')
-    setImportSummary(null)
   }
 
   const openCreate = () => {
@@ -388,7 +397,8 @@ const SupplierPage: React.FC = () => {
     const exampleRow = [
       'บริษัท ตัวอย่าง จำกัด', '0123456789012',
       '123 ถนนสุขุมวิท กรุงเทพ', 'สมชาย ใจดี',
-      '02-123-4567', 'contact@example.com', '30', 'TRUE',
+      '081-234-5678', '02-123-4567', 'contact@example.com',
+      '30', 'THB', 'ตัวอย่างหมายเหตุ',
     ]
     const ws = XLSX.utils.aoa_to_sheet([EXCEL_HEADERS, exampleRow])
     const wb = XLSX.utils.book_new()
@@ -402,7 +412,6 @@ const SupplierPage: React.FC = () => {
       return
     }
     setExcelFile(file)
-    setImportSummary(null)
     setImportProgress('')
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -438,17 +447,18 @@ const SupplierPage: React.FC = () => {
     if (!validRows.length) return
     setImporting(true)
     setImportProgress(`กำลังนำเข้าข้อมูล ${validRows.length} รายการ...`)
-    setImportSummary(null)
     try {
       const items = validRows.map((row) => ({
         supplier_name: row.supplier_name,
         tax_id: row.tax_id,
         address: row.address,
-        contact_name: row.contact_name,
-        contact_phone: row.contact_phone,
+        sales_person: row.sales_person,
+        sales_person_phone: row.sales_person_phone,
+        office_phone: row.office_phone,
         contact_email: row.contact_email,
         payment_terms: row.payment_terms,
-        is_active: toBoolean(row.is_active),
+        currency: row.currency,
+        remarks: row.remarks,
       }))
       const res = await axios.post(
         `${BASE_URL}/master/suppliers/bulk`,
@@ -456,12 +466,11 @@ const SupplierPage: React.FC = () => {
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
       const { imported = 0, duplicates = 0 } = res.data
-      const created: CreatedSupplier[] = (res.data?.suppliers ?? res.data?.created ?? []).map((s: any) => ({
-        supplier_name: s.supplier_name,
-        id: s.id,
-      }))
-      setImportSummary({ imported, duplicates, created })
-      setImportProgress('')
+      message.success(`นำเข้าสำเร็จ ${imported} รายการ${duplicates > 0 ? ` / ซ้ำ ${duplicates} รายการ` : ''}`)
+      // Matches MaterialPage.tsx's handleConfirmImport pattern: no persistent
+      // result panel — close out (modal + excel state) and refetch so the
+      // new rows just show up in the list.
+      closeModal()
       if (imported > 0) fetchSuppliers()
     } catch (err: any) {
       message.error(
@@ -489,7 +498,6 @@ const SupplierPage: React.FC = () => {
         if (!raw.length) { message.warning('ไม่พบข้อมูลในไฟล์'); return }
         setParsedRows(parseExcelRows(raw))
         setUploadFileName(file.name)
-        setPanelResult(null)
       } catch {
         message.error('ไม่สามารถอ่านไฟล์ได้')
       }
@@ -507,11 +515,13 @@ const SupplierPage: React.FC = () => {
         supplier_name: row.supplier_name,
         tax_id: row.tax_id,
         address: row.address,
-        contact_name: row.contact_name,
-        contact_phone: row.contact_phone,
+        sales_person: row.sales_person,
+        sales_person_phone: row.sales_person_phone,
+        office_phone: row.office_phone,
         contact_email: row.contact_email,
         payment_terms: row.payment_terms,
-        is_active: toBoolean(row.is_active),
+        currency: row.currency,
+        remarks: row.remarks,
       }))
       const res = await axios.post(
         `${BASE_URL}/master/suppliers/bulk`,
@@ -521,11 +531,9 @@ const SupplierPage: React.FC = () => {
       setParsedRows([])
       setUploadFileName('')
       const { imported = 0, duplicates = 0 } = res.data
-      const created: CreatedSupplier[] = (res.data?.suppliers ?? res.data?.created ?? []).map((s: any) => ({
-        supplier_name: s.supplier_name,
-        id: s.id,
-      }))
-      setPanelResult({ imported, duplicates, created })
+      // Matches MaterialPage.tsx's handleConfirmImport pattern: no persistent
+      // result panel — just a toast, the upload panel already collapsed
+      // (parsedRows cleared above), and a refetch so new rows just show up.
       message.success(`นำเข้าสำเร็จ ${imported} รายการ${duplicates > 0 ? ` / ซ้ำ ${duplicates} รายการ` : ''}`)
       fetchSuppliers()
     } catch (err: any) {
@@ -545,9 +553,16 @@ const SupplierPage: React.FC = () => {
         <Text style={{ fontSize: 11, color: r.errors.length === 0 ? '#6b7280' : '#ef4444' }}>{r.rowNum}</Text>
       ),
     },
-    { title: 'ชื่อผู้ขาย', dataIndex: 'supplier_name' },
+    { title: 'ชื่อผู้ขาย', dataIndex: 'supplier_name', width: 160 },
+    { title: 'เลขประจำตัวผู้เสียภาษี', dataIndex: 'tax_id', width: 140 },
+    { title: 'ที่อยู่', dataIndex: 'address', width: 180, ellipsis: true },
+    { title: 'ผู้ติดต่อ', dataIndex: 'sales_person', width: 130 },
+    { title: 'เบอร์ติดต่อ', dataIndex: 'sales_person_phone', width: 120 },
+    { title: 'เบอร์สำนักงาน', dataIndex: 'office_phone', width: 120 },
     { title: 'อีเมล', dataIndex: 'contact_email', width: 180 },
-    { title: 'ใช้งาน', dataIndex: 'is_active', width: 90 },
+    { title: 'เงื่อนไขการชำระเงิน', dataIndex: 'payment_terms', width: 120 },
+    { title: 'สกุลเงิน', dataIndex: 'currency', width: 90 },
+    { title: 'หมายเหตุ', dataIndex: 'remarks', width: 160 },
     {
       title: 'สถานะ', key: 'status', width: 240,
       render: (_: unknown, r: ExcelRow) => r.errors.length === 0
@@ -668,7 +683,7 @@ const SupplierPage: React.FC = () => {
       </div>
 
       {/* Preview table */}
-      {excelRows.length > 0 && !importSummary && (
+      {excelRows.length > 0 && (
         <>
           <div style={{ marginBottom: 8, fontSize: 13, color: '#555', display: 'flex', gap: 20 }}>
             <span>ทั้งหมด: <strong>{excelRows.length}</strong> แถว</span>
@@ -677,11 +692,15 @@ const SupplierPage: React.FC = () => {
               <span style={{ color: '#dc2626' }}>ผิดพลาด: <strong>{errorCount}</strong></span>
             )}
           </div>
-          <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 6 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ maxHeight: 260, overflowY: 'auto', overflowX: 'auto', border: '1px solid #ddd', borderRadius: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
               <thead>
                 <tr style={{ background: '#2563a8', position: 'sticky', top: 0 }}>
-                  {['#', 'ชื่อผู้ขาย', 'อีเมล', 'ใช้งาน', 'ข้อผิดพลาด'].map((h) => (
+                  {[
+                    '#', 'ชื่อผู้ขาย', 'เลขประจำตัวผู้เสียภาษี', 'ที่อยู่', 'ผู้ติดต่อ',
+                    'เบอร์ติดต่อ', 'เบอร์สำนักงาน', 'อีเมล', 'เงื่อนไขการชำระเงิน', 'สกุลเงิน',
+                    'หมายเหตุ', 'ข้อผิดพลาด',
+                  ].map((h) => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
@@ -695,10 +714,17 @@ const SupplierPage: React.FC = () => {
                       <td style={{ ...TD, color: !row.supplier_name ? '#dc2626' : undefined }}>
                         {row.supplier_name || <em style={{ color: '#dc2626' }}>ว่าง</em>}
                       </td>
+                      <td style={TD}>{row.tax_id || '—'}</td>
+                      <td style={TD}>{row.address || '—'}</td>
+                      <td style={TD}>{row.sales_person || '—'}</td>
+                      <td style={TD}>{row.sales_person_phone || '—'}</td>
+                      <td style={TD}>{row.office_phone || '—'}</td>
                       <td style={TD}>
                         {row.contact_email || '—'}
                       </td>
-                      <td style={TD}>{row.is_active || '—'}</td>
+                      <td style={TD}>{row.payment_terms || '—'}</td>
+                      <td style={TD}>{row.currency || '—'}</td>
+                      <td style={TD}>{row.remarks || '—'}</td>
                       <td style={{ ...TD, color: '#dc2626', fontSize: 12 }}>
                         {row.errors.join(' / ')}
                       </td>
@@ -722,32 +748,6 @@ const SupplierPage: React.FC = () => {
         </div>
       )}
 
-      {/* Summary */}
-      {importSummary && (
-        <div style={{
-          marginTop: 12, padding: '14px 16px',
-          background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6,
-        }}>
-          <div style={{ fontWeight: 600, color: '#22c55e', marginBottom: 6 }}>✅ นำเข้าเสร็จสิ้น</div>
-          <div>สำเร็จ: <strong>{importSummary.imported}</strong> รายการ</div>
-          {importSummary.duplicates > 0 && (
-            <div style={{ color: '#b45309' }}>
-              ซ้ำ / ผิดพลาด: <strong>{importSummary.duplicates}</strong> รายการ
-            </div>
-          )}
-          {importSummary.created.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <Table
-                rowKey="id"
-                size="small"
-                dataSource={importSummary.created}
-                columns={createdSupplierColumns}
-                pagination={false}
-              />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 
@@ -756,11 +756,6 @@ const SupplierPage: React.FC = () => {
       return [
         <Button key="cancel" onClick={closeModal}>ยกเลิก</Button>,
         <Button key="save" type="primary" loading={saving} onClick={handleSave}>บันทึก</Button>,
-      ]
-    }
-    if (importSummary) {
-      return [
-        <Button key="close" type="primary" onClick={closeModal}>ปิด</Button>,
       ]
     }
     return [
@@ -887,7 +882,7 @@ const SupplierPage: React.FC = () => {
       ),
     },
     { title: 'ผู้ติดต่อ', dataIndex: 'sales_person', width: 140 },
-    { title: 'เบอร์โทร', dataIndex: 'contact_phone', width: 120 },
+    { title: 'เบอร์โทร', dataIndex: 'sales_person_phone', width: 120 },
     { title: 'อีเมล', dataIndex: 'contact_email', width: 180, ellipsis: true },
     {
       title: 'หมายเหตุ',
@@ -911,6 +906,37 @@ const SupplierPage: React.FC = () => {
     },
   ]
 
+  // Exports exactly what's currently in `data` — the already-filtered
+  // (server-side, via the debounced `search` param) rows backing the table's
+  // dataSource — never a separate unfiltered fetch. Header names/order match
+  // EXCEL_HEADERS (the import template) exactly, so an exported file can be
+  // re-imported unchanged. is_active is deliberately not included — removed
+  // from the header set entirely, not just hidden.
+  const handleExportExcel = () => {
+    if (data.length === 0) {
+      message.warning('ไม่มีข้อมูลผู้ขายให้ส่งออก')
+      return
+    }
+    const rows = data.map((r) => ({
+      supplier_name: r.supplier_name ?? '',
+      tax_id: r.tax_id ?? '',
+      address: r.address ?? '',
+      contact_name: r.sales_person ?? '',
+      contact_tel: r.sales_person_phone ?? '',
+      contact_phone: r.office_phone ?? '',
+      contact_email: r.contact_email ?? '',
+      payment_terms: r.payment_terms ?? '',
+      currency: r.currency ?? '',
+      Remark: r.remarks ?? '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'ผู้ขาย')
+    const today = new Date()
+    const dateStr = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
+    XLSX.writeFile(wb, `ผู้ขาย_${dateStr}.xlsx`)
+  }
+
   return (
     <div>
       <PageHeader
@@ -931,6 +957,9 @@ const SupplierPage: React.FC = () => {
               onChange={(e) => handleSearchInputChange(e.target.value)}
               style={{ width: 260 }}
             />
+            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
+              Export Excel
+            </Button>
             <Button icon={<ImportOutlined />} onClick={openBulkModal}>
               นำเข้าซัพพลายเออร์ (Bulk)
             </Button>
@@ -990,31 +1019,7 @@ const SupplierPage: React.FC = () => {
           </div>
         </Upload.Dragger>
 
-        {panelResult && (
-          <div style={{ marginTop: 16, padding: '14px 16px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6 }}>
-            <div style={{ fontWeight: 600, color: '#22c55e', marginBottom: 6 }}>✅ นำเข้าเสร็จสิ้น</div>
-            <div>สำเร็จ: <strong>{panelResult.imported}</strong> รายการ</div>
-            {panelResult.duplicates > 0 && (
-              <div style={{ color: '#b45309' }}>ซ้ำ / ผิดพลาด: <strong>{panelResult.duplicates}</strong> รายการ</div>
-            )}
-            {panelResult.created.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <Table
-                  rowKey="id"
-                  size="small"
-                  dataSource={panelResult.created}
-                  columns={createdSupplierColumns}
-                  pagination={false}
-                />
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-              <Button onClick={() => setPanelResult(null)}>นำเข้าอีกครั้ง</Button>
-            </div>
-          </div>
-        )}
-
-        {!panelResult && parsedRows.length > 0 && (
+        {parsedRows.length > 0 && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '16px 0 10px' }}>
               <Text strong style={{ fontSize: 13 }}>ตรวจสอบข้อมูล</Text>
@@ -1033,7 +1038,7 @@ const SupplierPage: React.FC = () => {
               size="small"
               dataSource={parsedRows.map((r, i) => ({ ...r, key: i }))}
               columns={panelUploadColumns}
-              scroll={{ x: 800 }}
+              scroll={{ x: 1300 }}
               pagination={parsedRows.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
               rowClassName={(r: ExcelRow) => (r.errors.length === 0 ? '' : 'import-row-error')}
             />

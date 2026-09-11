@@ -35,6 +35,14 @@ interface PRItem {
   remarks: string | null
   prDate: string
   jobCode: string | null
+  // "วันที่ส่งสินค้า" must read the actual delivery/required date, not
+  // prDate (the document's own creation date, purchase_request.pr_date) —
+  // see the column definition below for why these two are not
+  // interchangeable despite both being "a date on the PR".
+  requiredDate: string | null
+  createdAt: string | null
+  memoId: number | string | null
+  memoNo: string | null
 }
 
 const PRStatusPage: React.FC = () => {
@@ -74,6 +82,15 @@ const PRStatusPage: React.FC = () => {
         remarks:      r.remarks        ?? null,
         prDate:       r.pr_date        ?? '',
         jobCode:      r.job_code       ?? null,
+        // ⚠️ Unconfirmed whether GET /pr (list) actually returns these —
+        // PRDetailPage.tsx confirms required_date/memo_id are present on
+        // GET /pr/:id (detail), but that's a different endpoint. Mapped
+        // defensively here (null if absent); verify against a live
+        // response before relying on these columns actually populating.
+        requiredDate: r.required_date  ?? null,
+        createdAt:    r.created_at     ?? null,
+        memoId:       r.memo_id        ?? null,
+        memoNo:       r.memo_no        ?? null,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -102,16 +119,26 @@ const PRStatusPage: React.FC = () => {
       ),
     },
     {
+      title: 'Memo ที่เกี่ยวข้อง',
+      key: 'memo',
+      render: (_: unknown, record: PRItem) =>
+        record.memoNo ? (
+          <a
+            style={{ color: '#2563eb', fontWeight: 600 }}
+            onClick={() => navigate(`/memo/${record.memoId}`)}
+          >
+            {record.memoNo}
+          </a>
+        ) : (
+          <span style={{ color: '#9ca3af' }}>—</span>
+        ),
+    },
+    {
       title: 'รายการ',
       dataIndex: 'remarks',
       key: 'remarks',
       ellipsis: true,
       render: (v: string | null) => v || <span style={{ color: '#9ca3af' }}>—</span>,
-    },
-    {
-      title: 'ผู้ขอ',
-      dataIndex: 'requestedBy',
-      key: 'requestedBy',
     },
     {
       title: 'แผนก',
@@ -134,16 +161,24 @@ const PRStatusPage: React.FC = () => {
       },
     },
     {
-      title: 'มูลค่า (บาท)',
-      key: 'amount',
-      align: 'right' as const,
-      render: () => <span style={{ color: '#9ca3af' }}>—</span>,
+      // Renamed from "วันที่" — must read the actual delivery/required
+      // date (purchase_request.required_date), NOT prDate/pr_date (the
+      // document's own creation date). The old column read prDate under a
+      // generic "วันที่" label, which was fine when unlabeled, but would be
+      // actively mislabeled once renamed to "ส่งสินค้า" (delivery) — so this
+      // repoints to requiredDate rather than keeping prDate under the new
+      // label. See the ⚠️ note on requiredDate's mapping above — needs live
+      // verification that GET /pr (list) actually returns required_date.
+      title: 'วันที่ส่งสินค้า',
+      dataIndex: 'requiredDate',
+      key: 'requiredDate',
+      render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
     },
     {
-      title: 'วันที่',
-      dataIndex: 'prDate',
-      key: 'prDate',
-      render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
+      title: 'วันที่เปิดเอกสาร',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
     },
     {
       title: 'จัดการ',
@@ -171,6 +206,11 @@ const PRStatusPage: React.FC = () => {
           )}
         </Space>
       ),
+    },
+    {
+      title: 'ผู้ขอ',
+      dataIndex: 'requestedBy',
+      key: 'requestedBy',
     },
   ]
 
@@ -248,7 +288,13 @@ const PRStatusPage: React.FC = () => {
           dataSource={filteredItems}
           columns={columns}
           size="small"
-          scroll={{ x: 1080 }}
+          scroll={{ x: 1300 }}
+          // Status-driven row tint — see .pr-row-fulfilled/.pr-row-partial
+          // in index.css (same pattern as .import-row-error elsewhere).
+          rowClassName={(record: PRItem) =>
+            record.status === 'FULFILLED' ? 'pr-row-fulfilled' :
+            record.status === 'PARTIALLY_FILLED' ? 'pr-row-partial' : ''
+          }
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

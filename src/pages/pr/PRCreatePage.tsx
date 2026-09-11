@@ -18,6 +18,7 @@ import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { Department } from '@/types/permission.types'
+import { resolveFileUrl } from '@/utils/fileUrl'
 
 const MENU_CODE = 'MENU_PR_CREATE'
 
@@ -128,12 +129,13 @@ const PRCreatePage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEdit = Boolean(id)
-  // Set once a brand-new PR is saved as DRAFT from this page (create mode).
-  // Lets a second "บันทึกร่าง" click PUT the same record instead of POSTing
-  // a duplicate — without switching into the `isEdit` route/branch, whose
-  // save button has different semantics (always force-resubmits to
-  // COMPLETED, per the reopened-PR edit flow).
-  const [createdId, setCreatedId] = useState<number | null>(null)
+  // The PR's id once it exists server-side — null only for a brand-new,
+  // never-yet-saved PR. Initialized from the route param in edit mode (the
+  // PR already exists), and set from the create response's `id` the first
+  // time a not-yet-existing PR is saved as DRAFT from this page. Any submit
+  // after that (draft or full submit, edit mode or not) branches on this to
+  // PUT the existing record instead of POSTing a duplicate.
+  const [prId, setPrId] = useState<number | null>(isEdit && id ? Number(id) : null)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [form] = Form.useForm()
   const attachmentsRef = useRef<AttachedFile[]>([])
@@ -148,8 +150,6 @@ const PRCreatePage: React.FC = () => {
   const [usersLoading, setUsersLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
-  const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
-  const [warehousesLoading, setWarehousesLoading] = useState(false)
   // Same master data / service call as the "แผนก" dropdown on the Add User
   // page (UsersPage.tsx) — permissionMatrixService.getDepartments.
   const [departments, setDepartments] = useState<Department[]>([])
@@ -179,6 +179,26 @@ const PRCreatePage: React.FC = () => {
   // existing PR into edit mode (fetchExisting's form.setFieldsValue).
   const projectCode: string | undefined = Form.useWatch('project_code', form)
 
+  // The 4 dedicated "warehouse projects" backend now derives PR/PO
+  // warehouse_code from (project.warehouse_code is only populated for
+  // these) — บางแค / ศาลายา / บางบ่อ / ปราจีน. The projects API response
+  // doesn't expose a flag distinguishing these from real customer projects
+  // (no project_type/is_warehouse_project/warehouse_code field is mapped
+  // anywhere in the frontend — see fetchProjects below), so this filters by
+  // the known fixed code list instead. If these codes ever change, this
+  // list needs updating too — a proper flag from the backend would be more
+  // robust, but isn't available today.
+  const WAREHOUSE_PROJECT_CODES = ['2026-WH-001', '2026-WH-002', '2026-WH-003', '2026-WH-004']
+
+  // "โครงการ" dropdown options: only the 4 warehouse-projects for
+  // order_type 'stock' (required there — see the Field below), the normal
+  // customer-project list (warehouse-projects excluded) otherwise.
+  const projectOptions = useMemo(() => (
+    orderType === 'stock'
+      ? projects.filter((p) => WAREHOUSE_PROJECT_CODES.includes(p.value))
+      : projects.filter((p) => !WAREHOUSE_PROJECT_CODES.includes(p.value))
+  ), [projects, orderType])
+
   // job_code options restricted to the selected project's allowed job_codes[].
   // Falls back to the full JOB_TYPES list when no project is selected, the
   // project isn't found yet (projects still loading), or the project has no
@@ -186,7 +206,7 @@ const PRCreatePage: React.FC = () => {
   // never as "lock the user out".
   const jobOptions = useMemo(() => {
     const allOptions = JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))
-    if (!projectCode) return []
+    if (!projectCode) return allOptions
     const project = projects.find((p) => p.value === projectCode)
     if (!project || !project.jobCodes || project.jobCodes.length === 0) return allOptions
     const filtered = allOptions.filter((o) => project.jobCodes.includes(o.value))
@@ -279,27 +299,6 @@ const PRCreatePage: React.FC = () => {
     fetchProjects()
   }, [])
 
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      setWarehousesLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setWarehouses(list.map((w: any) => ({
-          value: w.warehouse_code ?? w.code,
-          label: w.warehouse_name ?? w.name ?? w.warehouse_code ?? w.code,
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลคลังสินค้าไม่สำเร็จ')
-      } finally {
-        setWarehousesLoading(false)
-      }
-    }
-    fetchWarehouses()
-  }, [])
 
   useEffect(() => {
     if (isEdit) return
@@ -339,7 +338,6 @@ const PRCreatePage: React.FC = () => {
         form.setFieldsValue({
           pr_date: raw.pr_date ? dayjs(raw.pr_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
           location_text: raw.location_text,
-          warehouse_code: raw.warehouse_code || undefined,
           required_date: raw.required_date ? dayjs(raw.required_date) : undefined,
           project_code: raw.project_code || undefined,
           order_type: raw.order_type || undefined,
@@ -416,9 +414,10 @@ const PRCreatePage: React.FC = () => {
   }, [isEdit, id])
 
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
+    if (submitting) return
     setSubmitting(true)
     try {
-      const { location_text, required_date, project_code, order_type, pr_type, job_code, warehouse_code, requested_by, dept_code } =
+      const { location_text, required_date, project_code, order_type, pr_type, job_code, requested_by, dept_code } =
         await form.validateFields()
 
       // 1. Upload newly-added files.
@@ -447,9 +446,10 @@ const PRCreatePage: React.FC = () => {
         requested_by,
         created_by: requested_by,
         location_text,
-        // Warehouse only applies when ordering against stock — dropped otherwise
-        // even if a stale value lingers in the (hidden) form field.
-        warehouse_code: order_type === 'stock' ? (warehouse_code || undefined) : undefined,
+        // warehouse_code is no longer collected from the user — the backend
+        // derives it server-side from project.warehouse_code (populated only
+        // for the 4 dedicated warehouse-projects) and rejects a client-sent
+        // value, so it's never included here.
         required_date: required_date ? required_date.format('YYYY-MM-DD') : undefined,
         project_code,
         order_type,
@@ -473,43 +473,49 @@ const PRCreatePage: React.FC = () => {
       }
 
       if (isEdit) {
-        await axios.put(`${BASE_URL}/pr/${id}`, payload, {
+        // Reopened-PR edit flow: PUT never touches status (backend-confirmed)
+        // — the reopened PR stays DRAFT until explicitly submitted. Do that
+        // here so saving an edit always finishes back at COMPLETED instead
+        // of stranding it.
+        await axios.put(`${BASE_URL}/pr/${prId}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        // Update never touches status (backend-confirmed) — the reopened PR
-        // stays DRAFT until explicitly submitted. Do that here so saving an
-        // edit always finishes back at COMPLETED instead of stranding it.
-        await axios.post(`${BASE_URL}/pr/${id}/submit`, {}, {
+        await axios.post(`${BASE_URL}/pr/${prId}/submit`, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         Modal.success({
           title: 'บันทึกและส่งใบขอซื้อสำเร็จ',
           content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว`,
         })
-        navigate(`/pr/${id}`)
-      } else if (status === 'DRAFT') {
-        if (createdId != null) {
-          // Already created earlier in this session — PUT to update it in
-          // place instead of POSTing a duplicate. No forced re-submit here
-          // (unlike the isEdit branch above) — this keeps the PR as DRAFT.
-          await axios.put(`${BASE_URL}/pr/${createdId}`, payload, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          })
-        } else {
-          const res = await axios.post(`${BASE_URL}/pr`, payload, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          })
-          const raw = res.data?.data ?? res.data
-          if (raw?.id != null) setCreatedId(Number(raw.id))
-        }
-        message.success('บันทึกร่าง PR สำเร็จ')
-        // No navigation — stay on this page so the user can keep editing.
-      } else {
-        await axios.post(`${BASE_URL}/pr`, payload, {
+        navigate(`/pr/${prId}`)
+      } else if (prId != null) {
+        // Already created earlier in this session (or opened from an
+        // "edit draft" link) — PUT to update it in place instead of
+        // POSTing a duplicate. prId stays set afterward either way, so any
+        // further click (draft or submit) keeps using PUT.
+        await axios.put(`${BASE_URL}/pr/${prId}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        message.success('บันทึก PR สำเร็จ')
-        navigate('/pr/status')
+        if (status === 'DRAFT') {
+          message.success('บันทึกร่าง PR สำเร็จ')
+          // No navigation — stay on this page so the user can keep editing.
+        } else {
+          message.success('บันทึก PR สำเร็จ')
+          navigate('/pr/status')
+        }
+      } else {
+        const res = await axios.post(`${BASE_URL}/pr`, payload, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = res.data?.data ?? res.data
+        if (raw?.id != null) setPrId(Number(raw.id))
+        if (status === 'DRAFT') {
+          message.success('บันทึกร่าง PR สำเร็จ')
+          // No navigation — stay on this page so the user can keep editing.
+        } else {
+          message.success('บันทึก PR สำเร็จ')
+          navigate('/pr/status')
+        }
       }
     } catch (err: any) {
       const shortages = err?.response?.data?.shortages
@@ -675,10 +681,14 @@ const PRCreatePage: React.FC = () => {
                 </div>
               </div>
 
-              <Field label="โครงการ">
-                <Form.Item name="project_code" noStyle>
+              <Field label="โครงการ" required={orderType === 'stock' && !selectedMemo}>
+                <Form.Item
+                  name="project_code"
+                  noStyle
+                  rules={orderType === 'stock' ? [{ required: true, message: 'กรุณาเลือกโครงการ (จำเป็นสำหรับประเภทการสั่งซื้อคลังสินค้า)' }] : []}
+                >
                   <Select
-                    placeholder="- เลือกรายการ -"
+                    placeholder={orderType === 'stock' ? '- เลือกคลังสินค้า (โครงการ) -' : '- เลือกรายการ -'}
                     style={{ width: '100%' }}
                     loading={projectsLoading}
                     showSearch
@@ -687,12 +697,17 @@ const PRCreatePage: React.FC = () => {
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
-                    options={projects}
+                    options={projectOptions}
                   />
                 </Form.Item>
                 {selectedMemo && (
                   <div style={{ fontSize: 11, color: '#60a5fa', marginTop: 4 }}>
                     ล็อกตามโครงการของ Memo ที่เลือก — ล้าง Memo Reference เพื่อแก้ไข
+                  </div>
+                )}
+                {orderType === 'stock' && !selectedMemo && (
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                    ระบบจะกำหนดคลังสินค้าให้อัตโนมัติตามโครงการที่เลือก
                   </div>
                 )}
               </Field>
@@ -772,24 +787,6 @@ const PRCreatePage: React.FC = () => {
                   />
                 </Form.Item>
               </Field>
-
-              {orderType === 'stock' && (
-                <Field label="คลังสินค้า">
-                  <Form.Item name="warehouse_code" noStyle>
-                    <Select
-                      placeholder="- ไม่ระบุ -"
-                      style={{ width: '100%' }}
-                      loading={warehousesLoading}
-                      showSearch
-                      allowClear
-                      filterOption={(input, option) =>
-                        String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={warehouses}
-                    />
-                  </Form.Item>
-                </Field>
-              )}
 
               <Field label="สถานที่ส่งของ" required>
                 <Form.Item name="location_text" noStyle rules={[{ required: true, message: 'กรุณากรอกสถานที่ส่งของ' }]}>
@@ -926,7 +923,7 @@ const PRCreatePage: React.FC = () => {
                       {selectedMemo.attachments.map((f) => (
                         <a
                           key={f.filePath}
-                          href={f.filePath}
+                          href={resolveFileUrl(f.filePath)}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
@@ -1003,19 +1000,23 @@ const PRCreatePage: React.FC = () => {
                 {existingAttachments.length > 0 && (
                   <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {existingAttachments.map((f) => (
-                      <div
+                      <a
                         key={f.file_path}
+                        href={resolveFileUrl(f.file_path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 5,
-                          background: '#f3f4f6',
-                          border: '0.5px solid #d1d5db',
+                          background: '#f0f5ff',
+                          border: '0.5px solid #bfdbfe',
                           borderRadius: 6,
                           padding: '3px 8px',
                           fontSize: 12,
-                          color: '#374151',
+                          color: '#1e40af',
                           maxWidth: 240,
+                          textDecoration: 'none',
                         }}
                       >
                         <span
@@ -1024,7 +1025,7 @@ const PRCreatePage: React.FC = () => {
                         >
                           {f.file_name}
                         </span>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 )}
@@ -1039,7 +1040,7 @@ const PRCreatePage: React.FC = () => {
                       {memoAttachments.map((f) => (
                         <a
                           key={f.file_path}
-                          href={f.file_path}
+                          href={resolveFileUrl(f.file_path)}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
@@ -1123,6 +1124,7 @@ const PRCreatePage: React.FC = () => {
           onRemarkChange={setRemark}
           onPrint={handlePrintCurrent}
           jobTypeCode={jobTypeCode}
+          orderType={orderType}
         />
 
         {/* ── Action bar ── */}

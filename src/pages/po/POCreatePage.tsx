@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip,
 } from 'antd'
@@ -18,6 +18,7 @@ import { poApprovalService } from '@/services/poApprovalService'
 import { getAvailablePRs } from '@/services/poService'
 import POItemsTable from '@/components/common/POItemsTable'
 import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
+import { resolveFileUrl } from '@/utils/fileUrl'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
@@ -116,6 +117,14 @@ const POCreatePage: React.FC = () => {
   // order_type = 'cost') — re-renders reactively as the user changes the
   // Select, same pattern as PR's own order_type-driven fields.
   const orderType: 'stock' | 'cost' | undefined = Form.useWatch('order_type', form)
+  // The 4 dedicated "warehouse projects" the backend derives PO warehouse_code
+  // from (project.warehouse_code is only populated for these) — บางแค /
+  // ศาลายา / บางบ่อ / ปราจีน. Same hardcoded-allowlist mechanism as
+  // PRCreatePage.tsx's WAREHOUSE_PROJECT_CODES — GET /master/projects has no
+  // field distinguishing these from real customer projects, so this filters
+  // by the known fixed code list. Update both lists together if these codes
+  // ever change.
+  const WAREHOUSE_PROJECT_CODES = ['2026-WH-001', '2026-WH-002', '2026-WH-003', '2026-WH-004']
   // Drives the CostCode picker's job-type filter on every line — PO's
   // "ประเภท Job" is header-level, same watched-field pattern as orderType above.
   const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
@@ -144,27 +153,43 @@ const POCreatePage: React.FC = () => {
   const [prOptions, setPrOptions] = useState<PRListItem[]>([])
   const [prOptionsLoading, setPrOptionsLoading] = useState(false)
   const [prFromEditMode, setPrFromEditMode] = useState<PRListItem | null>(null)
-  const [warehouses, setWarehouses] = useState<{ value: string; label: string }[]>([])
-  const [warehousesLoading, setWarehousesLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
+  // "โครงการ" dropdown options: only the 4 warehouse-projects for order_type
+  // 'stock' (required there — see the Form.Item below), the normal
+  // customer-project list (warehouse-projects excluded) otherwise. Applies to
+  // both the no-PR flow and the PR-linked (disabled) field — a PR-linked
+  // PO's project always matches its own order_type either way, so filtering
+  // doesn't hide the already-selected value in practice.
+  const projectOptions = useMemo(() => (
+    orderType === 'stock'
+      ? projects.filter((p) => WAREHOUSE_PROJECT_CODES.includes(p.value))
+      : projects.filter((p) => !WAREHOUSE_PROJECT_CODES.includes(p.value))
+  ), [projects, orderType])
   const [projectDetails, setProjectDetails] = useState<Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }>>({})
   const [selectedProjectCode, setSelectedProjectCode] = useState<string | null>(null)
   const [items, setItems] = useState<POLineItem[]>([])
   // job_code is a single header field shared by every line's CostCode filter
   // (jobTypeCode above) — if the user changes it after already picking Cost
   // Codes, those selections may no longer match the new filter, so clear
-  // them all (same pattern as PRItemsTable's jobTypeCode effect). Skip the
-  // very first render so loading an existing PO's job_code (edit mode)
-  // doesn't wipe lines' cost_subgroup_id right after they're set.
-  const isFirstJobTypeRender = useRef(true)
+  // them all (same pattern as PRItemsTable's jobTypeCode effect).
+  //
+  // This must NOT fire when job_code arrives asynchronously from the edit-mode
+  // load (fetchPo's form.setFieldsValue) — that used to be guarded by a
+  // "skip the first render" ref, but the load resolves well after the first
+  // render, so the guard never actually caught it and lines' cost_subgroup_id
+  // got wiped right after fetchPo had just populated them. Instead: track the
+  // last job_code we know is "confirmed" (either the edit-mode load finished,
+  // or a prior genuine user change already ran this effect), and skip
+  // entirely while the edit-mode fetch (poLoading) is in flight — fetchPo is
+  // responsible for updating this ref itself once it applies raw.job_code.
+  const lastAppliedJobTypeRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (isFirstJobTypeRender.current) {
-      isFirstJobTypeRender.current = false
-      return
-    }
+    if (poLoading) return
+    if (jobTypeCode === lastAppliedJobTypeRef.current) return
+    lastAppliedJobTypeRef.current = jobTypeCode
     setItems((prev) => prev.map((i) => ({ ...i, cost_subgroup_id: null, cost_code_label: null })))
-  }, [jobTypeCode])
+  }, [jobTypeCode, poLoading])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
   const [prDetailLoading, setPrDetailLoading] = useState(false)
   // Fields use `null` (never `undefined`) to mean "no value" — Ant Design's
@@ -339,27 +364,6 @@ const POCreatePage: React.FC = () => {
     console.log('[prOptions]', prOptions)
   }, [prOptions])
 
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      setWarehousesLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setWarehouses(list.map((w: any) => ({
-          value: w.warehouse_code ?? w.code,
-          label: w.warehouse_name ?? w.name ?? w.warehouse_code ?? w.code,
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลคลังสินค้าไม่สำเร็จ')
-      } finally {
-        setWarehousesLoading(false)
-      }
-    }
-    fetchWarehouses()
-  }, [])
 
   // Read-only preview of the next PO number — create mode only. An existing
   // PO already has its real saved po_no (populated from GET /po/:id below),
@@ -479,6 +483,12 @@ const POCreatePage: React.FC = () => {
           email: raw.contact_email ?? null,
           contactPhone: raw.contact_phone ?? null,
         })
+
+        // Mark this load's job_code as already "applied" before poLoading
+        // flips back to false below — otherwise the jobTypeCode-watch effect
+        // (see lastAppliedJobTypeRef above) would see a mismatch on the next
+        // render and wipe the cost_subgroup_id we're about to set on `items`.
+        lastAppliedJobTypeRef.current = raw.job_code ?? undefined
 
         // GET /po/:id doesn't yet join office_phone/fax/sales_person/contact_email/
         // contact_phone from the supplier master (pending backend work), so the
@@ -684,9 +694,13 @@ const POCreatePage: React.FC = () => {
   }, [selectedPrId])
 
   useEffect(() => {
-    if (!prAutoFill || warehouses.length === 0) return
+    // No warehouse Select exists in this form (warehouse_code is now backend-
+    // derived from project, no-PR flow) — this only keeps the hidden
+    // warehouse_code form field in sync with the linked PR's own (already
+    // correctly-derived) value, for the PR-linked submit payload below.
+    if (!prAutoFill) return
     form.setFieldValue('warehouse_code', prAutoFill.warehouseCode)
-  }, [warehouses, prAutoFill])
+  }, [prAutoFill])
 
   useEffect(() => {
     if (!prAutoFill || users.length === 0) return
@@ -934,7 +948,12 @@ const POCreatePage: React.FC = () => {
           location_text: values.deliveryLocation,
           receiver_name: values.receiver_name || undefined,
           receiver_phone: values.receiver_phone || undefined,
-          warehouse_code: values.warehouse_code || undefined,
+          // No-PR flow: never send warehouse_code — backend derives it
+          // server-side from project.warehouse_code and rejects a
+          // client-sent value. PR-linked flow: keep sending it, carried
+          // over from the source PR's own (already correctly-derived)
+          // warehouse_code via the prAutoFill effect above.
+          warehouse_code: selectedPrId ? (values.warehouse_code || undefined) : undefined,
           project_code: values.project_code || undefined,
           order_type: values.order_type || undefined,
           job_code: values.job_code || undefined,
@@ -1374,9 +1393,20 @@ const POCreatePage: React.FC = () => {
                         <Form.Item
                           label={<span style={labelStyle}>โครงการ</span>}
                           name="project_code"
+                          // Required only for the no-PR flow when order_type is
+                          // 'stock' — the backend derives warehouse_code from this
+                          // project and rejects a client-sent warehouse_code, so a
+                          // stock-type no-PR PO can't be created without one. A
+                          // PR-linked PO's project comes from (and is locked to)
+                          // the linked PR instead, so this rule is skipped there.
+                          rules={
+                            orderType === 'stock' && !selectedPrId
+                              ? [{ required: true, message: 'กรุณาเลือกโครงการ (จำเป็นสำหรับประเภทการสั่งซื้อคลังสินค้า)' }]
+                              : []
+                          }
                         >
                           <Select
-                            placeholder="- เลือกรายการ -"
+                            placeholder={orderType === 'stock' ? '- เลือกคลังสินค้า (โครงการ) -' : '- เลือกรายการ -'}
                             loading={projectsLoading || prDetailLoading}
                             showSearch
                             allowClear
@@ -1387,10 +1417,15 @@ const POCreatePage: React.FC = () => {
                             filterOption={(input, option) =>
                               String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                             }
-                            options={projects}
+                            options={projectOptions}
                             onChange={(val) => setSelectedProjectCode(val ?? null)}
                           />
                         </Form.Item>
+                        {orderType === 'stock' && !selectedPrId && (
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: -12, marginBottom: 12 }}>
+                            ระบบจะกำหนดคลังสินค้าให้อัตโนมัติตามโครงการที่เลือก
+                          </div>
+                        )}
                       </Tooltip>
                     </Col>
 
@@ -1729,7 +1764,7 @@ const POCreatePage: React.FC = () => {
                             <Space>
                               <PaperClipOutlined style={{ color: '#2563eb' }} />
                               <a
-                                href={a.filePath}
+                                href={resolveFileUrl(a.filePath)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{ fontSize: 13, color: '#1e40af' }}
