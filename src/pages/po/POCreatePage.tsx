@@ -169,27 +169,6 @@ const POCreatePage: React.FC = () => {
   const [projectDetails, setProjectDetails] = useState<Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }>>({})
   const [selectedProjectCode, setSelectedProjectCode] = useState<string | null>(null)
   const [items, setItems] = useState<POLineItem[]>([])
-  // job_code is a single header field shared by every line's CostCode filter
-  // (jobTypeCode above) — if the user changes it after already picking Cost
-  // Codes, those selections may no longer match the new filter, so clear
-  // them all (same pattern as PRItemsTable's jobTypeCode effect).
-  //
-  // This must NOT fire when job_code arrives asynchronously from the edit-mode
-  // load (fetchPo's form.setFieldsValue) — that used to be guarded by a
-  // "skip the first render" ref, but the load resolves well after the first
-  // render, so the guard never actually caught it and lines' cost_subgroup_id
-  // got wiped right after fetchPo had just populated them. Instead: track the
-  // last job_code we know is "confirmed" (either the edit-mode load finished,
-  // or a prior genuine user change already ran this effect), and skip
-  // entirely while the edit-mode fetch (poLoading) is in flight — fetchPo is
-  // responsible for updating this ref itself once it applies raw.job_code.
-  const lastAppliedJobTypeRef = useRef<string | undefined>(undefined)
-  useEffect(() => {
-    if (poLoading) return
-    if (jobTypeCode === lastAppliedJobTypeRef.current) return
-    lastAppliedJobTypeRef.current = jobTypeCode
-    setItems((prev) => prev.map((i) => ({ ...i, cost_subgroup_id: null, cost_code_label: null })))
-  }, [jobTypeCode, poLoading])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
   const [prDetailLoading, setPrDetailLoading] = useState(false)
   // Fields use `null` (never `undefined`) to mean "no value" — Ant Design's
@@ -359,11 +338,6 @@ const POCreatePage: React.FC = () => {
     fetchPRs()
   }, [])
 
-  // TEMP DIAGNOSTIC — remove after PR-modal investigation
-  useEffect(() => {
-    console.log('[prOptions]', prOptions)
-  }, [prOptions])
-
 
   // Read-only preview of the next PO number — create mode only. An existing
   // PO already has its real saved po_no (populated from GET /po/:id below),
@@ -433,18 +407,6 @@ const POCreatePage: React.FC = () => {
         const res = await poApprovalService.getDetail(accessToken ?? '', id)
         const raw: any = res.data?.data ?? res.data
 
-        // TEMP DIAGNOSTIC — remove after Issue 1 / Issue 2 investigation
-        console.log('[POCreatePage] GET /po/:id raw response:', raw)
-        console.log('[POCreatePage] raw.approver_id:', raw.approver_id, 'typeof:', typeof raw.approver_id)
-        console.log('[POCreatePage] approvers options at this moment:', approvers.length, approvers)
-        console.log('[POCreatePage] raw contact fields:', {
-          office_phone: raw.office_phone,
-          fax: raw.fax,
-          sales_person: raw.sales_person,
-          contact_email: raw.contact_email,
-          contact_phone: raw.contact_phone,
-        })
-
         const status = raw.status ?? ''
         const statusUpper = status.toUpperCase()
         // APPROVED/PENDING_REAPPROVAL are normally locked (LOCKED_STATUSES) —
@@ -484,12 +446,6 @@ const POCreatePage: React.FC = () => {
           contactPhone: raw.contact_phone ?? null,
         })
 
-        // Mark this load's job_code as already "applied" before poLoading
-        // flips back to false below — otherwise the jobTypeCode-watch effect
-        // (see lastAppliedJobTypeRef above) would see a mismatch on the next
-        // render and wipe the cost_subgroup_id we're about to set on `items`.
-        lastAppliedJobTypeRef.current = raw.job_code ?? undefined
-
         // GET /po/:id doesn't yet join office_phone/fax/sales_person/contact_email/
         // contact_phone from the supplier master (pending backend work), so the
         // fields above are set to null/undefined on load. Trigger the same live
@@ -502,10 +458,6 @@ const POCreatePage: React.FC = () => {
         if (raw.supplier_id) {
           handleSupplierChange(raw.supplier_id)
         }
-
-        // TEMP DIAGNOSTIC — remove after Issue 1 / Issue 2 investigation
-        console.log('[POCreatePage] approver field set to:', raw.approver_id != null ? Number(raw.approver_id) : null)
-        console.log('[POCreatePage] form.getFieldsValue().approver immediately after:', form.getFieldsValue().approver)
 
         setPrAutoFill({
           requestedBy: raw.requested_by != null ? Number(raw.requested_by) : (raw.requester_id != null ? Number(raw.requester_id) : null),
@@ -573,11 +525,12 @@ const POCreatePage: React.FC = () => {
             disc_type: l.disc_type ?? (raw.discount_type === 'amt' ? 'amt' : 'pct'),
             wht_rate: l.wht_rate ?? undefined,
             cost_subgroup_id: l.cost_subgroup_id ?? null,
-            // No combined "cost_code" string on purchase_order_line — build a
-            // readable label from the derived job_code/job_name + subgroup_name
-            // (same fields POLine already returns per its cost_subgroup_id comment).
-            cost_code_label: l.cost_subgroup_id
-              ? `${l.job_name || l.job_code || ''}${l.subgroup_name ? ` — ${l.subgroup_name}` : ''}`.trim() || null
+            // l.cost_code comes pre-composed from the backend (subject_code ||
+            // job_code || group_code || subgroup_code) — same field/format as
+            // the PR-line prefill path below (line ~869) and the manual-
+            // selection path (POItemsTable.tsx's handleCostCodeSelect).
+            cost_code_label: l.cost_code
+              ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
               : null,
           }))
         )
@@ -709,11 +662,7 @@ const POCreatePage: React.FC = () => {
 
   useEffect(() => {
     if (!prAutoFill || approvers.length === 0) return
-    // TEMP DIAGNOSTIC — remove after Issue 1 investigation
-    console.log('[POCreatePage] reapplying approver — prAutoFill.approverId:', prAutoFill.approverId, typeof prAutoFill.approverId)
-    console.log('[POCreatePage] approvers options value types:', approvers.map((a) => ({ value: a.value, type: typeof a.value })))
     form.setFieldValue('approver', prAutoFill.approverId)
-    console.log('[POCreatePage] form.getFieldsValue().approver after reapply:', form.getFieldsValue().approver)
   }, [approvers, prAutoFill])
 
   useEffect(() => {
@@ -755,8 +704,6 @@ const POCreatePage: React.FC = () => {
 
   const handlePrChange = (newPrId: number | undefined) => {
     const prevPrId = selectedPrId
-    // TEMP DIAGNOSTIC — remove after PR-modal investigation
-    console.log('[POCreatePage] handlePrChange fired — newPrId:', newPrId, 'prevPrId:', prevPrId, 'items.length:', items.length)
     // The confirm dialog below promises to clear ALL selected items
     // ("ล้างรายการวัสดุที่เลือกไว้ทั้งหมด"), not just PR-linked ones — so the
     // gate for showing it, and the clear itself, must cover every row,
@@ -799,11 +746,21 @@ const POCreatePage: React.FC = () => {
   // modal for that same-PR reselect case — switching to a different PR is handled
   // entirely by handlePrChange above (confirmation + clearing items).
   const handlePrSelect = (prId: number) => {
-    // TEMP DIAGNOSTIC — remove after PR-modal investigation
-    console.log('[POCreatePage] handlePrSelect (onSelect) fired — prId:', prId, 'selectedPrId:', selectedPrId)
     if (prId === selectedPrId) {
       setPrModalOpen(true)
     }
+  }
+
+  // job_code is a single header field shared by every line's CostCode filter —
+  // if the user changes it after already picking Cost Codes, those selections
+  // may no longer match the new filter, so clear them all. Wired directly as
+  // the Select's onChange rather than a useEffect watching the field's value:
+  // a Select's onChange only ever fires from a genuine user interaction, so
+  // there's no risk of it firing during the edit-mode data load the way a
+  // Form.useWatch-driven effect could (see git history for that saga).
+  const handleJobTypeChange = (value: string) => {
+    form.setFieldValue('job_code', value)
+    setItems((prev) => prev.map((i) => ({ ...i, cost_subgroup_id: null, cost_code_label: null })))
   }
 
   // Auto-fill contact fields when a supplier is selected — fields stay fully
@@ -1629,6 +1586,7 @@ const POCreatePage: React.FC = () => {
                             String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                           }
                           options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+                          onChange={handleJobTypeChange}
                         />
                       </Form.Item>
                     </Col>
@@ -1957,11 +1915,6 @@ const POCreatePage: React.FC = () => {
         />
       )}
 
-      {/* TEMP DIAGNOSTIC — remove after PR-modal investigation */}
-      {(() => {
-        console.log('[POCreatePage] render — isEdit:', isEdit, 'canEdit:', canEdit, 'formDisabled:', isEdit && !canEdit, 'prModalOpen:', prModalOpen, 'selectedPrId:', selectedPrId)
-        return null
-      })()}
       <PRItemSelectionModal
         open={prModalOpen}
         prId={selectedPrId}
