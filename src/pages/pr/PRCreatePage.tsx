@@ -179,25 +179,13 @@ const PRCreatePage: React.FC = () => {
   // existing PR into edit mode (fetchExisting's form.setFieldsValue).
   const projectCode: string | undefined = Form.useWatch('project_code', form)
 
-  // The 4 dedicated "warehouse projects" backend now derives PR/PO
-  // warehouse_code from (project.warehouse_code is only populated for
-  // these) — บางแค / ศาลายา / บางบ่อ / ปราจีน. The projects API response
-  // doesn't expose a flag distinguishing these from real customer projects
-  // (no project_type/is_warehouse_project/warehouse_code field is mapped
-  // anywhere in the frontend — see fetchProjects below), so this filters by
-  // the known fixed code list instead. If these codes ever change, this
-  // list needs updating too — a proper flag from the backend would be more
-  // robust, but isn't available today.
-  const WAREHOUSE_PROJECT_CODES = ['2026-WH-001', '2026-WH-002', '2026-WH-003', '2026-WH-004']
-
-  // "โครงการ" dropdown options: only the 4 warehouse-projects for
-  // order_type 'stock' (required there — see the Field below), the normal
-  // customer-project list (warehouse-projects excluded) otherwise.
-  const projectOptions = useMemo(() => (
-    orderType === 'stock'
-      ? projects.filter((p) => WAREHOUSE_PROJECT_CODES.includes(p.value))
-      : projects.filter((p) => !WAREHOUSE_PROJECT_CODES.includes(p.value))
-  ), [projects, orderType])
+  // "โครงการ" and "ประเภทการสั่งซื้อ" are fully independent fields — no
+  // filtering in either direction. Any project can be selected regardless of
+  // order_type (previously filtered to a hardcoded warehouse-project
+  // allowlist for order_type='stock', which coupled the two fields and, via
+  // an AntD Select value/options-mismatch, was implicated in a project
+  // dropdown rendering as a raw unlabeled code after a failed save).
+  const projectOptions = projects
 
   // job_code options restricted to the selected project's allowed job_codes[].
   // Falls back to the full JOB_TYPES list when no project is selected, the
