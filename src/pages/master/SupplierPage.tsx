@@ -866,7 +866,7 @@ const SupplierPage: React.FC = () => {
     {
       title: 'ลำดับ',
       key: 'no',
-      width: 80,
+      width: 48,
       align: 'center' as const,
       render: (_: unknown, __: SupplierRecord, index: number) =>
         (currentPage - 1) * pageSize + index + 1,
@@ -883,6 +883,12 @@ const SupplierPage: React.FC = () => {
     },
     { title: 'ผู้ติดต่อ', dataIndex: 'sales_person', width: 140 },
     { title: 'เบอร์โทร', dataIndex: 'sales_person_phone', width: 120 },
+    {
+      title: 'เครดิต',
+      dataIndex: 'payment_terms',
+      width: 100,
+      render: (v?: string) => v || '-',
+    },
     { title: 'อีเมล', dataIndex: 'contact_email', width: 180, ellipsis: true },
     {
       title: 'หมายเหตุ',
@@ -975,7 +981,7 @@ const SupplierPage: React.FC = () => {
           dataSource={data}
           columns={columns}
           size="small"
-          scroll={{ x: 900 }}
+          scroll={{ x: 1048 }}
           pagination={{
             current: currentPage,
             pageSize,
