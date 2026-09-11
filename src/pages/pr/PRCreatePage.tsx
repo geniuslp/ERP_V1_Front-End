@@ -822,11 +822,10 @@ const PRCreatePage: React.FC = () => {
                   carries its own department context, so this is disabled and
                   cleared (never auto-filled) the moment a Memo is selected,
                   and re-enabled/re-required the moment it's cleared. */}
-              <Field label="แผนก" required={!selectedMemo}>
+              <Field label="แผนก">
                 <Form.Item
                   name="dept_code"
                   noStyle
-                  rules={selectedMemo ? [] : [{ required: true, message: 'กรุณาเลือกแผนก' }]}
                 >
                   <Select
                     placeholder="- เลือกแผนก -"
@@ -838,7 +837,10 @@ const PRCreatePage: React.FC = () => {
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
-                    options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
+                    options={[
+                      { value: '', label: '- ไม่ระบุ -' },
+                      ...departments.map((d) => ({ value: d.dept_code, label: d.dept_name })),
+                    ]}
                     onChange={(v) => {
                       // Defensive: department can only be enabled/changeable
                       // while selectedMemo is already null, so this should
