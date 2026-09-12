@@ -251,7 +251,7 @@ export interface PODetailResponse {
 // object per PO with a nested `lines` array per purchase_order_line
 // (internal/handlers/po.go ListLineItems, updated this session). When a
 // filter like mat_code/job_code narrows the match, backend excludes
-// non-matching lines/POs but `amount` still reflects the PO's real
+// non-matching lines/POs but `net_amount` still reflects the PO's real
 // after-discount total, not the sum of the filtered lines.
 export interface POLineItemLine {
   mat_code: string
@@ -272,7 +272,13 @@ export interface POLineItemGroup {
   requested_by: string
   project_code?: string
   status: POStatus
-  amount: number
+  // Confirmed via raw response inspection this session: GET /po/line-items
+  // does not return a group-level `amount` field at all — it returns
+  // `net_amount` and `total_amount`. The old `amount: number` here was never
+  // real; every consumer reading it silently got `undefined` (rendered as 0
+  // or blank). See ProjectOverviewPage.tsx and POLineItemsPage.tsx.
+  net_amount: number
+  total_amount?: number
   lines: POLineItemLine[]
 }
 

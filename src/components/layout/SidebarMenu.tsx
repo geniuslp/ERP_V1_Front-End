@@ -39,6 +39,7 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_SYSTEM: <SettingOutlined />,
   MENU_FINANCE: <DollarOutlined />,
   MENU_PETTY_CASH: <WalletOutlined />,
+  MENU_PROJECT_OVERVIEW: <FundOutlined />,
 }
 
 const subIconMap: Record<string, React.ReactNode> = {

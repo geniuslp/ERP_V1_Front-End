@@ -88,6 +88,7 @@ const StockMovementHistoryPage = lazy(() => import('@/pages/stock/StockMovementH
 const ProjectStockBalancePage = lazy(() => import('@/pages/stock/ProjectStockBalancePage'))
 const FinancePaymentsPage = lazy(() => import('@/pages/finance/FinancePaymentsPage'))
 const FinancePaymentDetailPage = lazy(() => import('@/pages/finance/FinancePaymentDetailPage'))
+const ProjectOverviewPage = lazy(() => import('@/pages/project-overview/ProjectOverviewPage'))
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -279,6 +280,9 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/finance/payments/:docType/:docId" element={
                 <RequirePermission menuCode="MENU_FINANCE_PAYMENTS" action="read"><FinancePaymentDetailPage /></RequirePermission>
+              } />
+              <Route path="/project-overview" element={
+                <RequirePermission menuCode="MENU_PROJECT_OVERVIEW" action="read"><ProjectOverviewPage /></RequirePermission>
               } />
               <Route path="/system/config" element={
                 <RequireRole roleCode="ADMIN_CENTER"><SystemConfigPage /></RequireRole>
