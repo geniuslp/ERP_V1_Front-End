@@ -204,7 +204,7 @@ const POCreatePage: React.FC = () => {
   const [taxOpen, setTaxOpen] = useState(false)
   const [useDisc, setUseDisc] = useState(false)
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
-  const [useVat, setUseVat] = useState(false)
+  const [useVat, setUseVat] = useState(true)
   const [useWht, setUseWht] = useState(false)
 
   // Each row now carries its own explicit disc_type (set on load and on

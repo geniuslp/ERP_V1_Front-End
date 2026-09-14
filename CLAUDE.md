@@ -11,6 +11,17 @@ Frontend ของระบบ ERP (PR / PO / RFQ / GRN / Stock / Borrow-Return 
 
 ---
 
+## ⚙️ Working rules — Claude Code prompting
+
+เวลาทำงานกับ Claude Code ในโปรเจกต์นี้ (ทั้งฝั่งนี้และฝั่ง backend `erp-api`):
+
+1. **Prompt ที่ส่งให้ Claude Code ต้องเขียนเป็นภาษาอังกฤษเสมอ** (context/comment ในเอกสารนี้เขียนไทยได้ตามเดิม แต่ prompt/instruction ที่สั่งงานจริงต้องแปลเป็นอังกฤษก่อนส่ง)
+2. **ต้องแยก prompt ออกเป็นสามส่วนตาม layer เสมอ**: `Frontend`, `Backend`, `SQL` — ห้ามรวมเป็น prompt เดียวแบบผสมทุก layer แม้ว่างานนั้นจะกระทบหลาย layer พร้อมกัน (เช่น เพิ่ม field ใหม่ที่ต้องมี migration + handler + UI ก็ให้แยกเป็น 3 prompt ตามลำดับ SQL → Backend → Frontend)
+3. **ลำดับการส่งงานที่กระทบหลาย layer: SQL ก่อน → Backend → Frontend ทีหลังสุด** (ฝั่ง frontend ควรรอ backend endpoint พร้อมใช้งานจริงก่อนค่อยเขียน UI ต่อ)
+4. กฎนี้ถือเป็น default ของโปรเจกต์ — ไม่ต้องพิมพ์บอกซ้ำทุกรอบ
+
+---
+
 ## Tech stack (สมมติฐาน — ยืนยันกับโปรเจกต์จริงอีกครั้ง)
 | Layer | Library |
 |---|---|
@@ -370,5 +381,3 @@ from a PO-level project selection. The no-PR payload path (`selectedPrId` falsy)
 - [ ] เช็ค field การเงินใหม่ของ PO (discount/vat/wht) ในฟอร์มสร้าง/แก้ PO ว่ามีอยู่แล้วหรือยัง
 - [ ] เช็คว่า field ที่เคยได้จาก DB view (`v_pr_full` ฯลฯ) ยังมาจาก API เหมือนเดิมไหม หลัง view หายจาก DB
 - [ ] **หน้า "รับเข้า" (GRN)**: รอ backend ทำ endpoint search PO ก่อน แล้วค่อยต่อ UI ตาม logic ด้านบน
-
-

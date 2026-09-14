@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography } from 'antd'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography, Tabs } from 'antd'
 import { PlusOutlined, EditOutlined, StopOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
@@ -36,11 +36,23 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
   const [loading, setLoading] = useState(false)
-  // Resolved once per open — the numeric job_id backing this Job Type's
-  // filterSubjectCode/filterJobCode. null when the Job Type has no backing
-  // cost_subject/cost_job yet (the 6 unbacked codes) — shows an Empty state.
+  // Resolved once per open (and again whenever the active subject tab
+  // changes) — the numeric job_id backing this Job Type's active subject +
+  // filterJobCode. null when the Job Type has no backing cost_subject/cost_job
+  // yet (the 6 unbacked codes) — shows an Empty state.
   const [jobId, setJobId] = useState<number | null>(null)
   const [unbacked, setUnbacked] = useState(false)
+  // Which of jobType.filterSubjectCodes is currently being viewed/administered.
+  // Only relevant (and only shown as Tabs) when there's more than one — e.g.
+  // 'MP' has ['M','S'] (Material + Subcontract share job letter P but have
+  // different Group/Subgroup data), while single-subject Job Types like 'FS'
+  // never show tabs and always resolve to their one subject.
+  const [activeSubjectCode, setActiveSubjectCode] = useState<string | null>(null)
+  // subject_code -> subject_name, fetched once per open — feeds both the id
+  // resolution below and the Tabs' labels (real DB names, not hardcoded).
+  const [subjectNames, setSubjectNames] = useState<Record<string, string>>({})
+
+  const subjectCodes = jobType?.filterSubjectCodes ?? []
   const [groups, setGroups] = useState<GroupRow[]>([])
   const [subgroupsByGroup, setSubgroupsByGroup] = useState<Record<number, SubgroupRow[]>>({})
   const [subgroupsLoading, setSubgroupsLoading] = useState<Record<number, boolean>>({})
@@ -95,28 +107,54 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
     }
   }, [accessToken])
 
-  // Resolve subject_code + job_code (from JOB_TYPES) to their numeric
-  // subject_id/job_id, then load groups. null filters (the 6 unbacked codes)
-  // skip resolution entirely and show the Empty state instead.
+  // Reset per-open state and pick the default active subject tab (the first
+  // entry, same as the old hardcoded [0] behavior) whenever the modal opens
+  // for a (possibly different) Job Type.
   useEffect(() => {
-    if (!open || !jobType || !accessToken) return
+    if (!open || !jobType) return
+    const codes = jobType.filterSubjectCodes ?? []
+    if (codes.length === 0 || !jobType.filterJobCode) {
+      // No backing subject at all (the unbacked codes) — no subject to
+      // resolve or activate, show the Empty state via the resolve effect
+      // below short-circuiting on a null activeSubjectCode... but that
+      // effect requires activeSubjectCode truthy to run, so set unbacked
+      // directly here instead.
+      setActiveSubjectCode(null)
+      setUnbacked(true)
+      setGroups([])
+      setSubgroupsByGroup({})
+      setExpandedKeys([])
+      setJobId(null)
+      return
+    }
+    setActiveSubjectCode(codes[0])
+  }, [open, jobType])
+
+  // Resolve subject_code + job_code (from JOB_TYPES) to their numeric
+  // subject_id/job_id, then load groups. Re-runs whenever activeSubjectCode
+  // changes (i.e. the admin switches subject tabs) so switching tabs reloads
+  // that subject's own Group/Subgroup data instead of leaving the previously
+  // active tab's data on screen.
+  useEffect(() => {
+    if (!open || !jobType || !accessToken || !activeSubjectCode) return
     setGroups([])
     setSubgroupsByGroup({})
     setExpandedKeys([])
     setJobId(null)
     setUnbacked(false)
 
-    if (!jobType.filterSubjectCode || !jobType.filterJobCode) {
-      setUnbacked(true)
-      return
-    }
-
     const resolve = async () => {
       setLoading(true)
       try {
         const subjRes = await axios.get(`${BASE_URL}/master/cost-code/subjects`, { headers: authHeader })
         const subjects = Array.isArray(subjRes.data) ? subjRes.data : subjRes.data?.data ?? []
-        const subject = subjects.find((s: any) => s.subject_code === jobType.filterSubjectCode)
+        setSubjectNames(
+          subjects.reduce((acc: Record<string, string>, s: any) => {
+            if (s.subject_code) acc[s.subject_code] = s.subject_name
+            return acc
+          }, {}),
+        )
+        const subject = subjects.find((s: any) => s.subject_code === activeSubjectCode)
         if (!subject) { setUnbacked(true); setLoading(false); return }
 
         const jobRes = await axios.get(`${BASE_URL}/master/cost-code/jobs`, {
@@ -135,7 +173,15 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
       }
     }
     resolve()
-  }, [open, jobType, accessToken, fetchGroups])
+  }, [open, jobType, accessToken, activeSubjectCode, fetchGroups])
+
+  const subjectTabItems = useMemo(
+    () => subjectCodes.map((code) => ({
+      key: code,
+      label: subjectNames[code] ? `${code} - ${subjectNames[code]}` : code,
+    })),
+    [subjectCodes, subjectNames],
+  )
 
   const handleExpand = (expanded: boolean, record: GroupRow) => {
     setExpandedKeys((prev) => expanded ? [...prev, record.id] : prev.filter((k) => k !== record.id))
@@ -308,6 +354,14 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
           <Empty description="ยังไม่มีข้อมูล Cost Code สำหรับประเภทนี้" />
         ) : (
           <>
+            {subjectCodes.length > 1 && (
+              <Tabs
+                activeKey={activeSubjectCode ?? undefined}
+                onChange={(key) => setActiveSubjectCode(key)}
+                items={subjectTabItems}
+                style={{ marginBottom: 4 }}
+              />
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
               <Button
                 type="primary" icon={<PlusOutlined />}

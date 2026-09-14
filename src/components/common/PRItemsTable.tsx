@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip } from 'antd'
-import { PlusOutlined, SearchOutlined, DeleteOutlined, PrinterOutlined, RollbackOutlined, CloseCircleFilled } from '@ant-design/icons'
+import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip, Badge } from 'antd'
+import { PlusOutlined, SearchOutlined, DeleteOutlined, PrinterOutlined, RollbackOutlined, CloseCircleFilled, FileTextOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
@@ -40,12 +40,13 @@ interface InitialPRItem {
   cost_subgroup_id: number | null
   cost_code_label?: string | null
   deduct_stock?: boolean
+  remarks?: string | null
 }
 
 interface PRItemsTableProps {
   readonly?: boolean
   onBack?: () => void
-  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean }[]) => void
+  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean; remarks: string }[]) => void
   // Edit mode: seed the table from an existing PR's lines. Only applied once
   // per array identity — the parent should set this from its own fetch effect
   // exactly once, not recompute it on every render.
@@ -98,7 +99,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         qtyPR: it.qty_requested,
         qtyStock: it.qty_to_order,
         unit: it.unit_name || 'Ea',
-        remark: '',
+        remark: it.remarks ?? '',
         costSubgroupId: it.cost_subgroup_id,
         costCodeLabel: it.cost_code_label ?? null,
         isExisting: true,
@@ -120,9 +121,18 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       qty_to_order: i.qtyStock,
       cost_subgroup_id: i.costSubgroupId,
       deductStock: i.deductStock,
+      remarks: i.remark,
     })))
   }, [items])
   const [pickerOpen, setPickerOpen] = useState(false)
+  // key of the row whose Description/รายละเอียด textarea is expanded — same
+  // expandable-row pattern as POItemsTable's renderDescription.
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([])
+  const toggleExpand = (key: string) => {
+    setExpandedKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    )
+  }
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
   const [stockLoading, setStockLoading] = useState(false)
@@ -454,21 +464,55 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       ? [
           {
             title: '',
-            width: 40,
+            width: 72,
             align: 'center' as const,
-            render: (_: unknown, r: PRItem) => (
-              <Button
-                type="text"
-                danger
-                size="small"
-                icon={<DeleteOutlined />}
-                onClick={() => removeItem(r.key)}
-              />
-            ),
+            render: (_: unknown, r: PRItem) => {
+              const hasRemark = !!(r.remark && r.remark.trim())
+              const expanded = expandedKeys.includes(r.key)
+              return (
+                <Space size={0}>
+                  <Tooltip title={hasRemark ? 'มีรายละเอียด — คลิกเพื่อดู/แก้ไข' : 'เพิ่มรายละเอียด'}>
+                    <Badge dot={hasRemark} offset={[-2, 2]}>
+                      <Button
+                        type="text"
+                        size="small"
+                        aria-expanded={expanded}
+                        aria-controls={`pr-item-desc-${r.key}`}
+                        icon={<FileTextOutlined />}
+                        style={{ color: hasRemark ? '#2563eb' : undefined }}
+                        onClick={() => toggleExpand(r.key)}
+                      />
+                    </Badge>
+                  </Tooltip>
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => removeItem(r.key)}
+                  />
+                </Space>
+              )
+            },
           },
         ]
       : []),
   ]
+
+  const renderRemark = (r: PRItem) => (
+    <div id={`pr-item-desc-${r.key}`} style={{ padding: '4px 8px' }}>
+      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>รายละเอียด / Description</div>
+      <Input.TextArea
+        autoFocus
+        value={r.remark ?? ''}
+        placeholder="เพิ่มรายละเอียดสำหรับรายการนี้..."
+        autoSize={{ minRows: 2 }}
+        maxLength={1000}
+        showCount
+        onChange={(e) => updateItem(r.key, 'remark', e.target.value)}
+      />
+    </div>
+  )
 
   const cardStyle: React.CSSProperties = {
     borderRadius: 12,
@@ -515,6 +559,11 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         locale={{ emptyText: 'ยังไม่มีรายการ — กด "เพิ่มรายการใหม่" เพื่อเริ่มต้น' }}
         scroll={{ x: 700 }}
         style={{ marginBottom: items.length > 0 ? 16 : 0 }}
+        expandable={!readonly ? {
+          expandedRowKeys: expandedKeys,
+          showExpandColumn: false,
+          expandedRowRender: renderRemark,
+        } : undefined}
       />
 
       {/* Remark textarea */}

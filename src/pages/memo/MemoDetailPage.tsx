@@ -5,7 +5,7 @@ import {
 } from 'antd'
 import {
   ArrowLeftOutlined, EditOutlined, StopOutlined,
-  CheckOutlined, CloseOutlined,
+  CheckOutlined, CloseOutlined, PrinterOutlined,
 } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -13,6 +13,7 @@ import PageHeader from '@/components/common/PageHeader'
 import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
+import MemoPrint, { type MemoData } from './MemoPrint'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -49,6 +50,10 @@ interface MemoDetail {
   approverName?: string
   department?: string
   deliveryLocation?: string
+  // "กำหนดส่งของหน้างาน" — required/target date for on-site delivery, distinct
+  // from createdAt (the document's own creation date), same distinction as
+  // PR's requiredDate vs prDate.
+  siteDeliveryDate?: string
   projectName?: string
   note?: string
   createdAt: string
@@ -75,6 +80,10 @@ const mapMemo = (raw: any): MemoDetail => {
     approverName:  raw.approver_name ?? raw.approverName,
     department:    raw.department,
     deliveryLocation: raw.delivery_location,
+    // ⚠️ Unconfirmed whether GET /memo/:id actually returns this field yet —
+    // mapped defensively here (undefined if absent); verify against a live
+    // response before relying on it populating in the print layout.
+    siteDeliveryDate: raw.site_delivery_date,
     projectName:   raw.project_code,
     note:          raw.note,
     createdAt:     raw.created_at     ?? '',
@@ -100,6 +109,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const [approvalStatusLoading, setApprovalStatusLoading] = useState(false)
   const [cancelModal, setCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
+  const [printData, setPrintData] = useState<MemoData | null>(null)
 
   const fetchMemo = async () => {
     setLoading(true)
@@ -203,6 +213,32 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     }
   }
 
+  // No separate print-data endpoint for Memo (same as PR) — everything the print
+  // layout needs is already in the detail response this page loaded, so build
+  // MemoData straight from `memo` instead of an extra call.
+  const handlePrint = () => {
+    if (!memo) return
+    setPrintData({
+      memoNo: memo.memoNo,
+      title: memo.title,
+      department: memo.department ?? '',
+      projectName: memo.projectName ?? '',
+      requestedBy: memo.requestedBy,
+      note: memo.note ?? '',
+      siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',
+      deliveryLocation: memo.deliveryLocation ?? '',
+      approverName: memo.approverName ?? '',
+      status: memo.status,
+      items: memo.lines.map((l) => ({
+        no: String(l.lineNo),
+        desc: l.description,
+        qty: l.quantity,
+        unit: l.unit,
+        remark: l.remark ?? '',
+      })),
+    })
+  }
+
   const isOwner   = memo && user && String(memo.requestedById) === String(user.id)
   const canEdit   = memo && (memo.status === 'DRAFT' || memo.status === 'draft' || memo.status === 'PENDING_APPROVAL' || memo.status === 'pending_approval') && isOwner
 
@@ -252,7 +288,9 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
               กลับ
             </Button>
-           
+            <Button icon={<PrinterOutlined />} onClick={handlePrint}>
+              พิมพ์
+            </Button>
             {canEdit && (
               <Button icon={<EditOutlined />} onClick={() => navigate(ROUTES.MEMO.EDIT.replace(':id', memo!.id))}>
                 แก้ไข
@@ -416,8 +454,15 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         </Modal>
       )}
 
-
-
+      {printData && (
+        <MemoPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
+      )}
     </div>
   )
 }

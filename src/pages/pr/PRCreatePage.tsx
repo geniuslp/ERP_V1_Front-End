@@ -41,6 +41,7 @@ interface LineItem {
   qty_to_order: number
   cost_subgroup_id: number | null
   deductStock: boolean
+  remarks: string
   [key: string]: any
 }
 
@@ -60,6 +61,7 @@ interface InitialLineItem {
   cost_subgroup_id: number | null
   cost_code_label?: string | null
   deduct_stock?: boolean
+  remarks?: string | null
 }
 
 /* ── responsive styles injected once ─────────────────────────────── */
@@ -348,6 +350,7 @@ const PRCreatePage: React.FC = () => {
               ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
               : null,
             deduct_stock: l.deduct_stock ?? true,
+            remarks: l.remarks ?? undefined,
           }))
         )
         // attachments is { pr: [...], memo: [...] } — pr = files uploaded
@@ -456,6 +459,7 @@ const PRCreatePage: React.FC = () => {
           qty_to_order: item.qty_to_order,
           cost_subgroup_id: item.cost_subgroup_id,
           deduct_stock: item.deductStock,
+          remarks: item.remarks || undefined,
         })),
         attachments: [...existingAttachments, ...uploadedFiles],
       }

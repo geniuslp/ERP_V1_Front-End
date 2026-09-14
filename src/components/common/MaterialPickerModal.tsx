@@ -93,6 +93,11 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
     setMatNames([])
     setSelectedKeys([])
     setSelectedRows([])
+    // Clear stale stock-lookup cache on every reopen — this component doesn't
+    // unmount between opens (destroyOnClose only unmounts the inner Modal/Table),
+    // so without this a mat_code looked up once would keep its cached
+    // { qtyOnHand, found } value forever, including stale pre-fix values.
+    setStockLookups({})
 
     const fetchSubgroups = async () => {
       setSubgroupsLoading(true)

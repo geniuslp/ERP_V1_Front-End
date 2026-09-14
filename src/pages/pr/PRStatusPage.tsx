@@ -1,28 +1,65 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col, Tag, message } from 'antd'
+import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col, message, Tooltip } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+
+const PROJECT_COLUMN_DEFAULT_WIDTH = 140
+
+// Resizable header cell — only ever wired up on the "โครงการ" (project) column via
+// onResize/width props; every other column's header renders the plain <th> passed
+// through untouched (see ResizableTitle usage below), so no other column gets a
+// drag handle. Standard antd + react-resizable pattern.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) {
+    return <th {...restProps} />
+  }
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[80, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            right: -5,
+            bottom: 0,
+            top: 0,
+            width: 10,
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
 
 // Edit uses the create page's own menu code (same convention as
 // POStatusPage.tsx gating its edit button with MENU_PO_CREATE).
 const MENU_CODE = 'MENU_PR_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
-
-const statusConfig: Record<string, { color: string; label: string }> = {
-  DRAFT:            { color: 'default', label: 'ร่าง' },
-  COMPLETED:        { color: 'green',   label: 'เสร็จสมบูรณ์' },
-  STOCK_CHECK:      { color: 'blue',    label: 'ตรวจสต็อก' },
-  PARTIALLY_FILLED: { color: 'gold',    label: 'สั่งซื้อบางส่วน' },
-  FULFILLED:        { color: 'green',   label: 'เสร็จสิ้น' },
-  CANCELLED:        { color: 'default', label: 'ยกเลิก' },
-}
 
 interface PRItem {
   id: number
@@ -31,7 +68,9 @@ interface PRItem {
   requestedBy: string
   approverName: string | null
   locationCode: string
+  deptName: string | null
   projectCode: string | null
+  projectName: string | null
   remarks: string | null
   prDate: string
   jobCode: string | null
@@ -40,9 +79,10 @@ interface PRItem {
   // see the column definition below for why these two are not
   // interchangeable despite both being "a date on the PR".
   requiredDate: string | null
-  createdAt: string | null
+  createdAt: string
   memoId: number | string | null
   memoNo: string | null
+  poConversionStatus: 'FULLY_CONVERTED' | 'PARTIALLY_CONVERTED' | 'NOT_CONVERTED'
 }
 
 const PRStatusPage: React.FC = () => {
@@ -62,6 +102,13 @@ const PRStatusPage: React.FC = () => {
   // confirmed job_code query param, unlike a server-side filter.
   const [jobCode, setJobCode] = useState<string | undefined>()
 
+  // Only the "โครงการ" column's width is user-resizable — tracked here, not persisted
+  // (resets to default on refresh per requirements).
+  const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
+  const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setProjectColWidth(data.size.width)
+  }
+
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
     try {
@@ -78,19 +125,17 @@ const PRStatusPage: React.FC = () => {
         requestedBy:  r.requested_by   ?? '—',
         approverName: r.approver_name  ?? null,
         locationCode: r.location_code  ?? '—',
+        deptName:     r.dept_name      ?? null,
         projectCode:  r.project_code   ?? null,
+        projectName:  r.project_name   ?? null,
         remarks:      r.remarks        ?? null,
         prDate:       r.pr_date        ?? '',
         jobCode:      r.job_code       ?? null,
-        // ⚠️ Unconfirmed whether GET /pr (list) actually returns these —
-        // PRDetailPage.tsx confirms required_date/memo_id are present on
-        // GET /pr/:id (detail), but that's a different endpoint. Mapped
-        // defensively here (null if absent); verify against a live
-        // response before relying on these columns actually populating.
         requiredDate: r.required_date  ?? null,
-        createdAt:    r.created_at     ?? null,
+        createdAt:    r.created_at     ?? '',
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
+        poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -142,23 +187,36 @@ const PRStatusPage: React.FC = () => {
     },
     {
       title: 'แผนก',
-      dataIndex: 'locationCode',
-      key: 'locationCode',
+      dataIndex: 'deptName',
+      key: 'deptName',
+      render: (_: string | null, record: PRItem) => record.deptName ?? record.locationCode ?? '—',
     },
     {
-      title: 'ประเภท Job',
+      title: 'Job',
       dataIndex: 'jobCode',
       key: 'jobCode',
       render: (v: string | null) => (v ? (JOB_TYPES.find((jt) => jt.code === v)?.label ?? v) : '—'),
     },
     {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      render: (v: string) => {
-        const cfg = statusConfig[v] ?? { color: 'default', label: v }
-        return <Tag color={cfg.color}>{cfg.label}</Tag>
-      },
+      // Only this column is resizable — onHeaderCell below wires width/onResize
+      // into ResizableTitle; every other column's th renders plain (no handle).
+      title: 'โครงการ',
+      dataIndex: 'projectCode',
+      key: 'projectCode',
+      width: projectColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: projectColWidth,
+        onResize: handleProjectColResize,
+      }),
+      render: (v: string | null, record: PRItem) =>
+        v ? (
+          <Tooltip title={record.projectName || v}>
+            <span>{record.projectName || v}</span>
+          </Tooltip>
+        ) : (
+          <span style={{ color: '#9ca3af' }}>—</span>
+        ),
     },
     {
       // Renamed from "วันที่" — must read the actual delivery/required
@@ -287,13 +345,15 @@ const PRStatusPage: React.FC = () => {
           loading={loading}
           dataSource={filteredItems}
           columns={columns}
+          components={{ header: { cell: ResizableTitle } }}
           size="small"
           scroll={{ x: 1300 }}
-          // Status-driven row tint — see .pr-row-fulfilled/.pr-row-partial
-          // in index.css (same pattern as .import-row-error elsewhere).
+          // po_conversion_status-driven row tint — see .pr-row-fulfilled/
+          // .pr-row-partial in index.css (same pattern as .import-row-error
+          // elsewhere). Separate from the "status" field (DRAFT/COMPLETED/…).
           rowClassName={(record: PRItem) =>
-            record.status === 'FULFILLED' ? 'pr-row-fulfilled' :
-            record.status === 'PARTIALLY_FILLED' ? 'pr-row-partial' : ''
+            record.poConversionStatus === 'FULLY_CONVERTED' ? 'pr-row-fulfilled' :
+            record.poConversionStatus === 'PARTIALLY_CONVERTED' ? 'pr-row-partial' : ''
           }
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{

@@ -94,25 +94,29 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
     fetchCostCodes()
   }, [open, accessToken])
 
-  // Resolve the document-level job type (e.g. 'MP') to the subject_code +
-  // job_code it should filter CostCode rows by (e.g. 'M' + 'P'). job_code
+  // Resolve the document-level job type (e.g. 'MP') to the subject_codes +
+  // job_code it should filter CostCode rows by (e.g. ['M','S'] + 'P'). job_code
   // alone is not unique — the same job_code repeats under multiple subjects
-  // (M/S/L) — so both must match together. Unrecognized/unset jobTypeCode, or
-  // a job type whose filterJobCode is null (e.g. 'G' — General Code), means
-  // "show all, unfiltered" — same as today's default behavior.
+  // (M/S/L) — so both must match together. filterSubjectCodes is an array
+  // because M (Material) and S (Subcontract) share the same job_code letters
+  // but have different cost_group/cost_subgroup data underneath — 'MP' must
+  // surface BOTH subjects' rows for job P together, not just Material's.
+  // Unrecognized/unset jobTypeCode, or a job type whose filterJobCode is null
+  // (e.g. 'G' — General Code), means "show all, unfiltered" — same as today's
+  // default behavior.
   const matchedJobType = useMemo(
     () => JOB_TYPES.find((jt) => jt.code === jobTypeCode),
     [jobTypeCode],
   )
-  const filterSubjectCode = matchedJobType?.filterSubjectCode ?? null
+  const filterSubjectCodes = matchedJobType?.filterSubjectCodes ?? null
   const filterJobCode = matchedJobType?.filterJobCode ?? null
 
   const jobFilteredData = useMemo(
     () =>
       filterJobCode
-        ? data.filter((d) => d.subjectCode === filterSubjectCode && d.jobCode === filterJobCode)
+        ? data.filter((d) => (!filterSubjectCodes || filterSubjectCodes.includes(d.subjectCode)) && d.jobCode === filterJobCode)
         : data,
-    [data, filterSubjectCode, filterJobCode],
+    [data, filterSubjectCodes, filterJobCode],
   )
 
   // Group filter options — distinct group_code across the job-type-filtered
