@@ -8,11 +8,13 @@ import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
+import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { FinanceDocType, FinancePaymentListItem, FinancePaymentLogEntry } from '@/types/finance'
-import type { POStatus } from '@/types/po'
+import type { POStatus, PODetail, POLine } from '@/types/po'
 import type { WOStatus } from '@/types/workOrder'
+import { JOB_TYPES } from '@/constants/jobTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -44,6 +46,12 @@ const FinancePaymentDetailPage: React.FC = () => {
 
   const [log, setLog] = useState<FinancePaymentLogEntry[]>([])
   const [logLoading, setLogLoading] = useState(false)
+
+  // Full PO detail (incl. line items) — only fetched/rendered when
+  // docType === 'PO', via the same GET /po/:id call POApprovalDetailPage.tsx
+  // already uses. Other doc types (WO, etc.) are untouched.
+  const [poDetail, setPoDetail] = useState<PODetail | null>(null)
+  const [poDetailLoading, setPoDetailLoading] = useState(false)
 
   const [users, setUsers] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
@@ -79,6 +87,19 @@ const FinancePaymentDetailPage: React.FC = () => {
     }
   }
 
+  const fetchPoDetail = async () => {
+    if (!docId || docType !== 'PO') return
+    setPoDetailLoading(true)
+    try {
+      const res = await poApprovalService.getDetail(accessToken, docId)
+      setPoDetail(res.data.data)
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูล PO ไม่สำเร็จ')
+    } finally {
+      setPoDetailLoading(false)
+    }
+  }
+
   const fetchUsers = async () => {
     setUsersLoading(true)
     try {
@@ -98,6 +119,7 @@ const FinancePaymentDetailPage: React.FC = () => {
     if (!docItem) fetchDoc()
     fetchLog()
     fetchUsers()
+    if (docType === 'PO') fetchPoDetail()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType, docId])
 
@@ -168,6 +190,85 @@ const FinancePaymentDetailPage: React.FC = () => {
       label: `${dayjs(l.paid_date).format('DD/MM/YYYY')} — ${thb(l.amount_paid)} บาท (${l.paid_by_name})`,
     }))
 
+  // Same columns as POApprovalDetailPage.tsx's lineColumns, reused verbatim
+  // so the line-item shape/rendering stays consistent between the two pages.
+  const poLineColumns: ColumnsType<POLine> = [
+    {
+      title: 'ลำดับ',
+      dataIndex: 'line_no',
+      key: 'line_no',
+      width: 70,
+    },
+    {
+      title: 'Cost Code',
+      key: 'cost_code',
+      render: (_: unknown, r: POLine) =>
+        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+    },
+    {
+      title: 'รหัสวัสดุ',
+      dataIndex: 'mat_code',
+      key: 'mat_code',
+      width: 130,
+      render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span>,
+    },
+    {
+      title: 'ชื่อวัสดุ',
+      key: 'mat_name',
+      render: (_: unknown, r: POLine) => (
+        <div>
+          <div>{r.mat_name ?? '—'}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            {[r.group_name, r.subgroup_name].filter(Boolean).join(' › ')}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Spec / Brand',
+      key: 'spec_brand',
+      render: (_: unknown, r: POLine) => (
+        <div>
+          <div>{r.spec ?? '—'}</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{r.brand ?? ''}</div>
+        </div>
+      ),
+    },
+    {
+      title: 'จำนวนสั่ง',
+      key: 'qty_ordered',
+      width: 120,
+      render: (_: unknown, r: POLine) =>
+        `${r.qty_ordered.toLocaleString()} ${r.unit_name ?? ''}`,
+    },
+    {
+      title: 'ราคา/หน่วย',
+      dataIndex: 'unit_price',
+      key: 'unit_price',
+      width: 120,
+      render: (v: number) => v.toLocaleString('th-TH'),
+    },
+    {
+      title: 'มูลค่า',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 130,
+      render: (v: number) => v.toLocaleString('th-TH'),
+    },
+    {
+      title: 'สถานะ',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+    },
+    {
+      title: 'หมายเหตุ',
+      dataIndex: 'remarks',
+      key: 'remarks',
+      render: (v: string | undefined) => v ?? '—',
+    },
+  ]
+
   return (
     <div>
       <PageHeader
@@ -201,6 +302,40 @@ const FinancePaymentDetailPage: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {docType === 'PO' && (
+        <Card title="ข้อมูลใบสั่งซื้อ (PO)" style={{ ...cardStyle, marginBottom: 20 }} loading={poDetailLoading}>
+          <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} bordered size="small">
+            <Descriptions.Item label="Supplier">{poDetail?.supplier_name ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="ประเภทการสั่งซื้อ">
+              {poDetail?.order_type === 'cost' ? 'โครงการ (Cost)' : poDetail?.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="ประเภท Job">
+              {poDetail?.job_code ? (JOB_TYPES.find((jt) => jt.code === poDetail.job_code)?.label ?? poDetail.job_code) : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="เงื่อนไขการชำระ">{poDetail?.payment_terms ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{poDetail?.location_text ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label="มูลค่ารวม">{poDetail ? thb(poDetail.total_amount) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="ภาษี VAT">{poDetail ? thb(poDetail.vat_amount) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="ภาษีหัก ณ ที่จ่าย">{poDetail?.use_wht ? thb(poDetail.wht_amount ?? 0) : '—'}</Descriptions.Item>
+            <Descriptions.Item label="หมายเหตุ" span={3}>{poDetail?.remarks ?? '—'}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
+
+      {docType === 'PO' && (
+        <Card title="รายการสินค้า / วัสดุ" style={{ ...cardStyle, marginBottom: 20 }}>
+          <Table
+            rowKey="id"
+            loading={poDetailLoading}
+            dataSource={poDetail?.lines ?? []}
+            columns={poLineColumns}
+            pagination={false}
+            size="small"
+            locale={{ emptyText: 'ไม่มีรายการสินค้า' }}
+          />
+        </Card>
+      )}
 
       <Card title="ประวัติการจ่ายเงิน" style={{ ...cardStyle, marginBottom: 20 }}>
         <Table

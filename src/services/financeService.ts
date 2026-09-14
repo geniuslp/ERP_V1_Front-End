@@ -47,7 +47,16 @@ export const financeService = {
       },
     })
     const meta = unwrapPaginationMeta(res.data, page, pageSize)
-    return { items: unwrapListEnvelope(res.data) as FinancePaymentListItem[], ...meta }
+    // Every other field on this row already matches the backend's snake_case
+    // naming 1:1 (doc_no/project_code/net_amount/etc.) so no mapping is
+    // needed for those — receiving_status is remapped to receivingStatus
+    // (camelCase) since it's a computed/derived field, not a raw DB column
+    // passthrough like the others.
+    const items = unwrapListEnvelope(res.data).map((raw: any) => ({
+      ...raw,
+      receivingStatus: raw.receiving_status ?? null,
+    })) as FinancePaymentListItem[]
+    return { items, ...meta }
   },
 
   getLog: async (token: string, docType: FinanceDocType, docId: string | number): Promise<FinancePaymentLogEntry[]> => {

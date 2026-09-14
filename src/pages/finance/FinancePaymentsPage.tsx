@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Input, Select, Button, Space, Tabs, message } from 'antd'
+import { Card, Table, Input, Select, Button, Space, Tabs, Tag, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, DollarOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -8,9 +8,19 @@ import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
-import type { FinanceDocType, FinancePaymentListItem } from '@/types/finance'
+import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
 import type { POStatus } from '@/types/po'
 import type { WOStatus } from '@/types/workOrder'
+
+// Same map+Tag convention as POStatusBadge.tsx's approvalMap/receiveMap —
+// distinct from POReceiveStatus (status_receive, NOT_SENT/SENT/PARTIALLY_
+// RECEIVED/RECEIVED) since this is a different, live-computed enum coming
+// from GET /finance/payments specifically.
+const receivingStatusMap: Record<ReceivingStatus, { color: string; label: string }> = {
+  FULLY_RECEIVED: { color: 'success', label: 'รับครบแล้ว' },
+  PARTIALLY_RECEIVED: { color: 'gold', label: 'รับบางส่วน' },
+  NOT_RECEIVED: { color: 'default', label: 'ยังไม่ได้รับ' },
+}
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -121,6 +131,18 @@ const FinancePaymentsPage: React.FC = () => {
       key: 'status',
       render: (s: string) =>
         docType === 'PO' ? <POStatusBadges status={s as POStatus} /> : <WOStatusBadge status={s as WOStatus} />,
+    },
+    {
+      title: 'สถานะรับของ',
+      dataIndex: 'receivingStatus',
+      key: 'receivingStatus',
+      render: (v: ReceivingStatus | null) => {
+        // null for every WO row (and any PO row the backend hasn't computed
+        // this for yet) — show a dash rather than a badge.
+        if (!v) return <span style={{ color: '#9ca3af' }}>—</span>
+        const s = receivingStatusMap[v] ?? { color: 'default', label: v }
+        return <Tag color={s.color}>{s.label}</Tag>
+      },
     },
     {
       title: 'จ่ายแล้ว',

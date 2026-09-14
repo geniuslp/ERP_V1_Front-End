@@ -1,5 +1,7 @@
 export type FinanceDocType = 'PO' | 'WO'
 
+export type ReceivingStatus = 'FULLY_RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED'
+
 export interface FinancePaymentListItem {
   id: number
   doc_no: string
@@ -9,6 +11,8 @@ export interface FinancePaymentListItem {
   status: string
   paid_amount: number
   remaining_to_pay: number
+  // Live-computed from GRN vs PO lines — null for WO rows (doc_type === 'WO').
+  receivingStatus: ReceivingStatus | null
 }
 
 export interface FinancePaymentListParams {
