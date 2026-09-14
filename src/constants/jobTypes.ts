@@ -7,15 +7,18 @@
 // is NOT a unique filter key; subject_code must be constrained too.
 // `filterJobCode: null` means "show all CostCode options, unfiltered".
 //
-// filterSubjectCodes is an ARRAY (not a single code) because M (Material) and
-// S (Subcontract) share the same 6 job_code letters (P/E/S/F/G/H, same
-// job_name per letter) but have different cost_group/cost_subgroup data
-// underneath (e.g. job P: M's group 01 'Plates & Coils' vs S's group 30
-// 'Subcontractor'). Selecting Job Type 'MP' must show BOTH subjects' rows for
-// job P together in the CostCode picker — confirmed via user's Excel
-// reference — so MP/ME/MS/MF/MG/MH list filterSubjectCodes: ['M', 'S'].
-// There are no separate SP/SE/... entries — a previous attempt added those
-// but was reverted in favor of this merged-array approach.
+// filterSubjectCodes is an ARRAY (not a single code) because M (Material),
+// S (Subcontract), and L (Labour) share the same 6 job_code letters
+// (P/E/S/F/G/H, same job_name per letter) but have different
+// cost_group/cost_subgroup data underneath (e.g. job P: M's group 01
+// 'Plates & Coils', S's group 30 'Subcontractor', L's group named
+// 'Dialy Labour' — that spelling is intentional per the user, not a typo to
+// fix). Selecting Job Type 'MP' must show ALL THREE subjects' rows for job P
+// together in the CostCode picker — confirmed via user's Excel reference —
+// so MP/ME/MS/MF/MG/MH list filterSubjectCodes: ['M', 'S', 'L']. There are no
+// separate SP/SE/.../LP/LE/... entries — a previous attempt added
+// subject-specific codes but was reverted in favor of this merged-array
+// approach.
 //
 // FS/FP/FB/DE/RE added per the PR+PO "ประเภท Job" requirement — these are
 // stock/dead-stock/return classifications. FS confirmed against the live DB
@@ -32,12 +35,12 @@ export interface JobTypeOption {
 }
 
 export const JOB_TYPES: JobTypeOption[] = [
-  { code: 'MP', label: 'MP - Metal Structure', filterSubjectCodes: ['M', 'S'], filterJobCode: 'P' },
-  { code: 'ME', label: 'ME - Electrical system work', filterSubjectCodes: ['M', 'S'], filterJobCode: 'E' },
-  { code: 'MS', label: 'MS - Sanitary System', filterSubjectCodes: ['M', 'S'], filterJobCode: 'S' },
-  { code: 'MF', label: 'MF - Fire Protection', filterSubjectCodes: ['M', 'S'], filterJobCode: 'F' },
-  { code: 'MG', label: 'MG - GAS System', filterSubjectCodes: ['M', 'S'], filterJobCode: 'G' },
-  { code: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room', filterSubjectCodes: ['M', 'S'], filterJobCode: 'H' },
+  { code: 'MP', label: 'MP - Metal Structure', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'P' },
+  { code: 'ME', label: 'ME - Electrical system work', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'E' },
+  { code: 'MS', label: 'MS - Sanitary System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'S' },
+  { code: 'MF', label: 'MF - Fire Protection', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'F' },
+  { code: 'MG', label: 'MG - GAS System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'G' },
+  { code: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'H' },
   { code: 'FS', label: 'FS - Stock FAC-S', filterSubjectCodes: ['F'], filterJobCode: 'S' },
   // TBD — waiting on backend query result for the correct subject_code.
   { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCodes: null, filterJobCode: null },
