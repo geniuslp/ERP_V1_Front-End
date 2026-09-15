@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, Spin, Checkbox } from 'antd'
+import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, DatePicker, Spin, Checkbox } from 'antd'
 import { InboxOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import type { Dayjs } from 'dayjs'
 import axios from 'axios'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageHeader from '@/components/common/PageHeader'
@@ -39,6 +40,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
 
   const [invoiceNo, setInvoiceNo] = useState('')
   const [invoiceError, setInvoiceError] = useState<string | undefined>(undefined)
+  const [deliveryDate, setDeliveryDate] = useState<Dayjs | null>(null)
 
   const [scoreModalOpen, setScoreModalOpen] = useState(false)
   const [scoreGrnId, setScoreGrnId] = useState<number | null>(null)
@@ -130,6 +132,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
           // supplier_id removed — backend now derives it server-side from
           // the PO and no longer accepts/needs it in this request.
           invoice_no: invoiceNo.trim(),
+          delivery_date: deliveryDate ? deliveryDate.format('YYYY-MM-DD') : undefined,
           lines: receivingLines,
         },
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -179,23 +182,31 @@ const GoodsReceiptDetailPage: React.FC = () => {
 
   const columns = [
     {
-      title: 'Cost Code',
+      title: 'ลำดับ',
+      key: 'line_index',
+      width: 80,
+      align: 'center' as const,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
+      render: (_: any, __: ReceiptLine, index: number) => index + 1,
+    },
+    {
+      title: 'รหัสวัสดุต้นทุน',
       dataIndex: 'cost_code',
       key: 'cost_code',
       render: (val: string | null | undefined) => val || '-',
     },
-    { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
-    { title: 'ชื่อวัสดุ', dataIndex: 'mat_name', key: 'mat_name', ellipsis: true },
-    { title: 'จำนวนสั่งซื้อ', dataIndex: 'qty_ordered', key: 'qty_ordered', align: 'right' as const },
     {
-      title: 'คงเหลือในคลัง',
-      dataIndex: 'current_stock',
-      key: 'current_stock',
-      align: 'right' as const,
-      render: (val: number | null) => (val ?? 0).toLocaleString(),
+      title: 'รายการ',
+      key: 'item_name',
+      ellipsis: true,
+      // GRNPoLine only carries mat_name — item_name/spec_name aren't returned
+      // by GET /po/:id for this flow, so this falls back to mat_name alone.
+      render: (_: any, record: ReceiptLine) => record.mat_name,
     },
+    { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
+    { title: 'Po สั่งซื้อ', dataIndex: 'qty_ordered', key: 'qty_ordered', align: 'right' as const },
     {
-      title: 'จำนวนที่รับเข้า',
+      title: 'IC รับเข้า',
       key: 'add_qty',
       align: 'right' as const,
       render: (_: any, record: ReceiptLine) => (
@@ -209,7 +220,14 @@ const GoodsReceiptDetailPage: React.FC = () => {
       ),
     },
     {
-      title: 'จะเป็น',
+      title: 'จำนวนคงเหลือ',
+      dataIndex: 'current_stock',
+      key: 'current_stock',
+      align: 'right' as const,
+      render: (val: number | null) => (val ?? 0).toLocaleString(),
+    },
+    {
+      title: 'จำนวนสุทธิ',
       key: 'will_be',
       align: 'right' as const,
       render: (_: any, record: ReceiptLine) => {
@@ -271,7 +289,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
             >
               <Descriptions.Item key="po_no" label="เลข PO">{po.po_no}</Descriptions.Item>
               <Descriptions.Item key="po_date" label="วันที่สั่งซื้อ">{po.po_date || '—'}</Descriptions.Item>
-              <Descriptions.Item key="expected_date" label="วันที่ส่งของ">
+              <Descriptions.Item key="expected_date" label="วันที่ส่งของ (PO)">
                 {po.expected_date ? (
                   <span style={{ color: '#16a34a', fontWeight: 600 }}>{po.expected_date}</span>
                 ) : (
@@ -288,22 +306,35 @@ const GoodsReceiptDetailPage: React.FC = () => {
           </Card>
 
           <Card style={{ ...cardStyle, marginBottom: 20 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>
-              เลขที่ Invoice <span style={{ color: '#ff4d4f' }}>*</span>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                  เลขที่ Invoice <span style={{ color: '#ff4d4f' }}>*</span>
+                </div>
+                <Input
+                  placeholder="เลขที่ Invoice"
+                  style={{ width: 280 }}
+                  status={invoiceError ? 'error' : undefined}
+                  value={invoiceNo}
+                  onChange={(e) => {
+                    setInvoiceNo(e.target.value)
+                    setInvoiceError(undefined)
+                  }}
+                />
+                {invoiceError && (
+                  <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>{invoiceError}</div>
+                )}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>วันที่ส่งของ</div>
+                <DatePicker
+                  value={deliveryDate}
+                  onChange={(val) => setDeliveryDate(val)}
+                  style={{ width: 280 }}
+                  format="DD/MM/YYYY"
+                />
+              </div>
             </div>
-            <Input
-              placeholder="เลขที่ Invoice"
-              style={{ width: 280 }}
-              status={invoiceError ? 'error' : undefined}
-              value={invoiceNo}
-              onChange={(e) => {
-                setInvoiceNo(e.target.value)
-                setInvoiceError(undefined)
-              }}
-            />
-            {invoiceError && (
-              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>{invoiceError}</div>
-            )}
           </Card>
 
           <Card style={cardStyle}>

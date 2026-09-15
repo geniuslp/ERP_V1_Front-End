@@ -6,6 +6,7 @@ import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import type { Material } from '@/types'
 import { useAppSelector } from '@/store'
+import { isExemptMatCode } from '@/utils/matCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -260,7 +261,9 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
 
   const handleMaterialConfirm = (materials: Material[]) => {
     const existingCodes = new Set(items.map((i) => i.code).filter(Boolean))
-    const toAdd = materials.filter((m) => !existingCodes.has(m.mat_code))
+    // x## codes (e.g. x01, x02) are exempt from the duplicate check — always
+    // allowed through even if already present in the list.
+    const toAdd = materials.filter((m) => isExemptMatCode(m.mat_code) || !existingCodes.has(m.mat_code))
     if (toAdd.length < materials.length) {
       message.warning(`ข้ามรายการที่มีอยู่แล้ว ${materials.length - toAdd.length} รายการ`)
     }
@@ -347,17 +350,28 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
       title: 'Code',
       dataIndex: 'code',
       width: 120,
-      render: (_: unknown, r: PRItem) =>
-        readonly || r.isExisting ? (
-          <span style={{ fontSize: 13 }}>{r.code}</span>
-        ) : (
-          <Input
-            size="small"
-            value={r.code}
-            placeholder="รหัสสินค้า"
-            onChange={(e) => updateItem(r.key, 'code', e.target.value)}
-          />
-        ),
+      render: (_: unknown, r: PRItem) => {
+        if (readonly || r.isExisting) return <span style={{ fontSize: 13 }}>{r.code}</span>
+        // Inline-only warning (never blocks typing) for a manually-entered
+        // mat_code that duplicates another row's — x## codes are exempt and
+        // never flagged, matching handleMaterialConfirm's dedupe exemption.
+        const isDuplicate = !!r.code && !isExemptMatCode(r.code) &&
+          items.some((other) => other.key !== r.key && other.code === r.code)
+        return (
+          <div>
+            <Input
+              size="small"
+              value={r.code}
+              placeholder="รหัสสินค้า"
+              status={isDuplicate ? 'warning' : undefined}
+              onChange={(e) => updateItem(r.key, 'code', e.target.value)}
+            />
+            {isDuplicate && (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>รหัสซ้ำกับรายการอื่น</div>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: 'รายการ',

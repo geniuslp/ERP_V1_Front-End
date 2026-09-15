@@ -3,6 +3,8 @@ import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography, 
 import { EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
@@ -16,6 +18,50 @@ import { JOB_TYPES } from '@/constants/jobTypes'
 const MENU_CODE = 'MENU_PO_CREATE'
 const { Text } = Typography
 
+const SUPPLIER_COLUMN_DEFAULT_WIDTH = 160
+const PROJECT_COLUMN_DEFAULT_WIDTH = 140
+
+// Same react-resizable pattern as PRStatusPage.tsx's "โครงการ" column — only
+// columns that pass width/onResize via onHeaderCell get a drag handle; every
+// other column's th renders through untouched.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) {
+    return <th {...restProps} />
+  }
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[80, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            right: -5,
+            bottom: 0,
+            top: 0,
+            width: 10,
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
 const POStatusPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
@@ -25,6 +71,17 @@ const POStatusPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(false)
+
+  // Resizable widths for "ร้านค้า / บริษัท" and "ProjectName" — same pattern as
+  // PRStatusPage.tsx's "โครงการ" column, not persisted (resets on refresh).
+  const [supplierColWidth, setSupplierColWidth] = useState(SUPPLIER_COLUMN_DEFAULT_WIDTH)
+  const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
+  const handleSupplierColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setSupplierColWidth(data.size.width)
+  }
+  const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setProjectColWidth(data.size.width)
+  }
 
   // Filter inputs (uncommitted) vs. applied filters (sent to the API) — kept
   // separate so typing doesn't refetch on every keystroke; only "ค้นหา" or
@@ -83,6 +140,14 @@ const POStatusPage: React.FC = () => {
 
   const columns: ColumnsType<POListItem> = [
     {
+      title: 'ลำดับ',
+      key: 'line_index',
+      width: 80,
+      align: 'center',
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
+      render: (_: unknown, __, index: number) => (page - 1) * limit + index + 1,
+    },
+    {
       title: 'เลขที่ PO',
       dataIndex: 'po_no',
       key: 'po_no',
@@ -92,55 +157,68 @@ const POStatusPage: React.FC = () => {
         </a>
       ),
     },
-    { title: 'ผู้ขาย', dataIndex: 'supplier_name', key: 'supplier_name' },
     {
-      title: 'โครงการ',
-      dataIndex: 'project_code',
-      key: 'project_code',
-      render: (v?: string) => v || '-',
+      title: 'ร้านค้า / บริษัท',
+      dataIndex: 'supplier_name',
+      key: 'supplier_name',
+      width: supplierColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: supplierColWidth,
+        onResize: handleSupplierColResize,
+      }),
     },
     {
+      title: 'ProjectName',
+      key: 'project_name',
+      width: projectColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: projectColWidth,
+        onResize: handleProjectColResize,
+      }),
+      // project_name is nullable (LEFT JOIN) — fall back to project_code so
+      // the cell isn't blank when the join doesn't match.
+      render: (_: unknown, r) => r.project_name || r.project_code || '-',
+    },
+    {
+      // Confirmed against the live API response: GET /po (list) returns the
+      // job classification as `job_code` (e.g. "MP"), not `job_names` — the
+      // previous job_names-based render always showed "-" because that field
+      // is never populated by the backend. Display-only: show just the short
+      // code, not the full "CODE - Name" label (JOB_TYPES.label is formatted
+      // that way) — split on " - " defensively in case job_code itself ever
+      // comes back combined, and take only the code part before it.
       title: 'งาน',
-      key: 'job_names',
-      render: (_: unknown, r) => {
-        const names = Array.from(new Set((r.job_names ?? []).filter(Boolean)))
-        if (names.length === 0) return <Text type="secondary">-</Text>
+      dataIndex: 'job_code',
+      key: 'job_code',
+      width: 90,
+      align: 'center',
+      render: (v?: string) => {
+        if (!v) return <Text type="secondary">-</Text>
+        const code = v.split(' - ')[0].trim()
         return (
-          <Space size={4} wrap>
-            {names.map((name) => (
-              <Tag key={name} color="geekblue" style={{ margin: 0, fontSize: 13 }}>
-                {name}
-              </Tag>
-            ))}
-          </Space>
+          <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
+            {code}
+          </Tag>
         )
       },
     },
     {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
-    },
-    {
-      // total_amount - discount_amount = after-discount, before VAT/WHT.
-      // net_amount already bakes in VAT/WHT (see erp-api po.go line calc), so
-      // it is NOT the same value — do not reintroduce a net_amount column here.
-      title: 'มูลค่า (หลังหักส่วนลด)',
+      // total_amount - discount_amount = after-discount, before VAT/WHT —
+      // confirmed against erp-api po.go (`vatAmount := totalAmount -
+      // discountAmount`, stored as po.vat_amount despite the confusing name).
+      // net_amount already bakes in VAT/WHT — do not reintroduce that here.
+      title: 'มูลค่าก่อน VAT',
       key: 'amount_after_discount',
+      // Tight fixed width sized to the longest expected value
+      // ("999,999,999 บาท") plus cell padding — not left to auto/content
+      // width, which was leaving excess gap for typical shorter amounts.
+      width: 120,
       align: 'right',
-      render: (_: unknown, r) => (r.total_amount - (r.discount_amount ?? 0)).toLocaleString('th-TH'),
-    },
-    {
-      title: 'แก้ไขล่าสุดโดย',
-      key: 'last_edited_by',
-      render: (_: unknown, r) => {
-        const name =
-          r.updated_by_name && r.updated_by_name !== r.created_by_name
-            ? r.updated_by_name
-            : r.created_by_name
-        return name || '-'
-      },
+      ellipsis: true,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
+      render: (_: unknown, r) => `${(r.total_amount - (r.discount_amount ?? 0)).toLocaleString('th-TH')} บาท`,
     },
     {
       title: 'วันที่สั่ง',
@@ -153,6 +231,26 @@ const POStatusPage: React.FC = () => {
       dataIndex: 'expected_date',
       key: 'expected_date',
       render: (v: string | null) => v?.slice(0, 10) ?? '-',
+    },
+    {
+      title: 'สถานะ',
+      dataIndex: 'status',
+      key: 'status',
+      width: 220,
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
+    },
+    {
+      title: 'ผู้สร้าง',
+      key: 'last_edited_by',
+      width: 140,
+      ellipsis: true,
+      render: (_: unknown, r) => {
+        const name =
+          r.updated_by_name && r.updated_by_name !== r.created_by_name
+            ? r.updated_by_name
+            : r.created_by_name
+        return name || '-'
+      },
     },
     {
       title: '',
@@ -259,6 +357,9 @@ const POStatusPage: React.FC = () => {
           loading={loading}
           dataSource={filteredItems}
           columns={columns}
+          components={{ header: { cell: ResizableTitle } }}
+          tableLayout="fixed"
+          scroll={{ x: 'max-content' }}
           size="small"
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{

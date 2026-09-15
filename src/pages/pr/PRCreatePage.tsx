@@ -18,6 +18,7 @@ import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { Department } from '@/types/permission.types'
+import { isExemptMatCode } from '@/utils/matCode'
 import { resolveFileUrl } from '@/utils/fileUrl'
 
 const MENU_CODE = 'MENU_PR_CREATE'
@@ -410,6 +411,25 @@ const PRCreatePage: React.FC = () => {
     try {
       const { location_text, required_date, project_code, order_type, pr_type, job_code, requested_by, dept_code } =
         await form.validateFields()
+
+      // Duplicate-material guard — mat_codes matching /^x\d{2}/i (e.g. x01,
+      // x02) are exempt and allowed to repeat freely; every other mat_code
+      // must be unique across this PR's lines. Blank codes are ignored (an
+      // incomplete row, not yet a real duplicate).
+      const nonExemptCodes = lineItems
+        .map((item) => item.mat_code)
+        .filter((code) => code && !isExemptMatCode(code))
+      const seen = new Set<string>()
+      const duplicateCodes = new Set<string>()
+      for (const code of nonExemptCodes) {
+        if (seen.has(code)) duplicateCodes.add(code)
+        seen.add(code)
+      }
+      if (duplicateCodes.size > 0) {
+        message.error(`มีรหัสสินค้าซ้ำกันในใบ: ${Array.from(duplicateCodes).join(', ')}`)
+        setSubmitting(false)
+        return
+      }
 
       // 1. Upload newly-added files.
       const uploadedFiles: UploadedFile[] = []

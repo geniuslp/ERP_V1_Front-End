@@ -318,19 +318,30 @@ const StockListPage: React.FC = () => {
 
   const columns = [
     {
+      title: 'ลำดับ',
+      key: 'line_index',
+      width: 70,
+      align: 'center' as const,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
+      render: (_: unknown, __: StockItem, index: number) => (page - 1) * pageSize + index + 1,
+    },
+    {
       title: 'Cost Code', dataIndex: 'costCode', key: 'costCode', width: 130, align: 'center' as const,
       render: (v: string | null | undefined) => v || '-',
     },
     {
-      title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 140, align: 'center' as const,
-      render: (v: string) => <Text style={{ color: '#2563eb', fontWeight: 600 }}>{v}</Text>,
+      title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 170, align: 'center' as const,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
+      render: (v: string) => (
+        <Text style={{ color: '#2563eb', fontWeight: 600, whiteSpace: 'nowrap' }}>{v}</Text>
+      ),
     },
     {
-      title: 'รายละเอียด', dataIndex: 'description', key: 'description', align: 'center' as const,
+      title: 'รายละเอียด', dataIndex: 'description', key: 'description', align: 'left' as const,
       render: (v: string | undefined) => v || '-',
     },
     {
-      title: 'รายละเอียดคลัง', dataIndex: 'descriptionStore', key: 'descriptionStore', align: 'center' as const,
+      title: 'รายละเอียดคลัง', dataIndex: 'descriptionStore', key: 'descriptionStore', align: 'left' as const,
       render: (v: string | null | undefined) => v || '-',
     },
     { title: 'คงเหลือ', dataIndex: 'qty', key: 'qty', width: 110, align: 'center' as const },

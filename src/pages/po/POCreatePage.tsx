@@ -17,7 +17,7 @@ import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
 import { poApprovalService } from '@/services/poApprovalService'
 import { getAvailablePRs } from '@/services/poService'
 import POItemsTable from '@/components/common/POItemsTable'
-import PRItemSelectionModal from '@/components/common/PRItemSelectionModal'
+import PRSidebarPanel from '@/pages/po/components/PRSidebarPanel'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
@@ -134,7 +134,8 @@ const POCreatePage: React.FC = () => {
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // Distinguishes a genuine user-initiated PR switch (handlePrChange) from
+  // Distinguishes a genuine user-initiated PR switch (handleUsePr, via the
+  // PR Order sidebar) from
   // selectedPrId being set programmatically by the edit-mode load effect
   // (because the PO already has a pr_id). Both set selectedPrId and both
   // trigger fetchPrDetail below, but only the former should be allowed to
@@ -191,7 +192,7 @@ const POCreatePage: React.FC = () => {
     pr: SavedAttachment[]
     memo: SavedAttachment[]
   }>({ po: [], pr: [], memo: [] })
-  const [prModalOpen, setPrModalOpen] = useState(false)
+  const [prSidebarOpen, setPrSidebarOpen] = useState(false)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
   // Synchronous double-submit guard — `submitting` (state) only flips after
@@ -551,7 +552,7 @@ const POCreatePage: React.FC = () => {
   // affects the persisted record, not what the user sees while still editing).
   useEffect(() => {
     if (!selectedPrId) {
-      // PR cleared (handlePrChange's applyChange(null)) — drop its carried-
+      // PR cleared (the trigger chip's Clear button) — drop its carried-
       // over pr/memo attachment groups so a removed PR's files don't linger
       // in the grouped attachments UI. The PO's own `po` group is untouched.
       setSavedAttachments((prev) => (
@@ -585,7 +586,7 @@ const POCreatePage: React.FC = () => {
           memo: (raw.attachments?.memo ?? []).map(mapAttachment),
         }))
 
-        // Only a genuine user-initiated PR switch (handlePrChange) should
+        // Only a genuine user-initiated PR switch (handleUsePr) should
         // override the form's requestedBy/warehouse_code/project_code/
         // deliveryLocation with this PR's data. selectedPrId is also set
         // programmatically by the edit-mode load effect when the PO already
@@ -638,7 +639,7 @@ const POCreatePage: React.FC = () => {
         // Consume the flag once this effect run has finished handling (or
         // deliberately skipping) the override, regardless of which branch —
         // so the next fetchPrDetail run defaults back to "not a user switch"
-        // unless handlePrChange sets it again.
+        // unless handleUsePr sets it again.
         isUserPrSwitch.current = false
       }
     }
@@ -697,58 +698,85 @@ const POCreatePage: React.FC = () => {
     }
   }, [fromMemo, suppliers])
 
-  const prLocked = items.some((i) => i.is_from_pr)
   const existingPrLineIds = items
     .filter((i) => i.is_from_pr && i.pr_line_id != null)
     .map((i) => i.pr_line_id as number)
 
-  const handlePrChange = (newPrId: number | undefined) => {
-    const prevPrId = selectedPrId
-    // The confirm dialog below promises to clear ALL selected items
-    // ("ล้างรายการวัสดุที่เลือกไว้ทั้งหมด"), not just PR-linked ones — so the
-    // gate for showing it, and the clear itself, must cover every row,
-    // including manually-added ones (is_from_pr: false) from POItemsTable's
-    // "เลือกจากรายการวัสดุ" picker. A selective is_from_pr-only clear left
-    // manually-added rows behind while new PR-linked rows were appended on
-    // top, producing old+new rows coexisting in the table.
-    const hasItems = items.length > 0
+  // pr_no for the trigger chip's selected-state label — looked up from
+  // whichever list currently has it (prOptions, or prFromEditMode for a PR
+  // that no longer qualifies for prOptions after this PO consumed it).
+  const selectedPrNo = selectedPrId
+    ? ([...prOptions, ...(prFromEditMode ? [prFromEditMode] : [])].find((pr) => pr.id === selectedPrId)?.pr_no ?? null)
+    : null
 
-    const applyChange = (id: number | null) => {
-      console.log('[POCreatePage] applyChange — setting selectedPrId:', id, 'and opening modal:', Boolean(id))
+  // Maps one checked PR line (from the sidebar's embedded selection table)
+  // into a POLineItem row — same shape/fields handlePrItemsConfirm always
+  // produced, factored out so both branches of handleUsePr below (replace
+  // vs append) can share it.
+  const mapPrLineToItem = (l: PRLineWithPOStatus) => ({
+    key: `pr-${l.id}`,
+    no: 0,
+    pr_line_id: l.id,
+    mat_code: l.mat_code,
+    mat_name: l.mat_name,
+    unit_name: l.unit,
+    spec: l.spec_name ?? undefined,
+    qty: l.qty_remaining,
+    unit_price: l.selected_unit_price ?? 0,
+    is_from_pr: true,
+    pr_qty_remaining: l.qty_remaining,
+    // Auto-filled from the source PR line's Cost Code, but stays
+    // editable — same auto-fill-but-editable pattern as job_code.
+    cost_subgroup_id: l.cost_subgroup_id ?? null,
+    cost_code_label: l.cost_code
+      ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
+      : null,
+  })
+
+  // Fired by PRSidebarPanel's "ใช้ PR นี้" button — merges what used to be
+  // two separate steps (handlePrChange's PR-switch/auto-fill + the standalone
+  // PRItemSelectionModal's onConfirm/handlePrItemsConfirm) into one action.
+  //
+  // Same-PR reselect (user reopened the sidebar on the PR already linked to
+  // this PO, to add more lines) never clears the table — it only appends
+  // genuinely new lines on top, exactly like the old handlePrItemsConfirm's
+  // dedupe-append behavior. Switching to a *different* PR is destructive to
+  // whatever's already in the table (same "ล้างรายการวัสดุที่เลือกไว้ทั้งหมด"
+  // confirm dialog as before) and replaces the item list outright with the
+  // freshly checked lines.
+  const handleUsePr = (prId: number, checkedLines: PRLineWithPOStatus[]) => {
+    const prevPrId = selectedPrId
+    const hasItems = items.length > 0
+    const sameAsCurrent = prevPrId === prId
+
+    const finalizeImport = () => {
       isUserPrSwitch.current = true
-      setSelectedPrId(id)
-      setItems([])
-      if (id) setPrModalOpen(true)
+      setSelectedPrId(prId)
+      if (sameAsCurrent) {
+        setItems((prev) => {
+          const existingLineIds = new Set(prev.map((i) => i.pr_line_id))
+          const newLines = checkedLines.filter((l) => !existingLineIds.has(l.id))
+          const combined = [...prev, ...newLines.map(mapPrLineToItem)]
+          return combined.map((item, idx) => ({ ...item, no: idx + 1 }))
+        })
+      } else {
+        setItems(checkedLines.map((l, idx) => ({ ...mapPrLineToItem(l), no: idx + 1 })))
+      }
+      setPrSidebarOpen(false)
     }
 
-    // Switching to a genuinely different PR while any items are already in
-    // the table is destructive — confirm before wiping them.
-    if (prevPrId && newPrId && newPrId !== prevPrId && hasItems) {
-      console.log('[POCreatePage] showing confirm dialog before switching PR')
+    if (!sameAsCurrent && prevPrId && hasItems) {
       Modal.confirm({
         title: 'เปลี่ยน PR',
         content: 'เปลี่ยน PR จะล้างรายการวัสดุที่เลือกไว้ทั้งหมด ต้องการดำเนินการต่อหรือไม่?',
         okText: 'ดำเนินการต่อ',
         cancelText: 'ยกเลิก',
-        onOk: () => applyChange(newPrId),
-        onCancel: () => {
-          // revert the Select's displayed value back to the previous PR
-          form.setFieldsValue({ prOrder: prevPrId })
-        },
+        onOk: finalizeImport,
       })
       return
     }
 
-    applyChange(newPrId ?? null)
-  }
-
-  // Fires on every option click, even re-selecting the same PR. Only reopens the
-  // modal for that same-PR reselect case — switching to a different PR is handled
-  // entirely by handlePrChange above (confirmation + clearing items).
-  const handlePrSelect = (prId: number) => {
-    if (prId === selectedPrId) {
-      setPrModalOpen(true)
-    }
+    finalizeImport()
   }
 
   // job_code is a single header field shared by every line's CostCode filter —
@@ -800,38 +828,6 @@ const POCreatePage: React.FC = () => {
     }
   }
 
-  const handlePrItemsConfirm = (lines: PRLineWithPOStatus[]) => {
-    setPrModalOpen(false)
-    if (lines.length === 0) return
-    setItems((prev) => {
-      const existingLineIds = new Set(prev.map((i) => i.pr_line_id))
-      const newLines = lines.filter((l) => !existingLineIds.has(l.id))
-      const combined = [
-        ...prev,
-        ...newLines.map((l) => ({
-          key: `pr-${l.id}`,
-          no: 0,
-          pr_line_id: l.id,
-          mat_code: l.mat_code,
-          mat_name: l.mat_name,
-          unit_name: l.unit,
-          spec: l.spec_name ?? undefined,
-          qty: l.qty_remaining,
-          unit_price: l.selected_unit_price ?? 0,
-          is_from_pr: true,
-          pr_qty_remaining: l.qty_remaining,
-          // Auto-filled from the source PR line's Cost Code, but stays
-          // editable — same auto-fill-but-editable pattern as job_code.
-          cost_subgroup_id: l.cost_subgroup_id ?? null,
-          cost_code_label: l.cost_code
-            ? `${l.cost_code}${l.cost_subgroup_name ? ` — ${l.cost_subgroup_name}` : ''}`
-            : null,
-        })),
-      ]
-      return combined.map((item, idx) => ({ ...item, no: idx + 1 }))
-    })
-  }
-
   const total = items.reduce((sum, i) => sum + i.qty * i.unit_price, 0)
 
   const validateItems = () => {
@@ -873,6 +869,16 @@ const POCreatePage: React.FC = () => {
       return
     }
     if (!validateItems()) {
+      submittingRef.current = false
+      return
+    }
+
+    // PR Order's "required when order_type is cost" rule used to live on the
+    // now-removed `prOrder` Select's Form.Item — the sidebar trigger chip
+    // isn't a bound form field, so this check is now manual, keyed on
+    // selectedPrId (the actual source of truth `pr_id` is built from below).
+    if (orderType === 'cost' && !selectedPrId) {
+      message.error('กรุณาเลือก PR Order เมื่อประเภทการสั่งซื้อเป็นโครงการ (Cost)')
       submittingRef.current = false
       return
     }
@@ -1498,60 +1504,51 @@ const POCreatePage: React.FC = () => {
                       </Form.Item>
                     </Col>
 
-                    {/* PR Order */}
+                    {/* PR Order — dashed-chip trigger + sidebar, same UX
+                        pattern as PRCreatePage.tsx's Memo Reference field
+                        (see PRSidebarPanel.tsx). */}
                     <Col xs={24}>
-                      <Form.Item
-                        label={<span style={labelStyle}>PR Order</span>}
-                        name="prOrder"
-                        rules={
-                          orderType === 'cost'
-                            ? [{ required: true, message: 'กรุณาเลือก PR Order เมื่อประเภทการสั่งซื้อเป็นโครงการ (Cost)' }]
-                            : []
-                        }
-                      >
-                        <Select
-                          showSearch
-                          allowClear
-                          placeholder="- เลือก PR Order (เฉพาะที่อนุมัติแล้ว) -"
-                          loading={prOptionsLoading}
-                          onChange={handlePrChange}
-                          onSelect={(val) => { if (val != null) handlePrSelect(val) }}
-                          filterOption={(input, option) => {
-                            const haystack = `${option?.pr_no ?? ''} ${option?.status ?? ''} ${option?.requested_by ?? ''}`.toLowerCase()
-                            return haystack.includes(input.toLowerCase())
+                      <Form.Item label={<span style={labelStyle}>PR Order</span>}>
+                        <div
+                          onClick={() => setPrSidebarOpen(true)}
+                          title="คลิกเพื่อเลือก PR"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            cursor: 'pointer',
+                            border: `1.5px dashed ${selectedPrId ? '#bfdbfe' : '#93c5fd'}`,
+                            borderRadius: 8,
+                            padding: '6px 10px',
+                            background: selectedPrId ? '#f8faff' : '#eff6ff',
+                            transition: 'all 0.15s',
                           }}
-                          optionRender={(option) => (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                              <span>
-                                {option.data.pr_no}
-                                {option.data.requested_by ? ` — ${option.data.requested_by}` : ''}
-                              </span>
-                              <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>
-                                {option.data.pr_date ? dayjs(option.data.pr_date).format('DD-MM-YY') : ''}
-                                {option.data.status ? ` · ${option.data.status}` : ''}
-                              </span>
-                            </div>
-                          )}
-                          options={[
-                            ...prOptions,
-                            ...(prFromEditMode && !prOptions.some((p) => p.id === prFromEditMode.id)
-                              ? [prFromEditMode]
-                              : []),
-                          ].map((pr) => ({
-                            value: pr.id,
-                            label: pr.requested_by ? `${pr.pr_no} — ${pr.requested_by}` : pr.pr_no,
-                            pr_no: pr.pr_no,
-                            pr_date: pr.pr_date,
-                            status: pr.status,
-                            requested_by: pr.requested_by,
-                          }))}
-                        />
+                        >
+                          <span
+                            style={{
+                              flex: 1,
+                              color: selectedPrId ? '#2563eb' : '#60a5fa',
+                              fontWeight: selectedPrId ? 500 : 400,
+                              fontSize: 13,
+                            }}
+                          >
+                            {selectedPrNo ?? 'คลิกเพื่อเลือก PR'}
+                          </span>
+                          <Tooltip title="Clear">
+                            <Button
+                              size="small"
+                              icon={<CloseCircleFilled />}
+                              disabled={!selectedPrId}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                isUserPrSwitch.current = true
+                                setSelectedPrId(null)
+                                setItems([])
+                              }}
+                            />
+                          </Tooltip>
+                        </div>
                       </Form.Item>
-                      {selectedPrId && !prLocked && (
-                        <Button type="link" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => setPrModalOpen(true)}>
-                          เลือกรายการจาก PR
-                        </Button>
-                      )}
                     </Col>
 
                     {/* ประเภทการสั่งซื้อ */}
@@ -1915,12 +1912,14 @@ const POCreatePage: React.FC = () => {
         />
       )}
 
-      <PRItemSelectionModal
-        open={prModalOpen}
-        prId={selectedPrId}
+      <PRSidebarPanel
+        open={prSidebarOpen}
+        onClose={() => setPrSidebarOpen(false)}
+        prOptions={prOptions}
+        prOptionsLoading={prOptionsLoading}
+        selectedPrId={selectedPrId}
         existingPrLineIds={existingPrLineIds}
-        onClose={() => setPrModalOpen(false)}
-        onConfirm={handlePrItemsConfirm}
+        onUsePr={handleUsePr}
       />
     </div>
   )

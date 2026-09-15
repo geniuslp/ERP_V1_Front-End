@@ -40,7 +40,13 @@ export interface POData {
   // field on purchase_order, so it was repurposed instead of adding a new
   // duplicate line just to show the same receiver contact twice.
   receiverName?: string | null; receiverPhone?: string | null
-  supplier: { name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string }
+  supplier: {
+    name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string
+    // Added alongside the existing `contact` field — GET /po/:id/print-data
+    // now also returns these two discrete fields (nullable), used by the
+    // Contact section below instead of the old single `contact` string.
+    salesPerson?: string | null; contactPhone?: string | null
+  }
   items: POItem[]
   extraDiscAmt: number; shippingAmt: number; remark: string
   useDiscount: boolean; useVat: boolean; useWht: boolean
@@ -343,7 +349,7 @@ const POInfoBox = ({data}:{data:POData}) => (
       {data.supplier.address2&&<div style={{paddingLeft:52}}>{data.supplier.address2}</div>}
       {data.supplier.address3&&<div style={{paddingLeft:52}}>{data.supplier.address3}</div>}
       <div><b>Term of Payment :</b>&nbsp;{data.supplier.termOfPayment}</div>
-      <div><b>Contact :</b>&nbsp;{data.supplier.contact}</div>
+      <div><b>พนักงานขาย :</b>&nbsp;{data.supplier.salesPerson || '-'}&nbsp;&nbsp;<b>เบอร์ติดต่อ :</b>&nbsp;{data.supplier.contactPhone || '-'}</div>
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
       <div style={{display:'flex',gap:8}}>
@@ -366,7 +372,7 @@ const ItemRow = ({row}:{row:POItem}) => (
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
-      <div>{row.desc}{row.spec ? ' - '+row.spec : ''}</div>
+      <div>{row.desc}{row.spec ? ' ' + row.spec : ''}</div>
       {row.subDesc&&<div style={{color:'#555',marginTop:'1px'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>

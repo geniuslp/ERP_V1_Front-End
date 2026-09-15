@@ -50,6 +50,9 @@ export interface POListItem {
   // Confirmed present on GET /po (list) as of this session — backend now
   // selects po.project_code directly (internal/handlers/po.go List).
   project_code?: string
+  // Nullable — backend LEFT JOINs project table; null when project_code has
+  // no matching row. Fall back to project_code for display when absent.
+  project_name?: string | null
   // NOT confirmed present on GET /po (list) as of 2026-08-07 — only seen on
   // PODetail so far. Used defensively for the "Amount (after-discount)"
   // column; verify the list SQL/handler actually selects this before relying
