@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography, Select } from 'antd'
+import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography, Select, Tooltip } from 'antd'
 import { EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -23,7 +23,8 @@ const PROJECT_COLUMN_DEFAULT_WIDTH = 140
 
 // Same react-resizable pattern as PRStatusPage.tsx's "โครงการ" column — only
 // columns that pass width/onResize via onHeaderCell get a drag handle; every
-// other column's th renders through untouched.
+// other column's th renders through untouched. minConstraints floor is lower
+// than PR page's [80, 0] so these two can be dragged down to a smaller width.
 interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
   onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
   width?: number
@@ -38,7 +39,7 @@ const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
     <Resizable
       width={width}
       height={0}
-      minConstraints={[80, 0]}
+      minConstraints={[60, 0]}
       handle={
         <span
           className="react-resizable-handle"
@@ -158,6 +159,10 @@ const POStatusPage: React.FC = () => {
       ),
     },
     {
+      // Resizable, floor width 60 (see ResizableTitle minConstraints) — scroll.x
+      // is a fixed pixel value on this Table (not 'max-content'), which is
+      // what actually caused these to stretch to their longest value before;
+      // the resizable mechanism itself was never the problem.
       title: 'ร้านค้า / บริษัท',
       dataIndex: 'supplier_name',
       key: 'supplier_name',
@@ -167,6 +172,11 @@ const POStatusPage: React.FC = () => {
         width: supplierColWidth,
         onResize: handleSupplierColResize,
       }),
+      render: (v?: string) => (
+        <Tooltip title={v || undefined}>
+          <span>{v || '-'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: 'ProjectName',
@@ -179,7 +189,14 @@ const POStatusPage: React.FC = () => {
       }),
       // project_name is nullable (LEFT JOIN) — fall back to project_code so
       // the cell isn't blank when the join doesn't match.
-      render: (_: unknown, r) => r.project_name || r.project_code || '-',
+      render: (_: unknown, r) => {
+        const v = r.project_name || r.project_code || '-'
+        return (
+          <Tooltip title={v}>
+            <span>{v}</span>
+          </Tooltip>
+        )
+      },
     },
     {
       // Confirmed against the live API response: GET /po (list) returns the
@@ -359,7 +376,11 @@ const POStatusPage: React.FC = () => {
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
           tableLayout="fixed"
-          scroll={{ x: 'max-content' }}
+          // Fixed pixel value, not 'max-content' — max-content sizes the
+          // table to each column's intrinsic content width, which stretched
+          // ร้านค้า/บริษัท and ProjectName to their single longest value
+          // across all rows and made width/ellipsis on those columns no-ops.
+          scroll={{ x: 1600 }}
           size="small"
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{

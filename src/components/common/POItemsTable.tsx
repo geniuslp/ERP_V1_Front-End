@@ -274,41 +274,49 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'No.',
       dataIndex: 'no',
-      width: 52,
+      width: 44,
       align: 'center' as const,
       render: (v: number) => <span style={{ fontSize: 13, color: '#374151' }}>{v}</span>,
     },
     {
       title: 'Cost Code',
       key: 'cost_subgroup_id',
-      width: 200,
+      width: 110,
       align: 'center' as const,
-      render: (_: unknown, r: POLineItem) => (
-        <Space size={4} style={{ width: '100%' }}>
-          <Button
-            size="small"
-            style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            disabled={!r.mat_code}
-            onClick={() => setCostCodeModalRowKey(r.key)}
-            title={r.cost_code_label ?? undefined}
-          >
-            {r.mat_code ? (r.cost_code_label ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
-          </Button>
-          {r.cost_code_label && (
+      render: (_: unknown, r: POLineItem) => {
+        // cost_code_label is stored as "CODE — Name" (see handleCostCodeSelect
+        // / POCreatePage.tsx's edit-load and PR-prefill paths) — the field
+        // itself should show only the code; the full label stays as the
+        // hover tooltip, and CostCodeSelectionModal (a searchable table, not
+        // a Select) still lets users search by description independently.
+        const codeOnly = r.cost_code_label?.split(' — ')[0]
+        return (
+          <Space size={4} style={{ width: '100%' }}>
             <Button
               size="small"
-              type="text"
-              icon={<CloseCircleFilled style={{ color: '#9ca3af' }} />}
-              onClick={() => clearCostCode(r.key)}
-            />
-          )}
-        </Space>
-      ),
+              style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              disabled={!r.mat_code}
+              onClick={() => setCostCodeModalRowKey(r.key)}
+              title={r.cost_code_label ?? undefined}
+            >
+              {r.mat_code ? (codeOnly ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
+            </Button>
+            {r.cost_code_label && (
+              <Button
+                size="small"
+                type="text"
+                icon={<CloseCircleFilled style={{ color: '#9ca3af' }} />}
+                onClick={() => clearCostCode(r.key)}
+              />
+            )}
+          </Space>
+        )
+      },
     },
     {
       title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
-      width: 130,
+      width: 110,
       render: (v: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{v}</span>
       ),
@@ -316,7 +324,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'คงเหลือ',
       key: 'stock_qty',
-      width: 90,
+      width: 60,
       align: 'right' as const,
       render: (_: any, record: any) => {
         if (!record.mat_code) return <span style={{ color: 'var(--text-muted)' }}>—</span>
@@ -333,6 +341,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'รายการ',
       dataIndex: 'mat_name',
+      width: 260,
       render: (_: unknown, r: POLineItem) => (
         <Space size={6}>
           {r.is_from_pr && (
@@ -347,7 +356,8 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'Spec',
       dataIndex: 'spec',
-      align: 'center' as const,
+      width: 220,
+      align: 'left' as const,
       render: (_: unknown, r: POLineItem) =>
         r.spec ? (
           <span style={{ fontSize: 13 }}>{r.spec}</span>
@@ -358,7 +368,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'หน่วย',
       dataIndex: 'unit_name',
-      width: 90,
+      width: 60,
       align: 'center' as const,
       render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
     },
@@ -486,7 +496,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         pagination={false}
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — เลือก PR หรือค้นหาวัสดุเพื่อเริ่มต้น' }}
-        scroll={{ x: 1100 }}
+        scroll={{ x: 1830 }}
         expandable={{
           expandedRowKeys: expandedKeys,
           showExpandColumn: false,
