@@ -10,6 +10,7 @@ import { usePermissionContext } from '@/contexts/PermissionContext'
 import PRPrint, { type PRData } from './PRPrint'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { resolveFileUrl } from '@/utils/fileUrl'
+import { formatItemLabel } from '@/utils/itemLabel'
 
 const { Text } = Typography
 
@@ -329,7 +330,7 @@ const PRDetailPage: React.FC = () => {
     { title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130 },
     {
       title: 'รายการ', key: 'matName',
-      render: (_: unknown, r: PRLineItem) => r.matName || <Text type="secondary">—</Text>,
+      render: (_: unknown, r: PRLineItem) => formatItemLabel(r.matName, r.specName) || <Text type="secondary">—</Text>,
     },
     { title: 'จำนวนขอ', dataIndex: 'qtyRequested', key: 'qtyRequested', width: 100, align: 'right' as const },
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qtyToOrder', key: 'qtyToOrder', width: 110, align: 'right' as const },

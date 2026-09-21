@@ -8,6 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
 import SidebarMenu from './SidebarMenu'
+import BrandLogo from '@/components/common/BrandLogo'
 
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
@@ -54,16 +55,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       borderBottom: '1px solid rgba(255,255,255,0.08)',
       gap: 10,
     }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 10,
-        background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontWeight: 800, color: '#fff', fontSize: 18, flexShrink: 0,
-      }}>E</div>
+      <BrandLogo variant={collapsedState ? 'sidebar-collapsed' : 'sidebar'} />
       {!collapsedState && (
-        <div>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun' }}>ERP System</div>
-          <div style={{ color: '#60a5fa', fontSize: 11 }}>Enterprise Resource</div>
+        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+          <div style={{
+            color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>ERP System</div>
         </div>
       )}
     </div>

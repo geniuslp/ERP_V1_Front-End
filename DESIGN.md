@@ -176,6 +176,20 @@ Render เฉพาะ section ที่ key นั้น**มีอยู่จ
 ห้ามเช็คแค่ length เพราะ backend จะไม่ส่ง key มาเลยถ้าเอกสารนั้นไม่มี chain link (ไม่ใช่ส่งเป็น
 `[]`) ดู `CLAUDE.md` หัวข้อ session 2026-08-26 สำหรับรายละเอียด behavior
 
+### Print page (logo-preload gated)
+ทุกหน้าพิมพ์ (`PurchaseOrderPrint.tsx`, `PRPrint.tsx`, `WorkOrderPrintStandard.tsx`,
+`WorkOrderPrintPOStyle.tsx`, `ICPoReceivePrint.tsx`) ใช้ pattern เดียวกัน: preload รูป logo แล้วเรียก
+`window.print()` ผ่าน `onReady()` callback ที่ยิงหลังโหลดรูปเสร็จเท่านั้น (กันปัญหา race condition
+พิมพ์ก่อนโลโก้โหลดเสร็จแล้วได้กระดาษโลโก้ว่าง) — ดู `CLAUDE.md` session 2026-08-26 และ 2026-09-21
+สำหรับรายละเอียด ใช้ pattern นี้กับหน้าพิมพ์ใหม่ทุกหน้าที่มีโลโก้/รูปจากเน็ต
+
+### Repeatable-row table with + button
+Pattern สำหรับฟอร์มที่มีรายการย่อยแบบเพิ่ม/ลบแถวได้ไม่จำกัดจำนวน (เช่น
+`WOPaymentConditionsSection.tsx`'s งวดงาน/เงินประกัน/ค่าปรับ) — array ใน local React state
+(ไม่ผูกกับ Ant Design `Form.List`), แต่ละ sub-block มีปุ่ม "+ เพิ่มรายการ" ต่อท้ายตาราง และปุ่มลบต่อแถว
+ดู `CLAUDE.md` session 2026-09-21 สำหรับ use case ที่สอง (ICPoReceiveModal ก็จะใช้ pattern
+เดียวกันถ้ามีรายการย่อยแบบเพิ่ม/ลบในอนาคต)
+
 ---
 
 ## 🗃️ Layout Patterns

@@ -7,8 +7,14 @@ import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/C
 import type { Material } from '@/types'
 import { useAppSelector } from '@/store'
 import { isExemptMatCode } from '@/utils/matCode'
+import { formatItemLabel } from '@/utils/itemLabel'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+
+// Re-exported for existing importers — canonical definition moved to
+// src/utils/itemLabel.ts so non-component files (e.g. PRDetailPage.tsx) can
+// import it without pulling in a component module.
+export { formatItemLabel }
 
 interface PRItem {
   key: string
@@ -95,8 +101,8 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         key: `edit-${idx}-${it.mat_code}`,
         no: idx + 1,
         code: it.mat_code,
-        description: it.mat_name ?? '',
-        spec: it.spec_name ?? '',
+        description: formatItemLabel(it.mat_name, it.spec_name),
+        spec: '',
         qtyPR: it.qty_requested,
         qtyStock: it.qty_to_order,
         unit: it.unit_name || 'Ea',
@@ -280,8 +286,8 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         return {
           ...item,
           code: m.mat_code,
-          description: m.mat_name_th,
-          spec: m.spec_description ?? '',
+          description: formatItemLabel(m.mat_name_th, m.spec_description),
+          spec: '',
           unit: m.unit_name || 'Ea',
         }
       })
@@ -291,8 +297,8 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         key: `${Date.now()}-${m.mat_code}-${Math.random().toString(36).slice(2)}`,
         no: 0,
         code: m.mat_code,
-        description: m.mat_name_th,
-        spec: m.spec_description ?? '',
+        description: formatItemLabel(m.mat_name_th, m.spec_description),
+        spec: '',
         qtyPR: 1,
         qtyStock: 1,
         unit: m.unit_name || 'Ea',
@@ -387,17 +393,6 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
             placeholder="ระบุรายการสินค้า/บริการ"
             onChange={(e) => updateItem(r.key, 'description', e.target.value)}
           />
-        ),
-    },
-    {
-      title: 'Spec',
-      dataIndex: 'spec',
-      align: 'center' as const,
-      render: (_: unknown, r: PRItem) =>
-        r.spec ? (
-          <span style={{ fontSize: 13 }}>{r.spec}</span>
-        ) : (
-          <span style={{ color: '#9ca3af' }}>—</span>
         ),
     },
     {
@@ -627,7 +622,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
             disabled={!onPrint}
             onClick={() => onPrint?.(items.map((i) => ({
               mat_code: i.code,
-              description: i.description,
+              description: formatItemLabel(i.description, i.spec),
               unit: i.unit,
               qty_requested: i.qtyPR,
               cost_code_label: i.costCodeLabel,

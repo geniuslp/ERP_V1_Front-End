@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAppDispatch } from '@/store'
 import { loginStart, loginSuccess, loginFailure } from '@/store/slices/authSlice'
 import type { User } from '@/types'
+import BrandLogo from '@/components/common/BrandLogo'
 
 const { Title, Text } = Typography
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
@@ -87,13 +88,8 @@ const LoginPage: React.FC = () => {
       }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: 16, margin: '0 auto 16px',
-            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(37,99,235,0.4)',
-          }}>
-            <span style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}>E</span>
+          <div style={{ marginBottom: 16 }}>
+            <BrandLogo variant="login" />
           </div>
           <Title level={3} style={{ margin: 0, color: '#1e3a8a', fontFamily: 'Sarabun', fontWeight: 700 }}>
             ERP System

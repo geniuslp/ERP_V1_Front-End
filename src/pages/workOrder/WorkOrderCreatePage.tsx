@@ -10,6 +10,10 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
 import WOItemsTable, { type WOLineItem } from '@/components/workOrder/WOItemsTable'
+import WOPaymentConditionsSection, {
+  toInstallmentRow, toRetentionRow, toPenaltyRow, buildPaymentConditionsPayload,
+  type InstallmentRow, type RetentionRow, type PenaltyRow,
+} from '@/components/workOrder/WOPaymentConditionsSection'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
@@ -17,10 +21,13 @@ import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/wor
 import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 
-// Fixed option list per the paper form — 7.1 เงินล่วงหน้า and 7.4 หักคืนเงินล่วงหน้า
-// use the same list ("ใช้เหมือนเงินล่วงหน้า" per the form).
+// เงินล่วงหน้า/เงินประกันผลงาน/ค่าปรับ ย้ายไปเป็นรายการแบบตารางที่ทำซ้ำได้ใน
+// WOPaymentConditionsSection แล้ว (งวดงาน/เงินประกัน/ค่าปรับ) — ตัด advance_pct,
+// advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note
+// ออกจากฟอร์มนี้ (ยังไม่แตะ column เดิมใน DB/backend). ADVANCE_PCT_OPTIONS ยังใช้
+// กับ advance_deduct_pct ("หักคืนเงินล่วงหน้า") อยู่ จึงคงไว้ — RETENTION_PCT_OPTIONS
+// เคยใช้กับ retention_pct เพียงจุดเดียว ตัดออกไปพร้อมกัน.
 const ADVANCE_PCT_OPTIONS = [5, 10, 15, 20, 30, 50].map((v) => ({ value: v, label: `${v}%` }))
-const RETENTION_PCT_OPTIONS = [5, 10].map((v) => ({ value: v, label: `${v}%` }))
 const CONTRACT_DESCRIPTION_OPTIONS = Object.entries(WO_CONTRACT_DESCRIPTION_LABEL).map(([value, label]) => ({ value, label }))
 
 // สำนักงาน / สาขา — plain array so adding a 5th/6th branch later is a one-line
@@ -98,6 +105,15 @@ const WorkOrderCreatePage: React.FC = () => {
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
   const [useVat, setUseVat] = useState(false)
   const [useWht, setUseWht] = useState(false)
+
+  // Payment-conditions rows (งวดงาน/เงินประกัน/ค่าปรับ) — same "plain React state,
+  // stripped to submit shape only inside handleSave" pattern as `items` above.
+  // Editable from page load even with no WO id yet; the follow-up
+  // POST /work-order/:woId/payment-conditions only happens once handleSave has a
+  // real id (see handleSave below) — see WOPaymentConditionsSection's own comment.
+  const [installments, setInstallments] = useState<InstallmentRow[]>([])
+  const [retentions, setRetentions] = useState<RetentionRow[]>([])
+  const [penalties, setPenalties] = useState<PenaltyRow[]>([])
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -186,6 +202,21 @@ const WorkOrderCreatePage: React.FC = () => {
       }
     }
     fetchDetail()
+
+    // Payment conditions are a separate resource (GET /work-order/:woId/payment-conditions)
+    // fetched alongside the WO itself in edit mode only — a brand-new WO has no id to fetch
+    // against yet, so its 3 tables just start empty (see the state declarations above).
+    const fetchPaymentConditions = async () => {
+      try {
+        const data = await workOrderService.getPaymentConditions(accessToken, id)
+        setInstallments(data.installments.map(toInstallmentRow))
+        setRetentions(data.retentions.map(toRetentionRow))
+        setPenalties(data.penalties.map(toPenaltyRow))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดเงื่อนไขการจ่ายเงินไม่สำเร็จ')
+      }
+    }
+    fetchPaymentConditions()
   }, [isEdit, id, accessToken])
 
   // start_date + duration_days -> end_date, auto-calculated but user-overridable
@@ -199,23 +230,18 @@ const WorkOrderCreatePage: React.FC = () => {
     }
   }
 
-  // contract_amount * advance_pct / 100 -> advance_amount, same "recompute only when
-  // a source field changes, stay user-editable afterward" pattern as recalcEndDate.
-  const recalcAdvanceAmount = () => {
-    const amount = form.getFieldValue('contract_amount')
-    const pct = form.getFieldValue('advance_pct')
-    if (amount != null && pct != null) {
-      form.setFieldValue('advance_amount', Math.round((Number(amount) * Number(pct)) / 100 * 100) / 100)
-    }
-  }
-
   // PO's create page sends `status` inline as part of the create/update payload to
   // switch between draft-save and submit-for-approval (no separate submit endpoint) —
   // mirrored here since the WO backend contract only lists POST / and PUT /:id, no
   // dedicated submit route. Flag for backend confirmation that `status` in the WO
   // create/update body is the intended trigger, same as PO.
   const buildPayload = (submitForApproval: boolean): WorkOrderPayload & { status: string } => {
-    const v = form.getFieldsValue()
+    // advance_pct/advance_amount/retention_pct/penalty_pct_per_day/progress_payment_note
+    // no longer have Form.Items (replaced by WOPaymentConditionsSection's repeatable
+    // tables), but edit-mode's initial form.setFieldsValue({ ...wo }) still seeds them
+    // into the antd form store from the loaded record — getFieldsValue() would silently
+    // resurrect and resubmit those stale values without this explicit strip.
+    const { advance_pct, advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note, ...v } = form.getFieldsValue()
     return {
       ...v,
       wo_date: v.wo_date ? dayjs(v.wo_date).format('YYYY-MM-DD') : undefined,
@@ -274,7 +300,26 @@ const WorkOrderCreatePage: React.FC = () => {
       const wo = isEdit
         ? await workOrderService.update(accessToken, id!, payload)
         : await workOrderService.create(accessToken, payload)
-      message.success(isEdit ? 'บันทึกการแก้ไขสำเร็จ' : 'บันทึกร่างสำเร็จ')
+
+      // Bundled follow-up save — payment conditions reference wo_id and can't be
+      // created before the WO itself has one, so this can only happen right here,
+      // after the create/update call above has succeeded and a real id is known
+      // (newly-created id in create mode, the existing id in edit mode). This is
+      // a second sequential API call under the hood, but reads as one save to the
+      // user: same success message, same navigate-away, unless it fails on its
+      // own — see the catch below for why that's reported separately rather than
+      // treated as one atomic failure (the WO itself did save).
+      try {
+        await workOrderService.updatePaymentConditions(
+          accessToken,
+          wo.id,
+          buildPaymentConditionsPayload(installments, retentions, penalties),
+        )
+        message.success(isEdit ? 'บันทึกการแก้ไขสำเร็จ' : 'บันทึกร่างสำเร็จ')
+      } catch (conditionsErr: any) {
+        message.error('บันทึกหนังสือสั่งจ้างสำเร็จ แต่บันทึกเงื่อนไขการจ่ายเงินไม่สำเร็จ กรุณาลองบันทึกเงื่อนไขการจ่ายเงินอีกครั้ง')
+      }
+
       navigate(`/work-order/${wo.id}`)
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
@@ -494,7 +539,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   min={0}
                   formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
-                  onChange={(v) => { updateContractAmountText(v as number | null); recalcAdvanceAmount() }}
+                  onChange={(v) => updateContractAmountText(v as number | null)}
                 />
               </Form.Item>
             </Col>
@@ -511,43 +556,18 @@ const WorkOrderCreatePage: React.FC = () => {
           </Row>
         </Card>
 
-        <Card title="เงื่อนไขการจ่ายเงิน" style={cardStyle}>
+        <Card title="เงื่อนไขการจ่ายเงิน (อื่นๆ)" style={cardStyle}>
+          {/* เงินล่วงหน้า/จำนวนเงินงวดสัญญา/เงินประกันผลงาน (%)/หมายเหตุการจ่ายตาม
+              ความคืบหน้างาน ย้ายไปเป็นรายการแบบตารางในบล็อก "เงื่อนไขการจ่ายเงิน"
+              (WOPaymentConditionsSection: งวดงาน/เงินประกัน/ค่าปรับ) ด้านล่างแล้ว —
+              เหลือเฉพาะ 2 ช่องนี้ที่ยังไม่มีคู่ในตารางใหม่. */}
           <Row gutter={16}>
-            <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>เงินล่วงหน้า (%)</span>} name="advance_pct">
-                <Select
-                  allowClear
-                  style={{ width: '100%' }}
-                  options={ADVANCE_PCT_OPTIONS}
-                  onChange={recalcAdvanceAmount}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item
-                label={<span style={labelStyle}>จำนวนเงินงวดสัญญา</span>}
-                name="advance_amount"
-                extra={<span style={{ fontSize: 11, color: '#94a3b8' }}>คำนวณอัตโนมัติจากมูลค่าสัญญา × % — แก้ไขเองได้</span>}
-              >
-                <InputNumber style={{ width: '100%' }} min={0} formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>เงินประกันผลงาน (%)</span>} name="retention_pct">
-                <Select allowClear style={{ width: '100%' }} options={RETENTION_PCT_OPTIONS} />
-              </Form.Item>
-            </Col>
             <Col xs={24} md={6}>
               <Form.Item label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>} name="advance_deduct_pct">
                 <Select allowClear style={{ width: '100%' }} options={ADVANCE_PCT_OPTIONS} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>หมายเหตุการจ่ายตามความคืบหน้างาน</span>} name="progress_payment_note">
-                <Input.TextArea rows={2} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
+            <Col xs={24} md={18}>
               <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
                 <Input.TextArea rows={2} placeholder="ไม่มี" />
               </Form.Item>
@@ -573,11 +593,8 @@ const WorkOrderCreatePage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>ค่าปรับ (%/วัน)</span>} name="penalty_pct_per_day">
-                <InputNumber style={{ width: '100%' }} min={0} max={100} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
+              {/* ค่าปรับ (%/วัน) ย้ายไปเป็นรายการแบบตารางใน WOPaymentConditionsSection
+                  แล้ว (sub-block "ค่าปรับ" — % ต่อวัน ต่อแต่ละรายการ) */}
               <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
                 <InputNumber style={{ width: '100%' }} min={0} />
               </Form.Item>
@@ -595,6 +612,29 @@ const WorkOrderCreatePage: React.FC = () => {
           </Row>
         </Card>
       </Form>
+
+      {/* Detailed payment conditions (installments/retention/penalty) — a separate
+          resource keyed by wo_id (work_order_payment_installment/retention/penalty
+          tables), so it lives outside the antd <Form>. Fully editable from page
+          load even with no WO id yet (rows are plain React state here, same
+          pattern as `items`); handleSave bundles a follow-up
+          POST /work-order/:woId/payment-conditions right after the main WO
+          create/update call succeeds and a real id is known. This now fully
+          replaces advance_pct/advance_amount/retention_pct/penalty_pct_per_day/
+          progress_payment_note as far as this form goes (removed above, still
+          present as work_order columns/backend fields — just no longer read or
+          written from here). "เงื่อนไขการจ่ายเงิน (อื่นๆ)" above it was renamed
+          from the old identically-titled "เงื่อนไขการจ่ายเงิน" card and now only
+          holds the 2 remaining header-level fields (advance_deduct_pct,
+          other_deduction_note) that have no equivalent in the new tables. */}
+      <WOPaymentConditionsSection
+        installments={installments}
+        onInstallmentsChange={setInstallments}
+        retentions={retentions}
+        onRetentionsChange={setRetentions}
+        penalties={penalties}
+        onPenaltiesChange={setPenalties}
+      />
 
       {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
           create page uses (table + collapsible tax sidebar side by side),

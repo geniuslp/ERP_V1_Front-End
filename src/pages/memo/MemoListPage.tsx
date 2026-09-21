@@ -29,7 +29,7 @@ const mapMemo = (m: any): Memo => ({
   title:        m.title           ?? '',
   requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
   approverName: m.approver_name     ?? m.approverName ?? undefined,
-  projectName:  m.project_code    ?? m.project_name  ?? m.projectName   ?? undefined,
+  projectName:  m.project_name    ?? m.projectName    ?? m.project_code ?? undefined,
   supplierName: m.supplier_code   ?? m.supplier_name ?? m.supplierName  ?? undefined,
   status:       m.status          ?? 'DRAFT',
   createdAt:    m.created_at      ?? m.createdAt     ?? '',

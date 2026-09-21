@@ -27,6 +27,7 @@ const POCreatePage = lazy(() => import('@/pages/po/POCreatePage'))
 const POStatusPage = lazy(() => import('@/pages/po/POStatusPage'))
 const POHistoryPage = lazy(() => import('@/pages/po/POHistoryPage'))
 const POLineItemsPage = lazy(() => import('@/pages/po/POLineItemsPage'))
+const POCostBudgetPage = lazy(() => import('@/pages/po/POCostBudgetPage'))
 const POMyListPage = lazy(() => import('@/pages/po/POMyListPage'))
 const POApprovalListPage = lazy(() => import('@/pages/po/POApprovalListPage'))
 const POApprovalDetailPage = lazy(() => import('@/pages/po/POApprovalDetailPage'))
@@ -89,6 +90,9 @@ const ProjectStockBalancePage = lazy(() => import('@/pages/stock/ProjectStockBal
 const FinancePaymentsPage = lazy(() => import('@/pages/finance/FinancePaymentsPage'))
 const FinancePaymentDetailPage = lazy(() => import('@/pages/finance/FinancePaymentDetailPage'))
 const ProjectOverviewPage = lazy(() => import('@/pages/project-overview/ProjectOverviewPage'))
+const ICProjectListPage = lazy(() => import('@/pages/ic/ICProjectListPage'))
+const ICPoReceivePage = lazy(() => import('@/pages/ic/ICPoReceivePage'))
+const ICPoReturnPage = lazy(() => import('@/pages/ic/ICPoReturnPage'))
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -148,6 +152,9 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/po/line-items" element={
                 <RequirePermission menuCode="MENU_PO_LINE_ITEMS" action="read"><POLineItemsPage /></RequirePermission>
+              } />
+              <Route path="/po/cost-budget" element={
+                <RequirePermission menuCode="MENU_PO_COST_BUDGET" action="read"><POCostBudgetPage /></RequirePermission>
               } />
               <Route path="/po/approval" element={<POApprovalListPage />} />
               <Route path="/po/approval/:id" element={<POApprovalDetailPage />} />
@@ -283,6 +290,19 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/project-overview" element={
                 <RequirePermission menuCode="MENU_PROJECT_OVERVIEW" action="read"><ProjectOverviewPage /></RequirePermission>
+              } />
+              {/* Inventory Control (IC) module. /ic/projects is the only entry point —
+                  PO Receive/Return require a projectId picked from that list, so their
+                  routes are only reachable via navigation from ICProjectListPage (the
+                  pages themselves redirect back to /ic/projects if the id is missing/invalid). */}
+              <Route path="/ic/projects" element={
+                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectListPage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectId/po-receive" element={
+                <RequirePermission menuCode="MENU_IC_PO_RECEIVE" action="read"><ICPoReceivePage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectId/po-return" element={
+                <RequirePermission menuCode="MENU_IC_PO_RETURN" action="read"><ICPoReturnPage /></RequirePermission>
               } />
               <Route path="/system/config" element={
                 <RequireRole roleCode="ADMIN_CENTER"><SystemConfigPage /></RequireRole>

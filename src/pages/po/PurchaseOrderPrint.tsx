@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, sumLineAmtDiscounts, type DiscType } from '@/utils/poCalc'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { formatItemLabel } from '@/utils/itemLabel'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -372,7 +373,7 @@ const ItemRow = ({row}:{row:POItem}) => (
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
-      <div>{row.desc}{row.spec ? ' ' + row.spec : ''}</div>
+      <div>{formatItemLabel(row.desc, row.spec)}</div>
       {row.subDesc&&<div style={{color:'#555',marginTop:'1px'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>

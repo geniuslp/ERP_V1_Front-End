@@ -1,5 +1,7 @@
 import axios from 'axios'
-import type { WOListItem, WOListParams, WOListResult, WorkOrder, WorkOrderPayload } from '@/types/workOrder'
+import type {
+  WOListItem, WOListParams, WOListResult, WorkOrder, WorkOrderPayload, WOPaymentConditions,
+} from '@/types/workOrder'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -66,5 +68,19 @@ export const workOrderService = {
 
   reject: async (token: string, id: string | number, reason: string): Promise<void> => {
     await axios.post(`${BASE_URL}/work-order/${id}/reject`, { reason }, { headers: authHeader(token) })
+  },
+
+  getPaymentConditions: async (token: string, woId: string | number): Promise<WOPaymentConditions> => {
+    const res = await axios.get(`${BASE_URL}/work-order/${woId}/payment-conditions`, { headers: authHeader(token) })
+    const payload = res.data?.data ?? res.data
+    return {
+      installments: payload?.installments ?? [],
+      retentions: payload?.retentions ?? [],
+      penalties: payload?.penalties ?? [],
+    }
+  },
+
+  updatePaymentConditions: async (token: string, woId: string | number, payload: WOPaymentConditions): Promise<void> => {
+    await axios.post(`${BASE_URL}/work-order/${woId}/payment-conditions`, payload, { headers: authHeader(token) })
   },
 }

@@ -25,6 +25,7 @@ import PrintErrorBoundary from '@/components/common/PrintErrorBoundary'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { sumLineAmtDiscounts } from '@/utils/poCalc'
+import { formatItemLabel } from '@/utils/itemLabel'
 import { PaperClipOutlined } from '@ant-design/icons'
 
 
@@ -262,7 +263,7 @@ const POApprovalDetailPage: React.FC = () => {
       key: 'mat_name',
       render: (_: unknown, r: POLine) => (
         <div>
-          <div>{r.mat_name ?? '—'}</div>
+          <div>{formatItemLabel(r.mat_name, r.spec) || '—'}</div>
           <div style={{ fontSize: 12, color: '#888' }}>
             {[r.group_name, r.subgroup_name].filter(Boolean).join(' › ')}
           </div>
@@ -270,13 +271,10 @@ const POApprovalDetailPage: React.FC = () => {
       ),
     },
     {
-      title: 'Spec / Brand',
-      key: 'spec_brand',
+      title: 'Brand',
+      key: 'brand',
       render: (_: unknown, r: POLine) => (
-        <div>
-          <div>{r.spec ?? '—'}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{r.brand ?? ''}</div>
-        </div>
+        <div>{r.brand ?? '-'}</div>
       ),
     },
     {

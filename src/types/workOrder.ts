@@ -122,6 +122,54 @@ export interface WorkOrder {
   updated_at: string
 }
 
+// ─── Payment Conditions (installments / retention / penalty) ───────────────
+// Mirrors erp-api's WorkOrderPaymentInstallment/WorkOrderRetention/WorkOrderPenalty
+// response shapes and their *Input submit shapes exactly (models.go). Each array
+// is a full-replace: GET /work-order/:woId/payment-conditions returns the current
+// state, POST replaces all 3 tables wholesale (rows with `id` are updated, rows
+// without are inserted, rows missing from the submitted array are deleted).
+export type WOPaymentStatus = 'UNPAID' | 'PAID'
+
+export const WO_PAYMENT_STATUS_LABEL: Record<WOPaymentStatus, string> = {
+  UNPAID: 'ยังไม่จ่าย',
+  PAID: 'จ่ายแล้ว',
+}
+
+export interface WOPaymentInstallment {
+  id?: number
+  installment_no: number
+  description?: string | null
+  percent_of_contract?: number | null
+  amount: number
+  due_date?: string | null
+  payment_status: WOPaymentStatus
+  paid_date?: string | null
+  remarks?: string | null
+}
+
+export interface WOPaymentRetention {
+  id?: number
+  description?: string | null
+  percent_of_contract?: number | null
+  amount: number
+  remarks?: string | null
+}
+
+export interface WOPaymentPenalty {
+  id?: number
+  description?: string | null
+  percent_per_day?: number | null
+  contract_start_date?: string | null
+  contract_end_date?: string | null
+  remarks?: string | null
+}
+
+export interface WOPaymentConditions {
+  installments: WOPaymentInstallment[]
+  retentions: WOPaymentRetention[]
+  penalties: WOPaymentPenalty[]
+}
+
 export interface WOListParams {
   wo_no?: string
   employer_name?: string

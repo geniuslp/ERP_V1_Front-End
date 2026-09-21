@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { Menu, Skeleton } from 'antd'
+import { Menu, Skeleton, Tooltip } from 'antd'
 import {
   DashboardOutlined, FileTextOutlined, ShoppingCartOutlined,
   SettingOutlined, PlusOutlined, SearchOutlined, HistoryOutlined,
@@ -7,7 +7,7 @@ import {
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
-  DollarOutlined, WalletOutlined,
+  DollarOutlined, WalletOutlined, CalculatorOutlined, RollbackOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -40,7 +40,15 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_FINANCE: <DollarOutlined />,
   MENU_PETTY_CASH: <WalletOutlined />,
   MENU_PROJECT_OVERVIEW: <FundOutlined />,
+  MENU_IC: <DatabaseOutlined />,
 }
+
+// Sub-menu codes whose child route requires a param (:projectId) with no
+// standalone target — clicking them directly from the sidebar has nowhere
+// meaningful to go. Rendered as disabled labels with a tooltip instead of a
+// real Link; the actual navigation only happens from ICProjectListPage's
+// row actions once a project is picked. See CLAUDE.md task note.
+const PARAM_REQUIRED_MENU_CODES = ['MENU_IC_PO_RECEIVE', 'MENU_IC_PO_RETURN']
 
 const subIconMap: Record<string, React.ReactNode> = {
   MENU_MEMO_LIST: <SearchOutlined />,
@@ -55,6 +63,7 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PO_APPROVAL: <CheckCircleOutlined />,
   MENU_PO_LINE_ITEMS: <SearchOutlined />,
   MENU_PO_MY: <UserOutlined />,
+  MENU_PO_COST_BUDGET: <CalculatorOutlined />,
   MENU_WO_LIST: <SearchOutlined />,
   MENU_WO_CREATE: <PlusOutlined />,
   MENU_WO_APPROVAL: <CheckCircleOutlined />,
@@ -102,6 +111,9 @@ const subIconMap: Record<string, React.ReactNode> = {
   // parent=MENU_MASTER, menu_path=/master/customer) still needs to be created
   // by an admin; this only maps the icon once that row exists.
   MENU_MASTER_CUSTOMER: <TeamOutlined />,
+  MENU_IC_PROJECT: <SearchOutlined />,
+  MENU_IC_PO_RECEIVE: <InboxOutlined />,
+  MENU_IC_PO_RETURN: <RollbackOutlined />,
 }
 
 interface VisibleMenuNode extends PermMenu {
@@ -192,11 +204,25 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
           key: String(top.id),
           icon: topIconMap[top.menu_code] || <AppstoreOutlined />,
           label: top.menu_name,
-          children: top.children.map((child) => ({
-            key: child.menu_path || child.menu_code,
-            icon: subIconMap[child.menu_code] || null,
-            label: child.menu_path ? <Link to={child.menu_path}>{child.menu_name}</Link> : child.menu_name,
-          })),
+          children: top.children.map((child) => {
+            if (PARAM_REQUIRED_MENU_CODES.includes(child.menu_code)) {
+              return {
+                key: child.menu_code,
+                icon: subIconMap[child.menu_code] || null,
+                disabled: true,
+                label: (
+                  <Tooltip title="กรุณาเลือกโครงการก่อน" placement="right">
+                    <span>{child.menu_name}</span>
+                  </Tooltip>
+                ),
+              }
+            }
+            return {
+              key: child.menu_path || child.menu_code,
+              icon: subIconMap[child.menu_code] || null,
+              label: child.menu_path ? <Link to={child.menu_path}>{child.menu_name}</Link> : child.menu_name,
+            }
+          }),
         }
       }
       return {

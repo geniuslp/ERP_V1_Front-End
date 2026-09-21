@@ -11,6 +11,7 @@ import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
 import { calcDisc } from '@/utils/poCalc'
+import { formatItemLabel } from '@/utils/itemLabel'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -341,7 +342,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'รายการ',
       dataIndex: 'mat_name',
-      width: 260,
+      width: 480,
       render: (_: unknown, r: POLineItem) => (
         <Space size={6}>
           {r.is_from_pr && (
@@ -349,21 +350,9 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
               <Tag icon={<LinkOutlined />} color="blue" style={{ margin: 0 }} />
             </Tooltip>
           )}
-          <span style={{ fontSize: 13 }}>{r.mat_name}</span>
+          <span style={{ fontSize: 13 }}>{formatItemLabel(r.mat_name, r.spec)}</span>
         </Space>
       ),
-    },
-    {
-      title: 'Spec',
-      dataIndex: 'spec',
-      width: 220,
-      align: 'left' as const,
-      render: (_: unknown, r: POLineItem) =>
-        r.spec ? (
-          <span style={{ fontSize: 13 }}>{r.spec}</span>
-        ) : (
-          <span style={{ color: '#9ca3af' }}>—</span>
-        ),
     },
     {
       title: 'หน่วย',

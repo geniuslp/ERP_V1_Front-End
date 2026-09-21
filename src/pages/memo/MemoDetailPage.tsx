@@ -7,12 +7,14 @@ import {
   ArrowLeftOutlined, EditOutlined, StopOutlined,
   CheckOutlined, CloseOutlined, PrinterOutlined,
 } from '@ant-design/icons'
+import { PaperClipOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
+import { resolveFileUrl } from '@/utils/fileUrl'
 import MemoPrint, { type MemoData } from './MemoPrint'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -40,6 +42,18 @@ interface MemoLineItem {
   remark?: string
 }
 
+// Memo is a source document (not one that aggregates attachments from linked
+// docs like PO's {memo, pr, po} keyed shape) — backend returns a flat array
+// under "attachments", omitted entirely (not []) when there are none.
+interface MemoAttachmentFile {
+  file_path: string
+  file_name: string
+  file_size: number
+  file_type: string
+  uploaded_by?: string
+  uploaded_at?: string
+}
+
 interface MemoDetail {
   id: string
   memoNo: string
@@ -58,7 +72,50 @@ interface MemoDetail {
   note?: string
   createdAt: string
   lines: MemoLineItem[]
+  attachments?: MemoAttachmentFile[]
 }
+
+const formatFileSize = (b: number) =>
+  b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
+
+// Matches POApprovalDetailPage.tsx's local AttachmentSection style (plain-div
+// section, not a Card) — that component isn't exported/reusable across files,
+// so this is a local copy sized for Memo's flat attachments array.
+const AttachmentSection: React.FC<{ title: string; items: MemoAttachmentFile[] }> = ({ title, items }) => (
+  <div style={{ ...cardStyle, padding: 24, marginBottom: 16, background: '#fff' }}>
+    <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
+      {title}
+    </div>
+    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      {items.map((a, idx) => (
+        <div
+          key={idx}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 12px',
+            border: '0.5px solid #e5e7eb',
+            borderRadius: 8,
+          }}
+        >
+          <Space>
+            <PaperClipOutlined style={{ color: '#2563eb' }} />
+            <a
+              href={resolveFileUrl(a.file_path)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 13, color: '#1e40af' }}
+              className="attachment-filename-link"
+            >
+              {a.file_name}
+            </a>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>{formatFileSize(a.file_size)}</span>
+          </Space>
+        </div>
+      ))}
+    </Space>
+  </div>
+)
 
 const mapMemo = (raw: any): MemoDetail => {
   const lines = (raw.lines ?? raw.items ?? []).map((l: any) => ({
@@ -88,6 +145,7 @@ const mapMemo = (raw: any): MemoDetail => {
     note:          raw.note,
     createdAt:     raw.created_at     ?? '',
     lines,
+    attachments:   raw.attachments,
   }
 }
 
@@ -405,6 +463,10 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           </Space>
         </div>
       </Card>
+
+      {memo?.attachments && memo.attachments.length > 0 && (
+        <AttachmentSection title="ไฟล์แนบ" items={memo.attachments} />
+      )}
 
       {showApproveActions && (
         <Modal

@@ -306,17 +306,10 @@ const ProjectOverviewPage: React.FC = () => {
     },
     {
       title: 'Cost Code',
+      dataIndex: 'cost_code',
       key: 'cost_code',
       width: 140,
-      render: (_: unknown, r: POLine) =>
-        r.cost_code ? (
-          <span>
-            {r.cost_code}
-            {r.cost_subgroup_name ? ` — ${r.cost_subgroup_name}` : ''}
-          </span>
-        ) : (
-          <span style={{ color: '#9ca3af' }}>—</span>
-        ),
+      render: (v?: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     { title: 'มูลค่า', dataIndex: 'amount', key: 'amount', width: 100, align: 'right', render: (v: number) => thb(v) },
   ]
@@ -510,6 +503,7 @@ const ProjectOverviewPage: React.FC = () => {
                     columns={poColumns}
                     size="small"
                     pagination={false}
+                    scroll={{ x: 'max-content' }}
                     locale={{ emptyText: 'ไม่พบ PO ในโครงการนี้' }}
                     expandable={{
                       rowExpandable: (r) => r.po_id != null,
@@ -524,6 +518,7 @@ const ProjectOverviewPage: React.FC = () => {
                           columns={lineColumns}
                           size="small"
                           pagination={false}
+                          scroll={{ x: 'max-content' }}
                           locale={{ emptyText: 'ไม่พบรายการสินค้า' }}
                         />
                       ),

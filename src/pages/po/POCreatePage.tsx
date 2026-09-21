@@ -340,24 +340,44 @@ const POCreatePage: React.FC = () => {
   }, [])
 
 
-  // Read-only preview of the next PO number — create mode only. An existing
+  // Atomic reservation of the next PO number — create mode only. An existing
   // PO already has its real saved po_no (populated from GET /po/:id below),
   // so this preview would be irrelevant/misleading there.
+  // Per-tab sessionStorage cache (mirrors PRCreatePage.tsx's pilot) so an F5
+  // refresh before saving reuses the already-reserved number instead of
+  // burning another one; cleared on successful create or explicit cancel.
   useEffect(() => {
     if (isEdit) return
-    const fetchNextNumber = async () => {
+    const cached = sessionStorage.getItem('po_reserved_number')
+    if (cached) {
+      setNextPoNumber(cached)
+      return
+    }
+    // reserve-number is atomic — every real call consumes a sequence value.
+    // Abort on StrictMode's mount->cleanup->mount so the first invocation's
+    // request never completes (an ignore-flag alone wouldn't stop it from
+    // reaching the backend).
+    const controller = new AbortController()
+    const fetchReservedNumber = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/po/next-number`, {
+        const res = await axios.get(`${BASE_URL}/po/reserve-number`, {
           headers: { Authorization: `Bearer ${accessToken}` },
+          signal: controller.signal,
         })
-        setNextPoNumber(res.data.data.next_number)
+        const poNo = res.data.data.po_no
+        sessionStorage.setItem('po_reserved_number', poNo)
+        setNextPoNumber(poNo)
       } catch (err: any) {
+        if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
         // Non-fatal — hide the hint rather than show an error or fall back to
         // stale mock text; the field itself isn't required to show a number.
         setNextPoNumber('')
       }
     }
-    fetchNextNumber()
+    fetchReservedNumber()
+    return () => {
+      controller.abort()
+    }
   }, [isEdit])
 
   useEffect(() => {
@@ -902,11 +922,28 @@ const POCreatePage: React.FC = () => {
       return
     }
 
+    // Create mode only: po_no must have been reserved successfully on page load
+    // (see the reserve-number effect above). If that call failed, nextPoNumber
+    // was left as '' (its non-fatal fallback) — block here with an actionable
+    // message instead of sending an empty po_no and surfacing the backend's
+    // generic "document number is required, call reserve-number first" 400.
+    if (!isEdit && !nextPoNumber) {
+      message.error('ไม่สามารถออกเลขที่ PO ได้ กรุณารีเฟรชหน้าใหม่')
+      submittingRef.current = false
+      return
+    }
+
     const doSubmit = async () => {
       setSubmitting(true)
       try {
         const payload = {
           // ── Header ──
+          // po_no: only meaningful on create — an existing PO already has its
+          // real saved po_no server-side, and edit mode never reserves one
+          // (nextPoNumber stays '' the whole time when isEdit, see the
+          // reserve-number effect's early return), so this key is omitted
+          // entirely on PUT rather than sent as ''.
+          ...(isEdit ? {} : { po_no: nextPoNumber }),
           supplier_id: values.supplier_code,
           location_text: values.deliveryLocation,
           receiver_name: values.receiver_name || undefined,
@@ -1014,6 +1051,9 @@ const POCreatePage: React.FC = () => {
           )
         } else {
           poId = res.data?.data?.po_id ?? res.data?.data?.po?.po_id ?? res.data?.po_id ?? res.data?.po?.po_id ?? null
+          // Reserved number is now consumed by a real saved PO — clear the
+          // per-tab cache so the next fresh create-PO open gets a new one.
+          sessionStorage.removeItem('po_reserved_number')
           if (poId) {
             setSavedPoId(poId)
             // Move the route from /po/create to /po/:id/edit now that the PO
@@ -1845,7 +1885,12 @@ const POCreatePage: React.FC = () => {
               {/* Left: พิมพ์ + กลับ */}
               <Space>
                 <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>พิมพ์</Button>
-                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/po/status')}>กลับหน้าหลัก</Button>
+                <Button icon={<ArrowLeftOutlined />} onClick={() => {
+                  // Leaving create-PO without saving — clear the cached
+                  // reservation so the next fresh open gets a genuinely new number.
+                  if (!isEdit) sessionStorage.removeItem('po_reserved_number')
+                  navigate('/po/status')
+                }}>กลับหน้าหลัก</Button>
               </Space>
 
               {/* Right: action buttons.

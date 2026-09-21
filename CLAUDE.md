@@ -374,6 +374,57 @@ from a PO-level project selection. The no-PR payload path (`selectedPrId` falsy)
 
 ---
 
+## 🔴 Session 2026-09-21 — new IC (Inventory Control) module, WO payment-conditions redesign, misc bug fixes
+
+**New IC pages/components (backend `/ic/pos/...` endpoints, new sidebar group).**
+- `src/pages/ic/ICProjectListPage.tsx` — list page ("ข้อมูลโครงการสำหรับ IC").
+- `src/pages/ic/ICPoReceivePage.tsx` + `src/pages/ic/components/ICPoReceiveModal.tsx` — 3-tab modal
+  (รายละเอียดเอกสาร / รายการสินค้า / ไฟล์แนบ). The attachments tab is a disabled placeholder
+  ("ยังไม่พร้อมใช้งาน (Coming soon)") — not wired to any endpoint yet. The items tab calls
+  `GET /ic/pos/:poId/receive-lines` and `POST /ic/pos/:poId/receive-lines/submit`.
+- `src/pages/ic/components/ICPoReceivePrint.tsx` — print layout mirrors
+  `PurchaseOrderPrint.tsx`'s structure with `PRPrint.tsx`'s simpler footer; follows the same
+  logo-preload + `onReady()`-gated `window.print()` pattern as the other print components (see
+  DESIGN.md's new "Print page" note).
+- `src/pages/ic/ICPoReturnPage.tsx` + `src/pages/ic/components/ICPoReturnModal.tsx` — single-tab
+  modal, no print button/flow.
+- Sidebar (`SidebarMenu.tsx`): new top-level "Inventory Control" group with 3 children —
+  ข้อมูลโครงการสำหรับ IC, PO Receive, PO Return.
+
+**WO (Work Order) payment-conditions redesign.** `WorkOrderCreatePage.tsx` — removed 5 single-value
+form fields (`advance_pct`, `advance_amount`, `retention_pct`, `penalty_pct_per_day`,
+`progress_payment_note`), replaced by a new repeatable-row section
+`src/components/workOrder/WOPaymentConditionsSection.tsx` with 3 sub-blocks: งวดงาน (installments,
+each with its own payment status), เงินประกัน (retentions), ค่าปรับ (penalties) — see DESIGN.md's
+new "Repeatable-row table with + button" pattern note.
+- **Payment-conditions save IS bundled into the main WO save** (confirmed from diff, not a separate
+  button): `handleSave` first calls `create`/`update` on the WO itself, then — only once a real
+  `wo.id` exists — calls `workOrderService.updatePaymentConditions(...)` as a second sequential API
+  call. If that second call fails, the WO record itself has still saved; the user gets a distinct
+  error message (`'บันทึกหนังสือสั่งจ้างสำเร็จ แต่บันทึกเงื่อนไขการจ่ายเงินไม่สำเร็จ ...'`) rather than
+  a rolled-back/atomic-looking failure. `buildPayload` now explicitly destructures out the 5 removed
+  field names before spreading `form.getFieldsValue()` — needed because edit-mode's
+  `form.setFieldsValue({ ...wo })` still seeds those stale values into the antd form store even
+  though they have no `Form.Item` anymore, so the strip prevents silently resurrecting and
+  resubmitting them.
+- **🔴 Known gap, still open:** `WorkOrderPrintStandard.tsx` and `WorkOrderDetailPage.tsx` still
+  read the 5 removed fields directly off the WO record, not from the new payment-condition tables
+  (`GET /work-order/:woId/payment-conditions`). Printed output and the detail view will show stale
+  data for any WO edited after this change, until those two files are migrated to the new resource.
+
+**Bug fixes this session:**
+- Unit column previously showed `unit_code` instead of `unit_name` — this was a **backend** fix
+  (join/select column swapped server-side). Frontend note: `ICPoReceiveModal.tsx`'s items table
+  reads whichever value the API puts under the `unit` key (`dataIndex: 'unit'`,
+  `src/pages/ic/components/ICPoReceiveModal.tsx:531-534`) — no frontend code change was needed, but
+  this means the frontend has no independent verification the backend is sending the display name
+  vs the code; if "wrong unit" reports recur, check the API response shape directly rather than
+  assuming this file's rendering logic.
+- `ICPoReceiveModal.tsx`'s post-submit success modal ("บันทึกข้อมูลเรียบร้อยแล้ว") now has a
+  "พิมพ์" button alongside "ปิด" — clicking it sets `printData` from the just-submitted response
+  and triggers the same `ICPoReceivePrint` + `onReady()`-gated print flow used elsewhere, instead of
+  requiring the user to close the modal and reopen it to print.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

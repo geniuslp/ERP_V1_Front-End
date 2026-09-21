@@ -293,17 +293,41 @@ const PRCreatePage: React.FC = () => {
 
   useEffect(() => {
     if (isEdit) return
-    const fetchNextNumber = async () => {
+    // Per-tab cache (sessionStorage, not localStorage — two tabs creating two
+    // separate PRs must each get their own reservation) so an F5 refresh before
+    // saving reuses the already-reserved number instead of burning another one.
+    // Cleared on successful create or on explicit "back"/cancel; a genuinely
+    // fresh open of this page (new tab, or after a prior cache clear) still goes
+    // through the API + StrictMode-safe abort guard below.
+    const cached = sessionStorage.getItem('pr_reserved_number')
+    if (cached) {
+      setPrNumber(cached)
+      return
+    }
+    // reserve-number is atomic (unlike the old next-number preview) — every real
+    // call consumes a sequence value. An ignore-flag alone only hides the stale
+    // result; it doesn't stop the first StrictMode invocation's request from
+    // reaching the backend and burning a number. Abort it instead so the request
+    // itself never completes.
+    const controller = new AbortController()
+    const fetchReservedNumber = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/pr/next-number`, {
+        const res = await axios.get(`${BASE_URL}/pr/reserve-number`, {
           headers: { Authorization: `Bearer ${accessToken}` },
+          signal: controller.signal,
         })
-        setPrNumber(res.data.data.next_number)
+        const prNo = res.data.data.pr_no
+        sessionStorage.setItem('pr_reserved_number', prNo)
+        setPrNumber(prNo)
       } catch (err: any) {
+        if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
         message.error(err?.response?.data?.message || 'โหลดเลข PR ไม่สำเร็จ')
       }
     }
-    fetchNextNumber()
+    fetchReservedNumber()
+    return () => {
+      controller.abort()
+    }
   }, [isEdit])
 
   // Edit mode: load the reopened PR's header/lines and check for lines whose
@@ -521,6 +545,9 @@ const PRCreatePage: React.FC = () => {
         })
         const raw = res.data?.data ?? res.data
         if (raw?.id != null) setPrId(Number(raw.id))
+        // Reserved number is now consumed by a real saved PR — clear the
+        // per-tab cache so the next fresh create-PR open gets a new one.
+        sessionStorage.removeItem('pr_reserved_number')
         if (status === 'DRAFT') {
           message.success('บันทึกร่าง PR สำเร็จ')
           // No navigation — stay on this page so the user can keep editing.
@@ -1131,7 +1158,13 @@ const PRCreatePage: React.FC = () => {
         </Card>
 
         <PRItemsTable
-          onBack={() => navigate(isEdit ? `/pr/${id}` : '/pr/status')}
+          onBack={() => {
+            // Leaving the create-PR page without saving — clear the cached
+            // reservation so the next fresh open gets a genuinely new number
+            // instead of resuming this abandoned one.
+            if (!isEdit) sessionStorage.removeItem('pr_reserved_number')
+            navigate(isEdit ? `/pr/${id}` : '/pr/status')
+          }}
           onItemsChange={setLineItems}
           initialItems={initialLineItems}
           remark={remark}
