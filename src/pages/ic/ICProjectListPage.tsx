@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Space, Input, Button, message } from 'antd'
-import { SearchOutlined, ReloadOutlined, InboxOutlined, RollbackOutlined } from '@ant-design/icons'
+import { SearchOutlined, ReloadOutlined, InboxOutlined, RollbackOutlined, SwapOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
@@ -93,9 +93,9 @@ const ICProjectListPage: React.FC = () => {
     {
       title: 'Action',
       key: 'action',
-      width: 220,
+      width: 320,
       render: (_: unknown, record: ICProject) => (
-        <Space onClick={(e) => e.stopPropagation()}>
+        <Space wrap onClick={(e) => e.stopPropagation()}>
           <Button
             size="small"
             icon={<InboxOutlined />}
@@ -109,6 +109,13 @@ const ICProjectListPage: React.FC = () => {
             onClick={() => navigate(`/ic/projects/${record.id}/po-return`)}
           >
             PO Return
+          </Button>
+          <Button
+            size="small"
+            icon={<SwapOutlined />}
+            onClick={() => navigate(`/ic/projects/${record.project_code}/movements`)}
+          >
+            ตัดเบิก/โอน
           </Button>
         </Space>
       ),

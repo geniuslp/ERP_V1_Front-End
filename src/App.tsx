@@ -93,6 +93,10 @@ const ProjectOverviewPage = lazy(() => import('@/pages/project-overview/ProjectO
 const ICProjectListPage = lazy(() => import('@/pages/ic/ICProjectListPage'))
 const ICPoReceivePage = lazy(() => import('@/pages/ic/ICPoReceivePage'))
 const ICPoReturnPage = lazy(() => import('@/pages/ic/ICPoReturnPage'))
+const ICProjectMovementCreatePage = lazy(() => import('@/pages/ic/ICProjectMovementCreatePage'))
+const ICProjectMovementDetailPage = lazy(() => import('@/pages/ic/ICProjectMovementDetailPage'))
+const ICProjectMovementListPage = lazy(() => import('@/pages/ic/ICProjectMovementListPage'))
+const ICProjectCostTransactionPage = lazy(() => import('@/pages/ic/ICProjectCostTransactionPage'))
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
@@ -303,6 +307,18 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/ic/projects/:projectId/po-return" element={
                 <RequirePermission menuCode="MENU_IC_PO_RETURN" action="read"><ICPoReturnPage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectCode/movement/create" element={
+                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectMovementCreatePage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectCode/movement/:movementId" element={
+                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectMovementDetailPage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectCode/movements" element={
+                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectMovementListPage /></RequirePermission>
+              } />
+              <Route path="/ic/projects/:projectCode/cost-transactions" element={
+                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectCostTransactionPage /></RequirePermission>
               } />
               <Route path="/system/config" element={
                 <RequireRole roleCode="ADMIN_CENTER"><SystemConfigPage /></RequireRole>

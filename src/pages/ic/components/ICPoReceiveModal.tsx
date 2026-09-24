@@ -23,6 +23,7 @@ import { PrinterOutlined, DeleteOutlined, ArrowLeftOutlined, PlusOutlined } from
 import dayjs, { Dayjs } from 'dayjs'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
+import ICPoReceiveRatingModal from './ICPoReceiveRatingModal'
 import ICPoReceivePrint, { type ICReceivePrintData } from './ICPoReceivePrint'
 
 const { TextArea } = Input
@@ -45,8 +46,10 @@ interface ICPoReceiveContext {
 // Full document detail. GET .../receive-document (the current empty draft,
 // if any) and GET .../receive-documents/{docId} (one specific document)
 // both resolve to this shape — the latter also carries rating fields
-// (score_quality/score_quantity/score_ontime/score_notes/rated_at/rated_by),
-// which are out of scope for this task and intentionally left untyped here.
+// (score_quality/score_quantity/score_ontime/score_notes/rated_at/rated_by).
+// Only `rated_at` is typed here (used as the "already rated" guard for the
+// auto-triggered rating modal) — the individual score fields stay untyped
+// since nothing on this side reads them back.
 interface ICPoReceiveDocument {
   id: number
   receive_no?: string | null
@@ -61,6 +64,7 @@ interface ICPoReceiveDocument {
   // computed and stored server-side. Never recompute this on the client
   // from tax_invoice_date — that was the old (wrong) rule.
   due_date?: string | null
+  rated_at?: string | null
 }
 
 interface ICPoReceiveDocumentResponse {
@@ -189,8 +193,18 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   const [readonlyLines, setReadonlyLines] = useState<ICReceiveLineReadonly[] | null>(null)
   const [readonlyLinesLoading, setReadonlyLinesLoading] = useState(false)
 
+  // Printing follows the exact same pattern as PurchaseOrderPrint.tsx /
+  // PRPrint.tsx: render ICPoReceivePrint in-place (portal to document.body,
+  // off-screen), auto-fire window.print() via onReady, unmount right after.
   const [printData, setPrintData] = useState<ICReceivePrintData | null>(null)
-  const [successInfo, setSuccessInfo] = useState<{ receiveNo?: string; printData: ICReceivePrintData | null } | null>(null)
+
+  const [successInfo, setSuccessInfo] = useState<{ receiveNo?: string } | null>(null)
+
+  // Supplier-rating modal — auto-opens exactly once, right after a fresh
+  // receive-document save that has no rated_at yet (never on merely opening
+  // an already-saved/rated document from the list).
+  const [ratingModalOpen, setRatingModalOpen] = useState(false)
+  const [ratingDocId, setRatingDocId] = useState<number | null>(null)
 
   const extractErrorMessage = (err: any, fallback: string) =>
     err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback
@@ -297,6 +311,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       setReadonlyLines(null)
       setPrintData(null)
       setSuccessInfo(null)
+      setRatingModalOpen(false)
+      setRatingDocId(null)
       form.resetFields()
       fetchContext()
       fetchDocsList()
@@ -316,6 +332,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       setLineErrors({})
       setPrintData(null)
       setSuccessInfo(null)
+      setRatingModalOpen(false)
+      setRatingDocId(null)
       form.resetFields()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,18 +512,22 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       const responsePayload = res.data?.data ?? res.data
       const receiveNo = responsePayload?.receive_no
 
-      const [updatedDoc, updatedLines] = await Promise.all([
+      const [updatedDoc] = await Promise.all([
         fetchDocDetail(selectedDocId),
         fetchReadonlyLines(selectedDocId),
       ])
       fetchDocsList()
 
-      const printDataForSuccess =
-        updatedDoc && context && updatedLines
-          ? buildPrintData(context, updatedDoc, updatedLines)
-          : null
+      setSuccessInfo({ receiveNo: receiveNo ?? updatedDoc?.receive_no ?? undefined })
 
-      setSuccessInfo({ receiveNo: receiveNo ?? updatedDoc?.receive_no ?? undefined, printData: printDataForSuccess })
+      // Auto-trigger the rating modal right here — this is the one place a
+      // receive-document transitions from unrated to just-saved. Guarded by
+      // rated_at so a (theoretically impossible, but defensive) already-rated
+      // response doesn't pop the modal anyway.
+      if (!updatedDoc?.rated_at) {
+        setRatingDocId(selectedDocId)
+        setRatingModalOpen(true)
+      }
     } catch (err: any) {
       const status = err?.response?.status
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message
@@ -985,7 +1007,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       onCancel={onClose}
       footer={null}
       width={960}
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { paddingTop: 8 } }}
     >
       {view === 'list' ? listView : detailView}
@@ -1005,17 +1027,10 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
         open={!!successInfo}
         onCancel={() => setSuccessInfo(null)}
         footer={[
-          <Button
-            key="print"
-            type="primary"
-            disabled={!successInfo?.printData}
-            onClick={() => {
-              if (successInfo?.printData) setPrintData(successInfo.printData)
-              setSuccessInfo(null)
-            }}
-          >
-            พิมพ์
-          </Button>,
+          // No print entry point here on purpose — the outer PO Receive
+          // detail modal (visible behind this one) already has its own
+          // "พิมพ์ใบรับสินค้า" button for the same document; a second one
+          // here was a duplicate.
           <Button key="close" onClick={() => setSuccessInfo(null)}>
             ปิด
           </Button>,
@@ -1028,6 +1043,14 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           </div>
         )}
       </Modal>
+
+      <ICPoReceiveRatingModal
+        open={ratingModalOpen}
+        poId={poId}
+        docId={ratingDocId}
+        onClose={() => setRatingModalOpen(false)}
+        onDone={() => setRatingModalOpen(false)}
+      />
     </Modal>
   )
 }

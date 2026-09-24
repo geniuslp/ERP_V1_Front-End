@@ -425,6 +425,34 @@ new "Repeatable-row table with + button" pattern note.
   and triggers the same `ICPoReceivePrint` + `onReady()`-gated print flow used elsewhere, instead of
   requiring the user to close the modal and reopen it to print.
 
+## 🧭 Session learnings (2026-09-2X) — IC Project Movement (ตัดเบิก/โอน) built end-to-end [Frontend]
+
+1. **New pages.** Project list → "ตัดเบิก/โอน" button (Action column) → movements list page →
+   create header page (project/job_code/doc_type/requested_by/doc_date/remark, 2-column layout per
+   the project-edit-page pattern) → detail page (line items table; Preview + เพิ่มรายการ + Submit
+   buttons, Submit placed below the table). Submit locks the document (`POSTED`) and disables
+   further edits.
+
+2. **"เพิ่มรายการ" modal's MatCode field** uses a PR-style material picker popup (filters:
+   Subgroup/MatName/search; single-select, unlike PR's multi-select checkbox picker), scoped to
+   `GET .../available-materials` (only items with `qty_on_hand > 0` under the movement's
+   `job_code`) — with added CostCode + คงเหลือ columns not present in the original PR picker.
+
+3. 🔴 **Known open item:** this material picker was just built and has NOT been verified working
+   end-to-end yet (blocked on backend test data being in the wrong table — see backend CLAUDE.md
+   entry, same date).
+
+4. **Fixed (bugs found while testing this feature, unrelated to IC Project Movement itself):**
+   `StockTransactionPage.tsx` had 3 pre-existing bugs — silent fallback to mock data on fetch
+   error (removed, now shows `message.error`), hardcoded From/To Location dropdown options (now
+   fetches `GET /master/locations` — flagged as possibly the wrong master, since no per-warehouse
+   zone endpoint exists in the codebase, only a flat location list), and a non-functional date
+   range filter (now wired to `date_from`/`date_to` params, matching the
+   `GRNHistoryPage`/`WorkOrderListPage`/etc. convention).
+
+5. 🔴 **Unexplained:** console log from `PRItemsTable.tsx` (a PR-page component) observed during a
+   movement-page test session — cause not yet investigated.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

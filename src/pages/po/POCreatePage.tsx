@@ -641,6 +641,10 @@ const POCreatePage: React.FC = () => {
           // Auto-filled from the source PR's job_code, but the Select stays
           // enabled — user can still change it before submitting.
           job_code: raw.job_code ?? null,
+          // order_type must match the source PR — locked (disabled) in the
+          // UI below via `disabled={Boolean(selectedPrId)}`, not just
+          // pre-filled, per business rule.
+          order_type: raw.order_type ?? null,
         })
         // Options for these three Selects load asynchronously and may not be
         // populated yet when this fires — re-apply once each options list arrives
@@ -1596,11 +1600,12 @@ const POCreatePage: React.FC = () => {
                       <Form.Item
                         label={<span style={labelStyle}>ประเภทการสั่งซื้อ</span>}
                         name="order_type"
-                        initialValue="stock"
+                        initialValue={selectedPrId ? undefined : 'stock'}
                       >
                         <Select
                           placeholder="- เลือกประเภท -"
-                          allowClear
+                          allowClear={!selectedPrId}
+                          disabled={Boolean(selectedPrId)}
                           options={[
                             { value: 'stock', label: 'คลังสินค้า (Stock)' },
                             { value: 'cost', label: 'โครงการ (Cost)' },

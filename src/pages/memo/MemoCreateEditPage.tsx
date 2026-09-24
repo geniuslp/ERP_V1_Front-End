@@ -7,13 +7,14 @@ import dayjs from 'dayjs'
 import {
   PlusOutlined, DeleteOutlined, SaveOutlined, SendOutlined, CloseOutlined,
   UploadOutlined, FileOutlined, FileImageOutlined, FileExcelOutlined,
-  FilePdfOutlined, CloseCircleFilled,
+  FilePdfOutlined, CloseCircleFilled, PrinterOutlined,
 } from '@ant-design/icons'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
+import MemoPrint, { type MemoData } from './MemoPrint'
 
 const MENU_CODE = 'MENU_MEMO_CREATE'
 
@@ -104,6 +105,52 @@ const MemoCreateEditPage: React.FC = () => {
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Printing is manual-only (the "พิมพ์" button below) — no auto-print on
+  // save. Same off-screen-portal mechanism as POCreatePage.tsx, just never
+  // triggered automatically from handleSave.
+  const [printData, setPrintData] = useState<MemoData | null>(null)
+
+  const buildAndShowPrint = async (memoId: string | number) => {
+    try {
+      const res = await axios.get(`${BASE_URL}/memo/${memoId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const raw = res.data?.data ?? res.data
+      const lines = raw.lines ?? raw.items ?? []
+      setPrintData({
+        memoNo: raw.memo_no ?? '',
+        title: raw.title ?? '',
+        department: raw.department ?? '',
+        projectName: raw.project_code ?? '',
+        requestedBy: raw.requested_by_name ?? '',
+        note: raw.note ?? '',
+        siteDeliveryDate: raw.site_delivery_date ? dayjs(raw.site_delivery_date).format('DD/MM/YYYY') : '',
+        deliveryLocation: raw.delivery_location ?? '',
+        approverName: raw.approver_name ?? '',
+        status: raw.status,
+        items: lines.map((l: any) => ({
+          no: String(l.line_no ?? ''),
+          desc: l.description ?? '',
+          qty: l.quantity ?? 0,
+          unit: l.unit ?? '',
+          remark: l.remark ?? '',
+        })),
+      })
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลสำหรับพิมพ์ไม่สำเร็จ')
+    }
+  }
+
+  // Manual "พิมพ์" button — prints the already-saved Memo on demand, no
+  // save required first — the only way print triggers on this page now.
+  const handleManualPrint = () => {
+    if (!isEdit || !id) {
+      message.warning('กรุณาบันทึกร่างก่อนพิมพ์')
+      return
+    }
+    buildAndShowPrint(id)
+  }
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -215,7 +262,6 @@ const MemoCreateEditPage: React.FC = () => {
         department:   memo.department,
         delivery_location: memo.delivery_location ?? memo.deliveryLocation,
         site_delivery_date: siteDeliveryDate ? dayjs(siteDeliveryDate) : undefined,
-        responsible_factory: memo.responsible_factory ?? memo.responsibleFactory,
         note:         memo.note,
       })
 
@@ -382,7 +428,6 @@ const MemoCreateEditPage: React.FC = () => {
         department:   values.department   ?? undefined,
         delivery_location: values.delivery_location ?? undefined,
         site_delivery_date: values.site_delivery_date ? values.site_delivery_date.format('YYYY-MM-DD') : undefined,
-        responsible_factory: values.responsible_factory ?? undefined,
         note:         values.note         ?? undefined,
         lines: items.map((item, i) => ({
           line_no:     i + 1,
@@ -650,7 +695,7 @@ const MemoCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              <Form.Item label="หน่วยงาน" name="department" rules={[{ required: true, message: 'กรุณาเลือกหน่วยงาน' }]}>
+              <Form.Item label="หน่วยงานที่รับผิดชอบ" name="department" rules={[{ required: true, message: 'กรุณาเลือกหน่วยงาน' }]}>
                 <Select
                   placeholder="เลือกหน่วยงาน"
                   allowClear
@@ -666,11 +711,6 @@ const MemoCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item label="กำหนดส่งของหน้างาน" name="site_delivery_date" rules={[{ required: true, message: 'กรุณาเลือกวันที่กำหนดส่งของหน้างาน' }]}>
                 <DatePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="โรงงานที่รับผิดชอบ" name="responsible_factory" rules={[{ required: true, message: 'กรุณากรอกโรงงานที่รับผิดชอบ' }]}>
-                <Input placeholder="ระบุโรงงานที่รับผิดชอบ" maxLength={255} />
               </Form.Item>
             </Col>
             <Col xs={24}>
@@ -797,7 +837,8 @@ const MemoCreateEditPage: React.FC = () => {
       {/* Bottom action bar */}
       <div style={{
         display: 'flex',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         gap: 12,
         marginTop: 24,
         padding: '16px 24px',
@@ -806,6 +847,14 @@ const MemoCreateEditPage: React.FC = () => {
         boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
         border: 'none',
       }}>
+        {/* Left: พิมพ์ — same position/pattern as POCreatePage.tsx's print
+            button. Always rendered (matching PO's own behavior, confirmed:
+            it doesn't hide the button in create mode either), guarded
+            internally instead — clicking it before the Memo has ever been
+            saved just warns instead of printing. */}
+        <Button icon={<PrinterOutlined />} onClick={handleManualPrint}>พิมพ์</Button>
+
+        <Space>
         <Button icon={<CloseOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
           ยกเลิก
         </Button>
@@ -876,10 +925,18 @@ const MemoCreateEditPage: React.FC = () => {
             </PermissionButton>
           </>
         )}
-
-        
-        
+        </Space>
       </div>
+
+      {printData && (
+        <MemoPrint
+          data={printData}
+          onReady={() => {
+            window.print()
+            setPrintData(null)
+          }}
+        />
+      )}
     </div>
   )
 }

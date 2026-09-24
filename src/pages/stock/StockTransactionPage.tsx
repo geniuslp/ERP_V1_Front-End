@@ -41,12 +41,6 @@ const txnTypeColor: Record<string, string> = {
 // No Thai-label mapping exists yet for txn_type elsewhere in the codebase
 // (unlike StatusBadge for PR/PO/etc.) — display the raw enum until one exists.
 
-const mockTxns: StockTransaction[] = [
-  { id: 1, txnNo: 'TXN-2024-001', txnType: 'IN',       itemId: 1, matCode: 'STK-001', itemName: 'Electric Drill', toLocation: 'WH-A Zone 1', qty: 5, refDocNo: null, createdByName: 'Admin', txnDate: '2024-06-01T08:00:00Z' },
-  { id: 2, txnNo: 'TXN-2024-002', txnType: 'OUT',      itemId: 2, matCode: 'STK-002', itemName: 'Safety Helmet',  fromLocation: 'WH-A Zone 1', qty: 2, refDocNo: null, createdByName: 'John',  txnDate: '2024-06-05T08:00:00Z' },
-  { id: 3, txnNo: 'TXN-2024-003', txnType: 'TRANSFER', itemId: 1, matCode: 'STK-001', itemName: 'Electric Drill', fromLocation: 'WH-A Zone 1', toLocation: 'WH-B Zone 1', qty: 2, refDocNo: null, createdByName: 'Admin', txnDate: '2024-06-10T08:00:00Z' },
-]
-
 const mapTransaction = (t: any): StockTransaction => ({
   id:            t.id,
   txnNo:         t.txn_no ?? '',
@@ -87,6 +81,8 @@ const StockTransactionPage: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
   const selectedType: StockTransactionType | undefined = Form.useWatch('txnType', form)
+  const [locationOptions, setLocationOptions] = useState<{ value: number; label: string }[]>([])
+  const [locationsLoading, setLocationsLoading] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -96,21 +92,58 @@ const StockTransactionPage: React.FC = () => {
         // `search` already reaches the same backend param used by every other OR-match
         // search box in this project (e.g. Master/Material's `?search=`); the backend
         // decides what columns it matches against.
-        params: { txn_type: txnType, search: search || undefined, page, page_size: 20 },
+        params: {
+          txn_type: txnType,
+          search: search || undefined,
+          // date_from/date_to (YYYY-MM-DD) — same param naming convention as every other
+          // RangePicker-filtered list in this codebase (GRNHistoryPage, WorkOrderListPage,
+          // MaterialRequisitionListPage, PettyCashListPage, MemoListPage, POLineItemsPage).
+          date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
+          date_to: range?.[1] ? range[1].format('YYYY-MM-DD') : undefined,
+          page,
+          page_size: 20,
+        },
       })
       const body = res.data?.data ?? res.data
       const raw = Array.isArray(body) ? body : body?.data ?? []
       setData(Array.isArray(raw) ? raw.map(mapTransaction) : [])
       setTotal(body?.total ?? (Array.isArray(raw) ? raw.length : 0))
-    } catch {
-      setData(mockTxns)
-      setTotal(mockTxns.length)
+    } catch (err: any) {
+      setData([])
+      setTotal(0)
+      message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchData() }, [txnType, search, page])
+  useEffect(() => { fetchData() }, [txnType, search, range, page])
+
+  // Reuse the same master locations endpoint LocationPage.tsx uses — no dedicated
+  // per-warehouse "zone" endpoint exists in this codebase, so From/To Location here
+  // are real master locations rather than the previous hardcoded WH-A/WH-B mock options.
+  useEffect(() => {
+    const fetchLocations = async () => {
+      setLocationsLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/locations`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+        setLocationOptions(
+          list.map((l: any) => ({
+            value: Number(l.id),
+            label: l.location_name ? `${l.location_code} — ${l.location_name}` : l.location_code,
+          }))
+        )
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลตำแหน่งจัดเก็บไม่สำเร็จ')
+      } finally {
+        setLocationsLoading(false)
+      }
+    }
+    fetchLocations()
+  }, [accessToken])
 
   // Debounce the search box: wait 400ms after typing stops before hitting the
   // API, and jump back to page 1 since the result set changes — same pattern
@@ -301,12 +334,28 @@ const StockTransactionPage: React.FC = () => {
           </Form.Item>
           {(selectedType === 'OUT' || selectedType === 'TRANSFER') && (
             <Form.Item label="From Location" name="fromLocationId" rules={[{ required: true }]}>
-              <Select placeholder="Select from location" options={[{ value: 1, label: 'WH-A Zone 1' }, { value: 2, label: 'WH-B Zone 1' }]} />
+              <Select
+                placeholder="Select from location"
+                loading={locationsLoading}
+                showSearch
+                filterOption={(input, option) =>
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={locationOptions}
+              />
             </Form.Item>
           )}
           {(selectedType === 'IN' || selectedType === 'TRANSFER') && (
             <Form.Item label="To Location" name="toLocationId" rules={[{ required: true }]}>
-              <Select placeholder="Select to location" options={[{ value: 1, label: 'WH-A Zone 1' }, { value: 2, label: 'WH-B Zone 1' }]} />
+              <Select
+                placeholder="Select to location"
+                loading={locationsLoading}
+                showSearch
+                filterOption={(input, option) =>
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={locationOptions}
+              />
             </Form.Item>
           )}
           <Form.Item label="Quantity" name="qty" rules={[{ required: true }]}>
