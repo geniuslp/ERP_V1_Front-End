@@ -83,6 +83,11 @@ interface PRItem {
   memoId: number | string | null
   memoNo: string | null
   poConversionStatus: 'FULLY_CONVERTED' | 'PARTIALLY_CONVERTED' | 'NOT_CONVERTED'
+  // GET /pr's has_active_po_link — true when at least one of this PR's lines
+  // still has a non-CANCELLED PO linked. Mirrors the backend's PUT /pr/:id
+  // guard (409 "ไม่สามารถแก้ไข PR นี้ได้ เนื่องจากมี PO ที่ยังไม่ยกเลิกผูกอยู่: ...")
+  // so the edit button never appears when the save would just be rejected.
+  hasActivePoLink: boolean
 }
 
 const PRStatusPage: React.FC = () => {
@@ -95,12 +100,20 @@ const PRStatusPage: React.FC = () => {
   const [limit, setLimit]   = useState(20)
   const [loading, setLoading] = useState(false)
 
-  // filter state — kept for UI, not yet sent to API
+  // Filter inputs (uncommitted) vs. applied filters (sent to the API) — kept
+  // separate so typing doesn't refetch on every keystroke; only "ค้นหา" or
+  // "รีเซ็ต" commits a new fetch, same trigger pattern as POStatusPage.tsx.
   const [search, setSearch]   = useState('')
   const [status, setStatus]   = useState<string | undefined>()
-  // Filters the already-fetched page's rows client-side — GET /pr has no
-  // confirmed job_code query param, unlike a server-side filter.
+  const [range, setRange]     = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
   const [jobCode, setJobCode] = useState<string | undefined>()
+  const [filters, setFilters] = useState<{
+    search?: string
+    status?: string
+    date_from?: string
+    date_to?: string
+    job_code?: string
+  }>({})
 
   // Only the "โครงการ" column's width is user-resizable — tracked here, not persisted
   // (resets to default on refresh per requirements).
@@ -109,12 +122,20 @@ const PRStatusPage: React.FC = () => {
     setProjectColWidth(data.size.width)
   }
 
-  const fetchData = async (p = page, l = limit) => {
+  const fetchData = async (p = page, l = limit, f = filters) => {
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/pr`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { page: p, limit: l },
+        params: {
+          page: p,
+          limit: l,
+          search: f.search || undefined,
+          status: f.status || undefined,
+          date_from: f.date_from || undefined,
+          date_to: f.date_to || undefined,
+          job_code: f.job_code || undefined,
+        },
       })
       const d = res.data?.data ?? res.data
       const raw = Array.isArray(d) ? d : d?.items ?? []
@@ -136,6 +157,7 @@ const PRStatusPage: React.FC = () => {
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
         poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
+        hasActivePoLink: r.has_active_po_link ?? false,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -145,9 +167,27 @@ const PRStatusPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit])
+  useEffect(() => { fetchData(page, limit, filters) }, [page, limit, filters])
 
-  const filteredItems = jobCode ? items.filter((i) => i.jobCode === jobCode) : items
+  const handleSearch = () => {
+    setPage(1)
+    setFilters({
+      search: search.trim(),
+      status,
+      date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
+      date_to: range?.[1] ? range[1].format('YYYY-MM-DD') : undefined,
+      job_code: jobCode,
+    })
+  }
+
+  const handleReset = () => {
+    setSearch('')
+    setStatus(undefined)
+    setRange(null)
+    setJobCode(undefined)
+    setPage(1)
+    setFilters({})
+  }
 
   const columns = [
     {
@@ -250,7 +290,7 @@ const PRStatusPage: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => navigate(`/pr/${record.id}`)}
           />
-          {record.status === 'DRAFT' && (
+          {record.status === 'DRAFT' && !record.hasActivePoLink && (
             <PermissionButton
               menuCode={MENU_CODE}
               action="edit"
@@ -289,20 +329,20 @@ const PRStatusPage: React.FC = () => {
           <Col xs={24} md={8}>
             <Input
               prefix={<SearchOutlined />}
-              placeholder="ค้นหาเลขที่หรือรายการ (ยังไม่รองรับ)"
+              placeholder="ค้นหาเลขที่หรือรายการ"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              disabled
+              onPressEnter={handleSearch}
+              allowClear
             />
           </Col>
           <Col xs={24} md={6}>
             <Select
-              placeholder="กรองตามสถานะ (ยังไม่รองรับ)"
+              placeholder="กรองตามสถานะ"
               allowClear
               style={{ width: '100%' }}
               value={status}
               onChange={setStatus}
-              disabled
               options={[
                 { value: 'DRAFT',            label: 'ร่าง' },
                 { value: 'COMPLETED',        label: 'เสร็จสมบูรณ์' },
@@ -316,8 +356,10 @@ const PRStatusPage: React.FC = () => {
           <Col xs={24} md={6}>
             <DatePicker.RangePicker
               style={{ width: '100%' }}
-              placeholder={['วันเริ่ม (ยังไม่รองรับ)', 'วันสิ้นสุด']}
-              disabled
+              placeholder={['วันเริ่ม', 'วันสิ้นสุด']}
+              value={range as any}
+              onChange={(v) => setRange(v as any)}
+              format="DD/MM/YYYY"
             />
           </Col>
           <Col xs={24} md={6}>
@@ -331,19 +373,21 @@ const PRStatusPage: React.FC = () => {
             />
           </Col>
           <Col>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => { setSearch(''); setStatus(undefined); setJobCode(undefined) }}
-            >
-              รีเซ็ต
-            </Button>
+            <Space>
+              <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+                ค้นหา
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={handleReset}>
+                รีเซ็ต
+              </Button>
+            </Space>
           </Col>
         </Row>
 
         <Table
           rowKey="id"
           loading={loading}
-          dataSource={filteredItems}
+          dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
           size="small"

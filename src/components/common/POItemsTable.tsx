@@ -585,6 +585,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
         showStockLookup
+        hasCostSubgroup
       />
 
       <CostCodeSelectionModal

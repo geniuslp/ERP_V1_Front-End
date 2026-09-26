@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, DatePicker, Button, Space, Tooltip, Popconfirm, message } from 'antd'
 import {
-  PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
+  SearchOutlined, ReloadOutlined, EyeOutlined,
   EditOutlined, FileAddOutlined, DeleteOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
-import PermissionGate from '@/components/permission/PermissionGate'
 import type { Memo, MemoStatus } from '@/types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -20,6 +21,51 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   border: 'none',
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+}
+
+const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
+const TITLE_COLUMN_DEFAULT_WIDTH = 280
+const PROJECT_COLUMN_DEFAULT_WIDTH = 240
+
+// Same react-resizable pattern as POStatusPage.tsx / PRStatusPage.tsx — only
+// columns that pass width/onResize via onHeaderCell get a drag handle; every
+// other column's th renders through untouched.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) {
+    return <th {...restProps} />
+  }
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            right: -5,
+            bottom: 0,
+            top: 0,
+            width: 10,
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
 }
 
 const mapMemo = (m: any): Memo => ({
@@ -44,6 +90,21 @@ const MemoListPage: React.FC = () => {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<MemoStatus | undefined>(undefined)
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
+
+  // Resizable widths for "เลขที่ Memo" / "หัวข้อ / เรื่อง" / "โครงการ" — same
+  // pattern as POStatusPage.tsx / PRStatusPage.tsx, not persisted (resets on refresh).
+  const [memoNoColWidth, setMemoNoColWidth] = useState(MEMO_NO_COLUMN_DEFAULT_WIDTH)
+  const [titleColWidth, setTitleColWidth] = useState(TITLE_COLUMN_DEFAULT_WIDTH)
+  const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
+  const handleMemoNoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setMemoNoColWidth(data.size.width)
+  }
+  const handleTitleColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setTitleColWidth(data.size.width)
+  }
+  const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setProjectColWidth(data.size.width)
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -107,6 +168,11 @@ const MemoListPage: React.FC = () => {
       title: 'เลขที่ใบบันทึกขอซื้อ (Memo)',
       dataIndex: 'memoNo',
       key: 'memoNo',
+      width: memoNoColWidth,
+      onHeaderCell: () => ({
+        width: memoNoColWidth,
+        onResize: handleMemoNoColResize,
+      }),
       render: (memoNo: string, record: Memo) => (
         <a
           style={{ color: '#2563eb', fontWeight: 600 }}
@@ -120,13 +186,23 @@ const MemoListPage: React.FC = () => {
       title: 'หัวข้อ / เรื่อง',
       dataIndex: 'title',
       key: 'title',
+      width: titleColWidth,
       ellipsis: true,
+      onHeaderCell: () => ({
+        width: titleColWidth,
+        onResize: handleTitleColResize,
+      }),
     },
     {
       title: 'โครงการ',
       dataIndex: 'projectName',
       key: 'projectName',
+      width: projectColWidth,
       ellipsis: true,
+      onHeaderCell: () => ({
+        width: projectColWidth,
+        onResize: handleProjectColResize,
+      }),
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
@@ -215,22 +291,6 @@ const MemoListPage: React.FC = () => {
         title="ตรวจสอบสถานะ Memo"
         subtitle="ติดตามสถานะใบบันทึกขอซื้อ (Memo) ทั้งหมด"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: 'ตรวจสอบสถานะ' }]}
-        extra={
-          <PermissionGate menuCode="MENU_MEMO_CREATE" action="write" mode="hide">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate(ROUTES.MEMO.CREATE)}
-              style={{
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                border: 'none',
-                boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
-              }}
-            >
-              สร้างใบบันทึกขอซื้อ (Memo)
-            </Button>
-          </PermissionGate>
-        }
       />
 
       <Card style={cardStyle}>
@@ -274,7 +334,9 @@ const MemoListPage: React.FC = () => {
           rowKey="id"
           loading={loading}
           columns={columns}
+          components={{ header: { cell: ResizableTitle } }}
           dataSource={data}
+          scroll={{ x: 1300 }}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

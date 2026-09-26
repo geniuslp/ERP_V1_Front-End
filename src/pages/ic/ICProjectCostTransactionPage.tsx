@@ -24,7 +24,7 @@ const refTypeColor: Record<string, string> = {
 const refTypeLabel: Record<string, string> = {
   PO: 'รับเข้า PO',
   MOVEMENT_ISSUE: 'ตัดเบิก',
-  MOVEMENT_TRANSFER: 'โอน',
+  MOVEMENT_TRANSFER: 'โอนข้ามโครงการ',
 }
 
 interface ICProjectInfo {
@@ -289,7 +289,7 @@ const ICProjectCostTransactionPage: React.FC = () => {
             options={[
               { value: 'PO', label: 'รับเข้า PO' },
               { value: 'MOVEMENT_ISSUE', label: 'ตัดเบิก' },
-              { value: 'MOVEMENT_TRANSFER', label: 'โอน' },
+              { value: 'MOVEMENT_TRANSFER', label: 'โอนข้ามโครงการ' },
             ]}
           />
           <DatePicker.RangePicker

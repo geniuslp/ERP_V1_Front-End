@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip, Badge } from 'antd'
-import { PlusOutlined, SearchOutlined, DeleteOutlined, PrinterOutlined, RollbackOutlined, CloseCircleFilled, FileTextOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, DeleteOutlined, CloseCircleFilled, FileTextOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
@@ -52,7 +52,6 @@ interface InitialPRItem {
 
 interface PRItemsTableProps {
   readonly?: boolean
-  onBack?: () => void
   onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean; remarks: string }[]) => void
   // Edit mode: seed the table from an existing PR's lines. Only applied once
   // per array identity — the parent should set this from its own fetch effect
@@ -63,21 +62,6 @@ interface PRItemsTableProps {
   // local state here.
   remark?: string
   onRemarkChange?: (value: string) => void
-  // Print the current (unsaved) form state — the parent assembles PRData
-  // from its own form values + this table's line items, since this
-  // component alone doesn't have access to the header fields. Items are
-  // passed through here (rather than relying on onItemsChange) because
-  // that callback only forwards the raw submit-payload fields, not the
-  // display-only ones (description/unit/cost code label/per-line remark)
-  // the print layout needs.
-  onPrint?: (items: {
-    mat_code: string
-    description: string
-    unit: string
-    qty_requested: number
-    cost_code_label: string | null
-    remark: string
-  }[]) => void
   // Document-level "ประเภท Job" value (PR header field, e.g. 'MP', 'G') — passed
   // down so the CostCode picker can filter its options to that job type.
   jobTypeCode?: string
@@ -89,10 +73,36 @@ interface PRItemsTableProps {
   orderType?: 'stock' | 'cost'
 }
 
-const PRItemsTable: React.FC<PRItemsTableProps> = ({
-  readonly = false, onBack, onItemsChange, initialItems, remark = '', onRemarkChange, onPrint, jobTypeCode, orderType,
-}) => {
+// Exposed to the parent (PRCreatePage) so its own action bar can trigger a
+// print using this table's current line items — the parent no longer renders
+// its own copy of the print button, but this table alone doesn't have access
+// to the header fields needed to assemble full print data.
+export interface PRItemsTableHandle {
+  getPrintItems: () => {
+    mat_code: string
+    description: string
+    unit: string
+    qty_requested: number
+    cost_code_label: string | null
+    remark: string
+  }[]
+}
+
+const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
+  readonly = false, onItemsChange, initialItems, remark = '', onRemarkChange, jobTypeCode, orderType,
+}, ref) => {
   const [items, setItems] = useState<PRItem[]>([])
+
+  useImperativeHandle(ref, () => ({
+    getPrintItems: () => items.map((i) => ({
+      mat_code: i.code,
+      description: formatItemLabel(i.description, i.spec),
+      unit: i.unit,
+      qty_requested: i.qtyPR,
+      cost_code_label: i.costCodeLabel,
+      remark: i.remark,
+    })),
+  }), [items])
 
   useEffect(() => {
     if (!initialItems || initialItems.length === 0) return
@@ -595,6 +605,7 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
         showStockLookup={false}
+        hasCostSubgroup
       />
 
       <CostCodeSelectionModal
@@ -606,44 +617,18 @@ const PRItemsTable: React.FC<PRItemsTableProps> = ({
         jobTypeCode={jobTypeCode}
       />
 
-      {/* Bottom actions */}
-      <div
-        style={{
-          marginTop: 16,
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <Space wrap>
-          <Button
-            icon={<PrinterOutlined />}
-            disabled={!onPrint}
-            onClick={() => onPrint?.(items.map((i) => ({
-              mat_code: i.code,
-              description: formatItemLabel(i.description, i.spec),
-              unit: i.unit,
-              qty_requested: i.qtyPR,
-              cost_code_label: i.costCodeLabel,
-              remark: i.remark,
-            })))}
-          >
-            พิมพ์
-          </Button>
-          <Button icon={<RollbackOutlined />} onClick={onBack}>
-            กลับหน้าหลัก
-          </Button>
-        </Space>
-
-        {readonly && (
-          <span style={{ fontSize: 12, color: '#cc0000', alignSelf: 'center' }}>
+      {/* Print/Back buttons moved to PRCreatePage's action bar (merged into the
+          same row as บันทึกร่าง/ส่งใบขอซื้อ) — still driven by this table's
+          items via the getPrintItems ref handle above. */}
+      {readonly && (
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <span style={{ fontSize: 12, color: '#cc0000' }}>
             * ไม่สามารถแก้ไขข้อมูลได้ สถานะคำร้องขอซื้อ ถูกอนุมัติหรือปิดแล้ว
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </Card>
   )
-}
+})
 
 export default PRItemsTable

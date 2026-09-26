@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Button, Tag, Spin, Result, Space, message } from 'antd'
 import { PlusOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
-import StatusBadge from '@/components/common/StatusBadge'
 import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -35,13 +34,14 @@ const docTypeTag = (type: string) =>
   type === 'ISSUE' ? (
     <Tag color="green">ตัดเบิก</Tag>
   ) : type === 'TRANSFER' ? (
-    <Tag color="blue">โอน</Tag>
+    <Tag color="blue">โอนข้ามโครงการ</Tag>
   ) : (
     <Tag>{type}</Tag>
   )
 
 const ICProjectMovementListPage: React.FC = () => {
   const { projectCode } = useParams<{ projectCode: string }>()
+  const { search: locationSearch } = useLocation()
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
@@ -149,12 +149,6 @@ const ICProjectMovementListPage: React.FC = () => {
       render: (value: string | undefined) => value || '-',
     },
     {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: string | undefined) => (value ? <StatusBadge status={value} /> : '-'),
-    },
-    {
       title: 'Action',
       key: 'action',
       width: 90,
@@ -220,7 +214,7 @@ const ICProjectMovementListPage: React.FC = () => {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => navigate(`/ic/projects/${projectCode}/movement/create`)}
+              onClick={() => navigate(`/ic/projects/${projectCode}/movement/create${locationSearch}`)}
             >
               สร้างใบใหม่
             </Button>

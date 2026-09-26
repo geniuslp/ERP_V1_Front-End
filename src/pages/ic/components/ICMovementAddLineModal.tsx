@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, Form, Select, Input, InputNumber, Button, Row, Col, Typography, message } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import axios from 'axios'
@@ -22,13 +22,39 @@ interface CostCodeOption {
   cost_name: string
 }
 
+/** A line held in the page's local state until the document is submitted. */
+export interface PendingMovementLine {
+  payload: {
+    mat_code: string
+    cost_subgroup_id: number
+    qty: number
+    to_project_code: string
+    to_cost_subgroup_id: number
+    remarks?: string
+  }
+  /** The picked material, kept so an edit can restore the picker state (incl. qty_on_hand). */
+  material: ICMovementMaterialOption
+  display: {
+    item_name: string
+    spec_name?: string
+    cost_code: string
+    unit: string
+    to_project_name?: string
+    to_cost_code?: string
+  }
+}
+
 interface ICMovementAddLineModalProps {
   open: boolean
   projectCode: string
   movementId: string
   jobCode?: string
+  /** ISSUE hides the destination fields (line posts to this project + the source's own cost code); TRANSFER shows them. */
+  docType?: 'ISSUE' | 'TRANSFER'
   onClose: () => void
-  onSuccess: () => void
+  /** When set, the modal edits this line (prefilled) instead of adding a new one. */
+  editing?: PendingMovementLine
+  onAdd: (line: PendingMovementLine) => void
 }
 
 const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
@@ -36,10 +62,14 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
   projectCode,
   movementId,
   jobCode,
+  docType,
   onClose,
-  onSuccess,
+  editing,
+  onAdd,
 }) => {
+  const pendingCostRef = useRef<number | undefined>(undefined)
   const [form] = Form.useForm()
+  const isIssue = docType === 'ISSUE'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -54,8 +84,6 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
   const [costCodesLoading, setCostCodesLoading] = useState(false)
   const [selectedCostSubgroupId, setSelectedCostSubgroupId] = useState<number | undefined>(undefined)
 
-  const [submitting, setSubmitting] = useState(false)
-
   const selectedToProjectOption = useMemo(
     () => projects.find((p) => p.project_code === selectedToProject),
     [projects, selectedToProject]
@@ -69,10 +97,24 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
   useEffect(() => {
     if (!open) return
     form.resetFields()
-    setSelectedMaterial(undefined)
-    setSelectedToProject(undefined)
     setSelectedCostSubgroupId(undefined)
     setCostCodes([])
+    if (editing) {
+      const { payload, material } = editing
+      setSelectedMaterial(material)
+      pendingCostRef.current = payload.to_cost_subgroup_id
+      setSelectedToProject(isIssue ? undefined : payload.to_project_code)
+      form.setFieldsValue({
+        mat_code: payload.mat_code,
+        qty: payload.qty,
+        remark: payload.remarks,
+        to_project_code: isIssue ? undefined : payload.to_project_code,
+      })
+    } else {
+      setSelectedMaterial(undefined)
+      setSelectedToProject(undefined)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, form])
 
   // Full project master list for "To Project" — same source as the IC project list page.
@@ -111,8 +153,10 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
 
   // Re-fetch cost codes whenever "To Project" changes, and clear the previous ToCostCode value.
   useEffect(() => {
-    form.setFieldValue('to_cost_subgroup_id', undefined)
-    setSelectedCostSubgroupId(undefined)
+    if (pendingCostRef.current === undefined) {
+      form.setFieldValue('to_cost_subgroup_id', undefined)
+      setSelectedCostSubgroupId(undefined)
+    }
     if (!selectedToProject) {
       setCostCodes([])
       return
@@ -127,7 +171,7 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
         const raw = res.data?.data ?? res.data
         const list = Array.isArray(raw) ? raw : []
         if (!cancelled) {
-          setCostCodes(
+          const mapped = (
             list.map((c: any) => ({
               cost_subgroup_id: c.cost_subgroup_id,
               cost_code: c.cost_code,
@@ -140,6 +184,14 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
               cost_name: c.subgroup_name,
             }))
           )
+          setCostCodes(mapped)
+          // Restore the ToCostCode of the line being edited once its options are available.
+          const restore = pendingCostRef.current
+          pendingCostRef.current = undefined
+          if (restore !== undefined && mapped.some((c: CostCodeOption) => c.cost_subgroup_id === restore)) {
+            form.setFieldValue('to_cost_subgroup_id', restore)
+            setSelectedCostSubgroupId(restore)
+          }
         }
       } catch (err: any) {
         if (!cancelled) message.error(err?.response?.data?.message || err?.message || 'โหลดรหัสต้นทุนปลายทางไม่สำเร็จ')
@@ -160,44 +212,54 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
     form.setFieldValue('qty', undefined)
   }
 
+  // No API call here: the line is handed to the page, which holds it locally until Submit.
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
       if (!selectedMaterial) return
-      setSubmitting(true)
-      const payload = {
-        mat_code: values.mat_code,
-        cost_subgroup_id: selectedMaterial.cost_subgroup_id,
-        qty: values.qty,
-        to_project_code: values.to_project_code,
-        to_cost_subgroup_id: values.to_cost_subgroup_id,
-        remarks: values.remark || undefined,
+      const toProject = isIssue ? projectCode : values.to_project_code
+      if (!isIssue && !projects.some((p) => p.project_code === toProject)) {
+        message.error('ไม่พบโครงการปลายทาง')
+        return
       }
-      await axios.post(`${BASE_URL}/ic/projects/${projectCode}/movements/${movementId}/lines`, payload, {
-        headers: authHeader,
+      const toCostSubgroupId = isIssue ? selectedMaterial.cost_subgroup_id : values.to_cost_subgroup_id
+      onAdd({
+        material: selectedMaterial,
+        payload: {
+          mat_code: values.mat_code,
+          cost_subgroup_id: selectedMaterial.cost_subgroup_id,
+          qty: values.qty,
+          // ISSUE has no destination choice: same project, same cost code as the source material.
+          to_project_code: toProject,
+          to_cost_subgroup_id: toCostSubgroupId,
+          remarks: values.remark || undefined,
+        },
+        display: {
+          item_name: selectedMaterial.mat_name,
+          spec_name: selectedMaterial.spec_name,
+          cost_code: selectedMaterial.cost_code,
+          unit: selectedMaterial.unit,
+          to_project_name: isIssue ? undefined : selectedToProjectOption?.project_name,
+          to_cost_code: isIssue ? undefined : selectedCostCode?.cost_code,
+        },
       })
-      message.success('เพิ่มรายการสำเร็จ')
-      onSuccess()
     } catch (err: any) {
       if (err?.errorFields) return
-      message.error(err?.response?.data?.message || err?.message || 'เพิ่มรายการไม่สำเร็จ')
-    } finally {
-      setSubmitting(false)
     }
   }
 
   return (
     <Modal
-      title="เพิ่มรายการ"
+      title={editing ? "แก้ไขรายการ" : "เพิ่มรายการ"}
       open={open}
       onCancel={onClose}
-      width={680}
+      width={816}
       footer={[
         <Button key="cancel" onClick={onClose}>
           ยกเลิก
         </Button>,
-        <Button key="submit" type="primary" loading={submitting} onClick={handleSubmit}>
-          บันทึก
+        <Button key="submit" type="primary" onClick={handleSubmit}>
+          {editing ? 'บันทึก' : 'เพิ่ม'}
         </Button>,
       ]}
     >
@@ -270,61 +332,65 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
           </Col>
         </Row>
 
-        <Row gutter={24}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="to_project_code"
-              label="To Project"
-              rules={[{ required: true, message: 'กรุณาเลือกโครงการปลายทาง' }]}
-            >
-              <Select
-                placeholder="- เลือกรายการ -"
-                loading={projectsLoading}
-                showSearch
-                filterOption={(input, option) =>
-                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={projects.map((p) => ({
-                  value: p.project_code,
-                  label: `${p.project_code} — ${p.project_name}`,
-                }))}
-                onChange={(value) => setSelectedToProject(value)}
-              />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12}>
-            <Form.Item label="ProjectName">
-              <Input value={selectedToProjectOption?.project_name || ''} disabled />
-            </Form.Item>
-          </Col>
-        </Row>
+        {!isIssue && (
+          <>
+          <Row gutter={24}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="to_project_code"
+                label="To Project"
+                rules={[{ required: true, message: 'กรุณาเลือกโครงการปลายทาง' }]}
+              >
+                <Select
+                  placeholder="- เลือกรายการ -"
+                  loading={projectsLoading}
+                  showSearch
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={projects.map((p) => ({
+                    value: p.project_code,
+                    label: `${p.project_code} — ${p.project_name}`,
+                  }))}
+                  onChange={(value) => setSelectedToProject(value)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item label="ProjectName">
+                <Input value={selectedToProjectOption?.project_name || ''} disabled />
+              </Form.Item>
+            </Col>
+          </Row>
 
-        <Row gutter={24}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="to_cost_subgroup_id"
-              label="ToCostCode"
-              rules={[{ required: true, message: 'กรุณาเลือกรหัสต้นทุนปลายทาง' }]}
-            >
-              <Select
-                placeholder={selectedToProject ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการปลายทางก่อน'}
-                loading={costCodesLoading}
-                showSearch
-                disabled={!selectedToProject}
-                filterOption={(input, option) =>
-                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={costCodes.map((c) => ({ value: c.cost_subgroup_id, label: c.cost_code }))}
-                onChange={(value) => setSelectedCostSubgroupId(value)}
-              />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12}>
-            <Form.Item label="CostCode Name">
-              <Input value={selectedCostCode?.cost_name || ''} disabled />
-            </Form.Item>
-          </Col>
-        </Row>
+          <Row gutter={24}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="to_cost_subgroup_id"
+                label="ToCostCode"
+                rules={[{ required: true, message: 'กรุณาเลือกรหัสต้นทุนปลายทาง' }]}
+              >
+                <Select
+                  placeholder={selectedToProject ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการปลายทางก่อน'}
+                  loading={costCodesLoading}
+                  showSearch
+                  disabled={!selectedToProject}
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={costCodes.map((c) => ({ value: c.cost_subgroup_id, label: c.cost_code }))}
+                  onChange={(value) => setSelectedCostSubgroupId(value)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item label="CostCode Name">
+                <Input value={selectedCostCode?.cost_name || ''} disabled />
+              </Form.Item>
+            </Col>
+          </Row>
+          </>
+        )}
 
         <Form.Item name="remark" label="Remark">
           <Input.TextArea rows={3} placeholder="หมายเหตุ (ถ้ามี)" />

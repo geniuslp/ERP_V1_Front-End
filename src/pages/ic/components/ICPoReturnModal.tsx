@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Modal, Form, Input, InputNumber, Button, Spin, message, Table, Space } from 'antd'
+import { Modal, Form, Input, InputNumber, Button, Select, Spin, message, Table, Space } from 'antd'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 
@@ -49,6 +49,10 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
   const [typedQty, setTypedQty] = useState<Record<number, number>>({})
   const [lineErrors, setLineErrors] = useState<Record<number, string>>({})
   const [remarks, setRemarks] = useState('')
+  const [filterMode, setFilterMode] = useState<'mat_code' | 'cost_code'>('mat_code')
+  const [rowFilter, setRowFilter] = useState<string | undefined>(undefined)
+  const [rowText, setRowText] = useState('')
+  const [remarksError, setRemarksError] = useState<string | undefined>()
 
   const fetchLines = async () => {
     if (!poId) return
@@ -75,6 +79,10 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       setTypedQty({})
       setLineErrors({})
       setRemarks('')
+      setRemarksError(undefined)
+      setRowFilter(undefined)
+      setRowText('')
+      setFilterMode('mat_code')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, poId])
@@ -98,6 +106,12 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       .map((line) => ({ line_id: line.line_id, return_qty: typedQty[line.line_id] ?? 0, qty_received: line.qty_received }))
       .filter((l) => l.return_qty > 0)
 
+    if (!remarks.trim()) {
+      setRemarksError('กรุณากรอกหมายเหตุ')
+      message.warning('กรุณากรอกหมายเหตุ')
+      return
+    }
+
     if (payloadLines.length === 0) {
       message.warning('กรุณากรอกจำนวนที่ต้องการคืนอย่างน้อย 1 รายการ')
       return
@@ -120,7 +134,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       await axios.post(
         `${BASE_URL}/ic/pos/${poId}/return-lines/submit`,
         {
-          remarks: remarks || undefined,
+          remarks: remarks.trim(),
           lines: payloadLines.map(({ line_id, return_qty }) => ({ line_id, return_qty })),
         },
         { headers: authHeader },
@@ -136,24 +150,56 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
     }
   }
 
+  // Filter options: distinct values of the selected field among the already-loaded lines.
+  const filterOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const opts: { value: string; label: string }[] = []
+    for (const l of data?.lines ?? []) {
+      const v = (l[filterMode] ?? '') as string
+      if (!v || seen.has(v)) continue
+      seen.add(v)
+      opts.push({ value: v, label: v })
+    }
+    return opts
+  }, [data, filterMode])
+
+  // Client-side filter over the loaded lines, scoped to the selected field. A dropdown pick
+  // (exact match) wins over the free text (contains, case-insensitive), as on PO Receive.
+  // Hidden rows keep their typed qty and are still submitted.
+  const visibleLines = useMemo(() => {
+    const lines = data?.lines ?? []
+    if (rowFilter) return lines.filter((l) => (l[filterMode] ?? '') === rowFilter)
+    const q = rowText.trim().toLowerCase()
+    if (!q) return lines
+    return lines.filter((l) => String(l[filterMode] ?? '').toLowerCase().includes(q))
+  }, [data, filterMode, rowFilter, rowText])
+
+  const handleFilterModeChange = (value: 'mat_code' | 'cost_code') => {
+    setFilterMode(value)
+    setRowFilter(undefined)
+    setRowText('')
+  }
+
   const columns = useMemo(
     () => [
       {
         title: 'ลำดับ',
         key: 'index',
-        width: 60,
+        width: 50,
         render: (_: unknown, __: ICReturnLine, index: number) => index + 1,
       },
       {
         title: 'CostCode',
         dataIndex: 'cost_code',
         key: 'cost_code',
+        width: 100,
         render: (value: string | null | undefined) => value || '-',
       },
       {
         title: 'MatCode',
         dataIndex: 'mat_code',
         key: 'mat_code',
+        width: 100,
       },
       {
         title: 'Description',
@@ -164,13 +210,14 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
         title: 'รับแล้ว',
         dataIndex: 'qty_received',
         key: 'qty_received',
+        width: 80,
         align: 'right' as const,
         render: (value: number) => formatQty(value),
       },
       {
         title: 'Return QTY',
         key: 'return_qty',
-        width: 140,
+        width: 120,
         render: (_: unknown, record: ICReturnLine) => (
           <Form.Item
             style={{ marginBottom: 0 }}
@@ -191,6 +238,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       {
         title: 'คงเหลือหลังคืน',
         key: 'remaining',
+        width: 100,
         align: 'right' as const,
         render: (_: unknown, record: ICReturnLine) => {
           const remaining = record.qty_received - (typedQty[record.line_id] ?? 0)
@@ -201,11 +249,13 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
         title: 'Unit',
         dataIndex: 'unit',
         key: 'unit',
+        width: 60,
       },
       {
         title: 'ราคาต่อหน่วย',
         dataIndex: 'unit_price',
         key: 'unit_price',
+        width: 100,
         align: 'right' as const,
         render: (value: number) => formatMoney(value),
       },
@@ -219,22 +269,59 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       open={open}
       onCancel={onClose}
       footer={null}
-      width={960}
+      width={1152}
       destroyOnClose
       styles={{ body: { paddingTop: 8 } }}
     >
       <Spin spinning={loading}>
+        <Space wrap size="middle" style={{ marginBottom: 12 }}>
+          <Select
+            value={filterMode}
+            onChange={handleFilterModeChange}
+            style={{ width: 160 }}
+            options={[
+              { value: 'mat_code', label: 'ค้นหาจาก MatCode' },
+              { value: 'cost_code', label: 'ค้นหาจาก CostCode' },
+            ]}
+          />
+          <Select
+            allowClear
+            showSearch
+            placeholder={filterMode === 'mat_code' ? 'เลือก MatCode' : 'เลือก CostCode'}
+            value={rowFilter}
+            onChange={(v) => setRowFilter(v)}
+            options={filterOptions}
+            style={{ width: 240 }}
+            filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+          />
+          <Input
+            allowClear
+            placeholder={filterMode === 'mat_code' ? 'ค้นหา MatCode' : 'ค้นหา CostCode'}
+            value={rowText}
+            onChange={(e) => setRowText(e.target.value)}
+            disabled={!!rowFilter}
+            style={{ width: 220 }}
+          />
+        </Space>
         <Table
           rowKey="line_id"
           columns={columns}
-          dataSource={data?.lines ?? []}
+          dataSource={visibleLines}
           pagination={false}
           locale={{ emptyText: 'ไม่พบรายการสินค้า' }}
         />
 
         <Form layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="หมายเหตุ">
-            <TextArea rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
+          <Form.Item label="หมายเหตุ" required validateStatus={remarksError ? 'error' : undefined} help={remarksError}>
+            <TextArea
+              rows={3}
+              value={remarks}
+              onChange={(e) => {
+                setRemarks(e.target.value)
+                if (remarksError) setRemarksError(undefined)
+              }}
+              placeholder="กรุณาระบุเหตุผลการคืนสินค้า"
+            />
           </Form.Item>
         </Form>
 

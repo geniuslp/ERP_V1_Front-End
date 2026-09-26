@@ -19,6 +19,16 @@ import MemoPrint, { type MemoData } from './MemoPrint'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
+// Kept in sync manually with MemoCreateEditPage.tsx's own copy — memo.department
+// is a plain varchar with no backing lookup table, so there's no API to fetch
+// the full label from.
+const DEPARTMENT_OPTIONS = [
+  { value: 'HO', label: 'HO — สำนักงานใหญ่' },
+  { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
+  { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
+  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
+]
+
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   border: 'none',
@@ -168,6 +178,30 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const [cancelModal, setCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [printData, setPrintData] = useState<MemoData | null>(null)
+  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/master/projects`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setProjects(list.map((p: any) => ({
+          value: p.project_code,
+          label: p.project_code
+            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
+            : (p.project_name ?? p.name ?? String(p.id)),
+        })))
+      } catch {
+        // Non-critical — print falls back to the raw project_code if this fails.
+      }
+    }
+    fetchProjects()
+  }, [])
 
   const fetchMemo = async () => {
     setLoading(true)
@@ -276,11 +310,13 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   // MemoData straight from `memo` instead of an extra call.
   const handlePrint = () => {
     if (!memo) return
+    const projectLabel = projects.find((p) => p.value === memo.projectName)?.label ?? memo.projectName ?? ''
+    const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === memo.department)?.label ?? memo.department ?? ''
     setPrintData({
       memoNo: memo.memoNo,
       title: memo.title,
-      department: memo.department ?? '',
-      projectName: memo.projectName ?? '',
+      department: departmentLabel,
+      projectName: projectLabel,
       requestedBy: memo.requestedBy,
       note: memo.note ?? '',
       siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',

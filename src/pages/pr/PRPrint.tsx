@@ -159,7 +159,7 @@ const TABLE_COLS = (
 )
 const TABLE_HEAD = (
   <thead><tr>
-    {['No', 'Cost Code', 'รายละเอียด', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
+    {['ลำดับ', 'Cost Code', 'รายการ', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
   </tr></thead>
 )
 
@@ -188,8 +188,9 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
       <div style={{ textAlign: 'right' }}>
         <div style={{ fontSize: '18pt', fontWeight: 700, color: BK, lineHeight: 1.1, marginTop: '4px' }}>PURCHASE REQUEST</div>
         <div style={{ fontSize: '13pt', fontWeight: 600, color: BK, marginTop: '6px' }}>ใบขอซื้อ</div>
-        <div style={{ fontSize: '11pt', fontWeight: 600, color: BK, textAlign: 'right', marginTop: '3px', fontFamily: "'Cordia New',sans-serif" }}>
-          PR No : {data.prNo}
+        <div style={{ textAlign: 'right', marginTop: '3px', fontFamily: "'Cordia New',sans-serif" }}>
+          <span style={{ fontSize: '10pt', fontWeight: 400, color: BK }}>PR No :</span>{' '}
+          <span style={{ fontSize: '15pt', fontWeight: 700, color: BK }}>{data.prNo}</span>
         </div>
       </div>
     </div>
@@ -224,12 +225,18 @@ const formatCostCodeForPrint = (costCode?: string): string => {
   return dashIdx === -1 ? costCode.trim() : costCode.slice(0, dashIdx).trimEnd()
 }
 
+// Some existing PR lines carry ItemName and SpecName pre-joined into a single
+// mat_name string with a literal "--" divider (e.g. "ItemName -- SpecName").
+// Replace it with a single space so both parts still read together on one
+// line, just without the dash.
+const cleanItemName = (desc: string): string => desc.replace(/\s*--\s*/g, ' ').trim()
+
 const ItemRow = ({ row }: { row: PRItem }) => (
   <tr>
     <td style={{ textAlign: 'center' }}>{row.no}</td>
     <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeForPrint(row.costCode)}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-      {row.desc}{row.spec ? ` — ${row.spec}` : ''}
+      {cleanItemName(row.desc)}{row.spec ? ` ${row.spec}` : ''}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>

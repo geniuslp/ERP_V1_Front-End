@@ -225,6 +225,32 @@ const PRDetailPage: React.FC = () => {
   const [blockingPOs, setBlockingPOs] = useState<BlockingPO[]>([])
   const [blockModalPOs, setBlockModalPOs] = useState<BlockingPO[] | null>(null)
   const [printData, setPrintData] = useState<PRData | null>(null)
+  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+
+  // Same master/projects lookup used elsewhere (e.g. Memo pages) to resolve a
+  // project_code into "code — full name" — GET /pr/:id only returns the raw code.
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/master/projects`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setProjects(list.map((p: any) => ({
+          value: p.project_code,
+          label: p.project_code
+            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
+            : (p.project_name ?? p.name ?? String(p.id)),
+        })))
+      } catch {
+        // Non-critical — falls back to the raw project_code if this fails.
+      }
+    }
+    fetchProjects()
+  }, [])
 
   const fetchPR = async () => {
     setLoading(true)
@@ -299,7 +325,7 @@ const PRDetailPage: React.FC = () => {
     setPrintData({
       prNo: pr.prNo,
       prDate: pr.prDate ? dayjs(pr.prDate).format('DD/MM/YYYY') : '',
-      projectDept: pr.projectCode ?? '',
+      projectDept: (pr.projectCode && (projects.find((p) => p.value === pr.projectCode)?.label ?? pr.projectCode)) || '',
       vendor: '',
       deliveryDate: pr.requiredDate ? dayjs(pr.requiredDate).format('DD/MM/YYYY') : '',
       deliveryTo: pr.locationText ?? '',
@@ -427,7 +453,9 @@ const PRDetailPage: React.FC = () => {
           <Descriptions.Item label="ผู้ขอซื้อ">{pr.requestedBy}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{pr.approverName || '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานที่ส่งของ">{pr.locationText}</Descriptions.Item>
-          <Descriptions.Item label="รหัสงาน">{pr.projectCode || '—'}</Descriptions.Item>
+          <Descriptions.Item label="รหัสงาน">
+            {(pr.projectCode && (projects.find((p) => p.value === pr.projectCode)?.label ?? pr.projectCode)) || '—'}
+          </Descriptions.Item>
           <Descriptions.Item label="ประเภทการสั่งซื้อ">
             {pr.orderType ? (orderTypeLabel[pr.orderType] ?? pr.orderType) : '—'}
           </Descriptions.Item>

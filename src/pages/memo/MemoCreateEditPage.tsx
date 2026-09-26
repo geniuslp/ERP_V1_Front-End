@@ -118,11 +118,13 @@ const MemoCreateEditPage: React.FC = () => {
       })
       const raw = res.data?.data ?? res.data
       const lines = raw.lines ?? raw.items ?? []
+      const projectLabel = projects.find((p) => p.value === raw.project_code)?.label ?? raw.project_code ?? ''
+      const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === raw.department)?.label ?? raw.department ?? ''
       setPrintData({
         memoNo: raw.memo_no ?? '',
         title: raw.title ?? '',
-        department: raw.department ?? '',
-        projectName: raw.project_code ?? '',
+        department: departmentLabel,
+        projectName: projectLabel,
         requestedBy: raw.requested_by_name ?? '',
         note: raw.note ?? '',
         siteDeliveryDate: raw.site_delivery_date ? dayjs(raw.site_delivery_date).format('DD/MM/YYYY') : '',
@@ -725,7 +727,18 @@ const MemoCreateEditPage: React.FC = () => {
           title={<span style={cardTitleStyle}>รายการวัสดุ/บริการ</span>}
           extra={
             !isEdit || canEdit ? (
-              <Button type="dashed" icon={<PlusOutlined />} onClick={addItem}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={addItem}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
+                  borderRadius: 8,
+                  border: 'none',
+                  color: '#fff',
+                }}
+              >
                 เพิ่มรายการ
               </Button>
             ) : null

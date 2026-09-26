@@ -271,13 +271,6 @@ const POApprovalDetailPage: React.FC = () => {
       ),
     },
     {
-      title: 'Brand',
-      key: 'brand',
-      render: (_: unknown, r: POLine) => (
-        <div>{r.brand ?? '-'}</div>
-      ),
-    },
-    {
       title: 'จำนวนสั่ง',
       key: 'qty_ordered',
       width: 120,
@@ -288,21 +281,15 @@ const POApprovalDetailPage: React.FC = () => {
       title: 'ราคา/หน่วย',
       dataIndex: 'unit_price',
       key: 'unit_price',
-      width: 120,
-      render: (v: number) => v.toLocaleString('th-TH'),
+      width: 130,
+      render: (v: number) => `${v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'มูลค่า',
       dataIndex: 'amount',
       key: 'amount',
-      width: 130,
-      render: (v: number) => v.toLocaleString('th-TH'),
-    },
-    {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      width: 110,
+      width: 150,
+      render: (v: number) => `${v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'หมายเหตุ',
@@ -439,56 +426,42 @@ const POApprovalDetailPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* Header details */}
+      {/* Header details — exactly 5 rows, fixed 3-column grid (see per-item
+          `span` below controlling row breaks: Descriptions wraps to a new row
+          once a row's spans sum to `column`). PO no./PR ref./date/status live
+          in the top bar above instead; currency/gross/VAT/net/ส่วนลด/WHT/คลัง
+          are intentionally dropped from this block per product decision — they
+          still appear in full on the printed PO (see PurchaseOrderPrint). */}
       <div style={cardStyle}>
         <Descriptions
           bordered
           size="small"
-          column={{ xs: 1, sm: 2, lg: 3 }}
+          column={3}
           labelStyle={{ fontWeight: 600, width: 140 }}
         >
-          <Descriptions.Item label="เลข PO">{formatPoNoWithRevision(po.po_no, po.revision_round)}</Descriptions.Item>
-          <Descriptions.Item label="เลข PR อ้างอิง">
-            {po.pr_id ? (
-              <a onClick={() => navigate(`/pr/${po.pr_id}`)}>{po.pr_no ?? `PR #${po.pr_id}`}</a>
-            ) : (
-              '-'
-            )}
-          </Descriptions.Item>
-          <Descriptions.Item label="วันที่">{po.po_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="โครงการ">{po.project_name || '-'}</Descriptions.Item>
-          <Descriptions.Item label="สถานะ">
-            <POStatusBadges status={po.status} statusReceive={po.status_receive} />
-          </Descriptions.Item>
-          <Descriptions.Item label="Supplier">{po.supplier_name}</Descriptions.Item>
-          <Descriptions.Item label="ประเภทการสั่งซื้อ">
-            {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
-          </Descriptions.Item>
-          <Descriptions.Item label="ประเภท Job">
+          <Descriptions.Item label="Job">
             {po.job_code ? (JOB_TYPES.find((jt) => jt.code === po.job_code)?.label ?? po.job_code) : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="เงื่อนไขการชำระ">{po.payment_terms ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{po.location_text ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="ประเภทการซื้อ">
+            {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
+          </Descriptions.Item>
+
+          <Descriptions.Item label="ชื่อบริษัท" span={2}>{po.supplier_name}</Descriptions.Item>
+          <Descriptions.Item label="เงื่อนไข">{po.payment_terms ?? '-'}</Descriptions.Item>
+
           <Descriptions.Item label="ผู้รับของ">{po.receiver_name ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="เบอร์โทรผู้รับของ">{po.receiver_phone ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="คลัง">{po.warehouse_code ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="สกุลเงิน">{po.currency}</Descriptions.Item>
-          <Descriptions.Item label="มูลค่ารวม" contentStyle={{ textAlign: 'left' }}>
-            {po.total_amount.toLocaleString('th-TH')}
-          </Descriptions.Item>
-          <Descriptions.Item label="ภาษี VAT" contentStyle={{ textAlign: 'left' }}>
-            {po.vat_amount.toLocaleString('th-TH')}
-          </Descriptions.Item>
-          <Descriptions.Item label="มูลค่าสุทธิ" contentStyle={{ textAlign: 'left', fontWeight: 700 }}>
-            {po.net_amount.toLocaleString('th-TH')}
-          </Descriptions.Item>
-          <Descriptions.Item label="ส่วนลด">
+          <Descriptions.Item label="เบอร์โทร">{po.receiver_phone ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="สถานที่ส่ง">{po.location_text ?? '-'}</Descriptions.Item>
+
+          <Descriptions.Item label="วันที่ส่ง">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="มูลค่าหักส่วนลด ก่อนหักภาษี" span={2} contentStyle={{ textAlign: 'left' }}>
             {(() => {
               // Header discount (po.use_discount/discount_amount) is only one
               // source — a line can carry its own amt-type discount instead
-              // (purchase_order_line.disc_type/discount), which this field
-              // used to miss entirely. Same rollup PurchaseOrderPrint.tsx's
-              // "Special Discount" summary uses, so the two can't disagree.
+              // (purchase_order_line.disc_type/discount). Same rollup
+              // PurchaseOrderPrint.tsx's "Special Discount" summary uses, so
+              // the two can't disagree.
               const headerDisc = po.use_discount ? po.discount_amount ?? 0 : 0
               const lineAmtDisc = sumLineAmtDiscounts(
                 (po.lines ?? []).map((l) => ({
@@ -498,17 +471,11 @@ const POApprovalDetailPage: React.FC = () => {
                   unitPrice: l.unit_price,
                 })),
               )
-              const total = headerDisc + lineAmtDisc
-              return total > 0 ? total.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-'
+              const afterDiscount = po.total_amount - (headerDisc + lineAmtDisc)
+              return `${afterDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`
             })()}
           </Descriptions.Item>
-          <Descriptions.Item label="ภาษีหัก ณ ที่จ่าย">
-            {po.use_wht ? po.wht_amount : '-'}
-          </Descriptions.Item>
-          <Descriptions.Item label="วันที่ต้องการสินค้า">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
-          {/* Supplier contact fields (office_phone/sales_person/contact_email/contact_phone)
-              are live-joined from the supplier master but intentionally screen-hidden here —
-              they still appear in full on the printed PO (see POPrint). */}
+
           <Descriptions.Item
             label="หมายเหตุ"
             span={3}

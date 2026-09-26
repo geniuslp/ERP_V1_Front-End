@@ -4,12 +4,13 @@ import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
   CloseOutlined,
   WarningOutlined,
+  PrinterOutlined, RollbackOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
-import PRItemsTable from '@/components/common/PRItemsTable'
+import PRItemsTable, { type PRItemsTableHandle } from '@/components/common/PRItemsTable'
 import MemoSidebarPanel from '@/pages/pr/components/MemoSidebarPanel'
 import PRPrint, { type PRData } from '@/pages/pr/PRPrint'
 import axios from 'axios'
@@ -149,6 +150,7 @@ const PRCreatePage: React.FC = () => {
   const [memoAttachments, setMemoAttachments] = useState<UploadedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const itemsTableRef = useRef<PRItemsTableHandle>(null)
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
@@ -587,7 +589,7 @@ const PRCreatePage: React.FC = () => {
     setPrintData({
       prNo: prNumber,
       prDate: dayjs().format('DD/MM/YYYY'),
-      projectDept: values.project_code ?? '',
+      projectDept: (values.project_code && (projects.find((p) => p.value === values.project_code)?.label ?? values.project_code)) || '',
       vendor: '',
       deliveryDate: values.required_date ? values.required_date.format('DD/MM/YYYY') : '',
       deliveryTo: values.location_text ?? '',
@@ -1158,25 +1160,43 @@ const PRCreatePage: React.FC = () => {
         </Card>
 
         <PRItemsTable
-          onBack={() => {
-            // Leaving the create-PR page without saving — clear the cached
-            // reservation so the next fresh open gets a genuinely new number
-            // instead of resuming this abandoned one.
-            if (!isEdit) sessionStorage.removeItem('pr_reserved_number')
-            navigate(isEdit ? `/pr/${id}` : '/pr/status')
-          }}
+          ref={itemsTableRef}
           onItemsChange={setLineItems}
           initialItems={initialLineItems}
           remark={remark}
           onRemarkChange={setRemark}
-          onPrint={handlePrintCurrent}
           jobTypeCode={jobTypeCode}
           orderType={orderType}
         />
 
-        {/* ── Action bar ── */}
+        {/* ── Action bar — merged row: พิมพ์/กลับหน้าหลัก on the left,
+            บันทึกร่าง/ส่งใบขอซื้อ on the right (previously two separate rows,
+            print/back rendered inside PRItemsTable) ── */}
         <Card style={{ ...cardStyle, marginTop: 16 }}>
-          <div className="pr-action-bar">
+          <div
+            className="pr-action-bar"
+            style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}
+          >
+            <Space wrap>
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={() => handlePrintCurrent(itemsTableRef.current?.getPrintItems() ?? [])}
+              >
+                พิมพ์
+              </Button>
+              <Button
+                icon={<RollbackOutlined />}
+                onClick={() => {
+                  // Leaving the create-PR page without saving — clear the cached
+                  // reservation so the next fresh open gets a genuinely new number
+                  // instead of resuming this abandoned one.
+                  if (!isEdit) sessionStorage.removeItem('pr_reserved_number')
+                  navigate(isEdit ? `/pr/${id}` : '/pr/status')
+                }}
+              >
+                กลับหน้าหลัก
+              </Button>
+            </Space>
             <Space wrap>
               {isEdit ? (
                 <PermissionButton

@@ -34,9 +34,15 @@ interface Props {
    * only, per CLAUDE.md — never implies a stock deduction.
    */
   projectCode?: string
+  /**
+   * Opt-in: sends has_cost_subgroup=true to GET /master/allMaterial so only materials
+   * with a cost_subgroup_id assigned are listed. Used by the PR picker only; PO and
+   * Petty Cash keep the unfiltered list.
+   */
+  hasCostSubgroup?: boolean
 }
 
-const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false, projectCode }) => {
+const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false, projectCode, hasCostSubgroup = false }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const screens = useBreakpoint()
   const isMobile = screens.md === false
@@ -183,6 +189,7 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
             subgroup_id: selectedSubgroup ?? undefined,
             mat_name_id: selectedMatName ?? undefined,
             project_code: projectCode || undefined,
+            has_cost_subgroup: hasCostSubgroup ? true : undefined,
           },
         })
         const list: Material[] = Array.isArray(res.data) ? res.data : res.data?.data ?? []
@@ -204,7 +211,7 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
     }
 
     fetchData()
-  }, [page, search, selectedSubgroup, selectedMatName, open, accessToken, projectCode])
+  }, [page, search, selectedSubgroup, selectedMatName, open, accessToken, projectCode, hasCostSubgroup])
 
   const handleConfirm = () => {
     onConfirm(selectedRows)

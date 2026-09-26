@@ -163,6 +163,22 @@ const POStatusPage: React.FC = () => {
       // is a fixed pixel value on this Table (not 'max-content'), which is
       // what actually caused these to stretch to their longest value before;
       // the resizable mechanism itself was never the problem.
+      // GET /po's pr_nos — always an array (even for the common 0-or-1 case),
+      // since nothing enforces a strict one-PO-to-one-PR relationship.
+      title: 'เลข PR',
+      key: 'pr_nos',
+      width: 130,
+      ellipsis: true,
+      render: (_: unknown, r) => {
+        const v = r.pr_nos?.join(', ') || '—'
+        return (
+          <Tooltip title={v}>
+            <span>{v}</span>
+          </Tooltip>
+        )
+      },
+    },
+    {
       title: 'ร้านค้า / บริษัท',
       dataIndex: 'supplier_name',
       key: 'supplier_name',
@@ -268,6 +284,18 @@ const POStatusPage: React.FC = () => {
             : r.created_by_name
         return name || '-'
       },
+    },
+    {
+      title: 'หมายเหตุ PO',
+      dataIndex: 'remarks',
+      key: 'remarks',
+      width: 180,
+      ellipsis: true,
+      render: (v: string | null | undefined) => (
+        <Tooltip title={v || undefined}>
+          <span>{v || '-'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '',
@@ -380,7 +408,8 @@ const POStatusPage: React.FC = () => {
           // table to each column's intrinsic content width, which stretched
           // ร้านค้า/บริษัท and ProjectName to their single longest value
           // across all rows and made width/ellipsis on those columns no-ops.
-          scroll={{ x: 1600 }}
+          // Bumped from 1600 to fit the added "เลข PR" / "หมายเหตุ PO" columns.
+          scroll={{ x: 1900 }}
           size="small"
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{

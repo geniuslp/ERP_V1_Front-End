@@ -453,6 +453,42 @@ new "Repeatable-row table with + button" pattern note.
 5. 🔴 **Unexplained:** console log from `PRItemsTable.tsx` (a PR-page component) observed during a
    movement-page test session — cause not yet investigated.
 
+## 🧭 Session learnings (2026-09-26) — IC Project Movement line-add UX becomes local-only, warehouse-linked projects concept
+
+**"เพิ่มรายการ" on the movement create/edit page no longer calls a save API per line.** Lines are
+held in local React state (array, same "Repeatable-row table with + button" pattern as
+`WOPaymentConditionsSection.tsx`) with per-row edit (reopens the modal, prefilled) and delete
+icons — both local-only, no API calls. The whole batch is submitted only when the user clicks
+Submit. **Losing unsaved lines on refresh is expected/accepted, not a bug to fix.**
+
+**"ประเภทเอกสาร" dropdown label change.** TRANSFER option label changed from "โอน" to
+"โอนข้ามโครงการ" (ISSUE's "ตัดเบิก" label unchanged).
+
+**Stale-closure bugfix.** Row action icons (edit/delete) and the Submit/เพิ่มรายการ buttons now
+correctly grey out/hide when a document's status is `POSTED` — fixed by making `isPosted` a proper
+render dependency.
+
+**"คงเหลือวัสดุ" page** (`/ic/projects/:projectCode/stock`) no longer shows a CostName column
+(CostCode stays) — for both normal and warehouse-linked projects. Intentional product decision, not
+a regression.
+
+**New concept — "warehouse-linked" projects.** A project can be warehouse-linked (backend:
+`project.linked_warehouse_code` is set). For such projects, TRANSFER-related pages
+(available-materials picker, คงเหลือวัสดุ) source data from the general stock system instead of
+`ic_project_cost_item` — backend handles the branching, but frontend should not assume every
+project shown in these pages behaves like a normal cost-tracked project. `cost_subgroup_id` may be
+0/absent for these rows and `to_cost_subgroup_id` may not be required when the destination is
+warehouse-linked (backend relaxed the `NOT NULL` constraint accordingly).
+
+**Files touched this session:** `src/pages/ic/ICProjectMovementListPage.tsx`,
+`src/pages/ic/ICProjectMovementPage.tsx` (new, replaces the deleted
+`ICProjectMovementCreatePage.tsx`/`ICProjectMovementDetailPage.tsx`),
+`src/pages/ic/ICProjectStockPage.tsx` (new), `src/pages/ic/components/ICMovementAddLineModal.tsx`,
+`src/pages/ic/components/ICMovementMaterialPickerModal.tsx`, plus related IC/PO-receive component
+touch-ups (`ICPoReceivePage.tsx`, `ICPoReceiveModal.tsx`, `ICPoReturnModal.tsx`,
+`ICProjectCostTransactionPage.tsx`, `ICProjectListPage.tsx`) and shared table components
+(`MaterialPickerModal.tsx`, `POItemsTable.tsx`, `PRItemsTable.tsx`).
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

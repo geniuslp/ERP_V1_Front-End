@@ -1,12 +1,23 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Space, Input, Button, message } from 'antd'
-import { SearchOutlined, ReloadOutlined, InboxOutlined, RollbackOutlined, SwapOutlined } from '@ant-design/icons'
+import { Card, Table, Space, Select, Empty, Modal, message } from 'antd'
+import { InboxOutlined, SwapOutlined, ContainerOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+const PREPARER_ROLE_CODES = [
+  'ADMIN_CENTER',
+  'ROLE_A_PROJECT',
+  'ROLE_A_PURCHASE',
+  'ROLE_H1_PURCHASE',
+  'ROLE_H2_PURCHASE',
+  'ROLE_M_PURCHASE',
+  'ROLE_S_PURCHASE',
+  'ROLE_SV_PURCHASE',
+]
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -21,6 +32,44 @@ interface ICProject {
   customer_name?: string | null
 }
 
+const OptionCard: React.FC<{
+  icon: React.ReactNode
+  label: string
+  base: string
+  hover: string
+  onClick: () => void
+}> = ({ icon, label, base, hover, onClick }) => {
+  const [isHover, setHover] = useState(false)
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        flex: '1 1 220px',
+        minHeight: 160,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        borderRadius: 12,
+        cursor: 'pointer',
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 600,
+        background: isHover ? hover : base,
+        boxShadow: isHover ? '0 8px 30px rgba(15,45,94,0.18)' : '0 2px 12px rgba(15,45,94,0.08)',
+        transform: isHover ? 'translateY(-2px)' : 'none',
+        transition: 'all 0.2s',
+      }}
+    >
+      {icon}
+      <div>{label}</div>
+    </div>
+  )
+}
+
 const ICProjectListPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -28,22 +77,77 @@ const ICProjectListPage: React.FC = () => {
 
   const [data, setData] = useState<ICProject[]>([])
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
+  const [selected, setSelected] = useState<ICProject | null>(null)
+
+  const [projectOptions, setProjectOptions] = useState<{ value: string; label: string }[]>([])
+  const [projectCode, setProjectCode] = useState<string | undefined>(undefined)
+  const [userOptions, setUserOptions] = useState<{ value: string; label: string }[]>([])
+  const [preparedBy, setPreparedBy] = useState<string | undefined>(undefined)
+
+  // Options for the "ชื่อโครงการ" Select: all projects.
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/ic/projects`, {
+          headers: authHeader,
+          params: { page: 1, page_size: 1000 },
+        })
+        const payload = res.data?.data ?? res.data
+        const rows = Array.isArray(payload) ? payload : payload?.data ?? []
+        setProjectOptions(
+          (Array.isArray(rows) ? rows : []).map((p: ICProject) => ({
+            value: p.project_code,
+            label: `${p.project_code} - ${p.project_name}`,
+          }))
+        )
+      } catch {
+        message.error('โหลดรายชื่อโครงการไม่สำเร็จ')
+      }
+    }
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Options for the "ผู้จัดทำ" Select: users holding any of PREPARER_ROLE_CODES.
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/users/allUser`, { headers: authHeader })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setUserOptions(
+          list
+            .filter((u: any) => (u.roles ?? []).some((r: any) => PREPARER_ROLE_CODES.includes(r.role_code)))
+            .map((u: any) => ({ value: String(u.id), label: u.full_name ?? u.fullName ?? u.username }))
+        )
+      } catch {
+        message.error('โหลดรายชื่อผู้จัดทำไม่สำเร็จ')
+      }
+    }
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchData = async () => {
+    if (!projectCode) {
+      setData([])
+      setTotal(0)
+      return
+    }
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/ic/projects`, {
         headers: authHeader,
-        params: { search: search || undefined, page, page_size: pageSize },
+        params: { search: projectCode, page: 1, page_size: 50 },
       })
       const payload = res.data?.data ?? res.data
       const rows = Array.isArray(payload) ? payload : payload?.data ?? []
-      setData(Array.isArray(rows) ? rows : [])
-      setTotal(payload?.total ?? rows?.length ?? 0)
+      const exact = (Array.isArray(rows) ? rows : []).filter((r: ICProject) => r.project_code === projectCode)
+      setData(exact)
+      setTotal(exact.length)
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -52,19 +156,10 @@ const ICProjectListPage: React.FC = () => {
   }
 
   useEffect(() => {
+    setPage(1)
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize])
-
-  const handleSearch = () => {
-    setPage(1)
-    fetchData()
-  }
-
-  const handleReset = () => {
-    setSearch('')
-    setPage(1)
-  }
+  }, [projectCode])
 
   const columns = [
     {
@@ -90,37 +185,12 @@ const ICProjectListPage: React.FC = () => {
       key: 'customer_name',
       render: (value: string | null | undefined) => value || '-',
     },
-    {
-      title: 'Action',
-      key: 'action',
-      width: 320,
-      render: (_: unknown, record: ICProject) => (
-        <Space wrap onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="small"
-            icon={<InboxOutlined />}
-            onClick={() => navigate(`/ic/projects/${record.id}/po-receive`)}
-          >
-            PO Receive
-          </Button>
-          <Button
-            size="small"
-            icon={<RollbackOutlined />}
-            onClick={() => navigate(`/ic/projects/${record.id}/po-return`)}
-          >
-            PO Return
-          </Button>
-          <Button
-            size="small"
-            icon={<SwapOutlined />}
-            onClick={() => navigate(`/ic/projects/${record.project_code}/movements`)}
-          >
-            ตัดเบิก/โอน
-          </Button>
-        </Space>
-      ),
-    },
   ]
+
+  const goTo = (path: string) => {
+    setSelected(null)
+    navigate(preparedBy ? `${path}?prepared_by=${encodeURIComponent(preparedBy)}` : path)
+  }
 
   return (
     <div>
@@ -130,29 +200,54 @@ const ICProjectListPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Inventory Control' }, { title: 'ข้อมูลโครงการ' }]}
       />
       <Card style={cardStyle}>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          <Input
-            placeholder="ค้นหารหัส/ชื่อโครงการ"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onPressEnter={handleSearch}
-            style={{ width: 240 }}
-            allowClear
-          />
-          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-            ค้นหา
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={handleReset}>
-            รีเซต
-          </Button>
+        <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
+          <div>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>
+              <span style={{ color: '#dc2626' }}>* </span>ชื่อโครงการ
+            </div>
+            <Select
+              showSearch
+              allowClear
+              placeholder="เลือกโครงการ"
+              options={projectOptions}
+              value={projectCode}
+              onChange={setProjectCode}
+              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              style={{ width: '100%', maxWidth: 560 }}
+            />
+          </div>
+          <div>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>
+              <span style={{ color: '#dc2626' }}>* </span>ผู้จัดทำ
+            </div>
+            <Select
+              showSearch
+              allowClear
+              placeholder="เลือกผู้จัดทำ"
+              options={userOptions}
+              value={preparedBy}
+              onChange={setPreparedBy}
+              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              style={{ width: '100%', maxWidth: 560 }}
+            />
+          </div>
         </Space>
+        {!projectCode ? (
+          <Empty description="กรุณาเลือกโครงการ" />
+        ) : (
         <Table
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={data}
           onRow={(record) => ({
-            onClick: () => navigate(`/ic/projects/${record.id}/po-receive`),
+            onClick: () => {
+              if (!preparedBy) {
+                message.warning('กรุณาเลือกผู้จัดทำก่อน')
+                return
+              }
+              setSelected(record)
+            },
             style: { cursor: 'pointer' },
           })}
           pagination={{
@@ -167,7 +262,42 @@ const ICProjectListPage: React.FC = () => {
           }}
           locale={{ emptyText: 'ไม่พบข้อมูลโครงการ' }}
         />
+        )}
       </Card>
+      <Modal
+        open={!!selected}
+        onCancel={() => setSelected(null)}
+        footer={null}
+        centered
+        width={760}
+        title={selected ? `${selected.project_code} — ${selected.project_name}` : ''}
+      >
+        {selected && (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', paddingTop: 8 }}>
+            <OptionCard
+              icon={<InboxOutlined style={{ fontSize: 40 }} />}
+              label="PO Receive / PO Return"
+              base="#2563eb"
+              hover="#1d4ed8"
+              onClick={() => goTo(`/ic/projects/${selected.id}/po-receive`)}
+            />
+            <OptionCard
+              icon={<SwapOutlined style={{ fontSize: 40 }} />}
+              label="Issue / Transfer"
+              base="#0ea5e9"
+              hover="#0284c7"
+              onClick={() => goTo(`/ic/projects/${selected.project_code}/movements`)}
+            />
+            <OptionCard
+              icon={<ContainerOutlined style={{ fontSize: 40 }} />}
+              label="คงเหลือวัสดุ"
+              base="#1d4ed8"
+              hover="#1e40af"
+              onClick={() => goTo(`/ic/projects/${selected.project_code}/stock`)}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

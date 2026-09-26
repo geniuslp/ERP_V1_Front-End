@@ -128,11 +128,11 @@ body {
   animation: import-row-flash 0.6s ease-in-out 2;
 }
 
-.ant-btn-primary {
+.ant-btn-primary:not(:disabled):not(.ant-btn-disabled) {
   background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
 }
 
-.ant-btn-primary:hover {
+.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover {
   background: linear-gradient(135deg, #1d4ed8, #1e40af) !important;
 }
 

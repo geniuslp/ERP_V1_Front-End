@@ -110,24 +110,23 @@ const CSS = `
   .auth-col{flex-shrink:0;border-right:1px solid #000;display:flex;flex-direction:column;}
   .auth-col:last-child{border-right:none;}
   .auth-body{display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;text-align:center;padding:2px 3px;height:6mm;}
+    font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;text-align:center;padding:10px 3px 2px 3px;height:6mm;}
   .auth-head{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
     padding:2px 4px;font-family:'Cordia New',sans-serif;font-size:12pt;border-top:none;border-bottom:1px solid #000;}
   .auth-date{text-align:center;font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;padding:1px 4px;}
 `
 
-// Single signature column only (ผู้อนุมัติ / approverName) — intentionally simplified
-// compared to PR/PO's multi-column auth blocks, since GET /memo/:id currently only
-// exposes one resolved `approver_name`, not a breakdown of distinct approval roles.
-// May need multiple approval-role columns added later (see approval_config /
-// approval_delegation, per CLAUDE.md) — revisit once that's confirmed with the team.
-const AUTH_COLS = [
-  { label: 'ผู้อนุมัติ / Approver', width: '9cm' },
+// Two signature columns — ผู้ขอ (requestedBy) and ผู้อนุมัติ (approverName). Previously
+// only the approver had a signature cell; requester was shown as a plain text line in
+// the info block instead — moved here to match the approver's box/line treatment.
+const AUTH_COLS: { label: string; width: string; key: 'requestedBy' | 'approverName' }[] = [
+  { label: 'ผู้ขอ / Requester', width: '9cm', key: 'requestedBy' },
+  { label: 'ผู้อนุมัติ / Approver', width: '9cm', key: 'approverName' },
 ]
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
-    <td /><td /><td /><td />
+    <td /><td /><td /><td /><td />
   </tr>
 )
 
@@ -178,18 +177,17 @@ const MemoHeader = ({ data, pageNum, totalPages }: { data: MemoData; pageNum: nu
 
 const MemoInfoBox = ({ data }: { data: MemoData }) => (
   <div className="memo-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
-    <div><b>เรื่อง :</b>&nbsp;{data.title}</div>
-    <div><b>หน่วยงาน :</b>&nbsp;{data.department}</div>
     <div><b>โครงการ :</b>&nbsp;{data.projectName}</div>
-    <div><b>ผู้ขอ :</b>&nbsp;{data.requestedBy}</div>
-    <div><b>กำหนดส่งของหน้างาน :</b>&nbsp;{data.siteDeliveryDate}</div>
+    <div><b>เรื่อง :</b>&nbsp;{data.title}</div>
     <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryLocation}</div>
+    <div><b>หน่วยงาน :</b>&nbsp;{data.department}</div>
     <div style={{ display: 'flex', gap: 4 }}>
       <b style={{ flexShrink: 0 }}>หมายเหตุ / Remark :</b>
       <span>
         {(data.note || '').split('\n').map((l, i) => <div key={i}>{l}</div>)}
       </span>
     </div>
+    <div><b>กำหนดส่งของหน้างาน :</b>&nbsp;{data.siteDeliveryDate}</div>
   </div>
 )
 
@@ -214,7 +212,7 @@ const MemoFooter = ({ data }: { data: MemoData }) => (
             <div className="auth-head" />
             <div className="auth-body">
               <div style={{ fontWeight: 600 }}>{col.label}</div>
-              <div>{data.approverName}</div>
+              <div>{data[col.key]}</div>
             </div>
             <div className="auth-date">(...............................)</div>
           </div>

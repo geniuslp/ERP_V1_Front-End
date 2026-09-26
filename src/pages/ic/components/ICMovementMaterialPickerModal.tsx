@@ -68,6 +68,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
         )
         const raw = res.data?.data ?? res.data
         const list = Array.isArray(raw) ? raw : []
+        console.log('[ICMovementMaterialPicker] DEBUG', { url: res.config?.url, params: res.config?.params, rawShape: Array.isArray(raw) ? 'array' : typeof raw, count: list.length, first: list[0], rawKeys: raw && !Array.isArray(raw) ? Object.keys(raw) : undefined })
         if (!cancelled) {
           setMaterials(
             list.map((m: any) => ({

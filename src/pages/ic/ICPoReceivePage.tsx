@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Spin, Select, Switch, Table, Space, Typography, message } from 'antd'
+import { Card, Spin, Select, Switch, Table, Space, Typography, Input, Button, Empty, message } from 'antd'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import ICPoReceiveModal from '@/pages/ic/components/ICPoReceiveModal'
+import ICPoReturnModal from '@/pages/ic/components/ICPoReturnModal'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -43,7 +44,13 @@ const ICPoReceivePage: React.FC = () => {
 
   const [prOptions, setPrOptions] = useState<SearchOption[]>([])
   const [poOptions, setPoOptions] = useState<SearchOption[]>([])
-  const [search, setSearch] = useState<string | undefined>(undefined)
+  const [mode, setMode] = useState<'PO' | 'PR'>('PO')
+  const [pickedNo, setPickedNo] = useState<string | undefined>(undefined)
+  const [searchText, setSearchText] = useState('')
+  // Dropdown pick (exact number) wins over free text; empty = table stays hidden.
+  const search = (pickedNo || searchText.trim()) || undefined
+  const [selectedRow, setSelectedRow] = useState<ICPoRow | null>(null)
+  const [returnOpen, setReturnOpen] = useState(false)
   const [onlyCompleted, setOnlyCompleted] = useState(false)
 
   const [rows, setRows] = useState<ICPoRow[]>([])
@@ -96,11 +103,15 @@ const ICPoReceivePage: React.FC = () => {
           headers: authHeader,
         })
         const payload = res.data?.data ?? res.data
-        const prList = payload?.pr_list ?? payload?.pr_numbers ?? []
-        const poList = payload?.po_list ?? payload?.po_numbers ?? []
+        // Shape: flat [{id, no, type}] where type is 'PO' | 'PR'. Older shape ({pr_list, po_list}) still tolerated.
+        const flat: any[] = Array.isArray(payload) ? payload : []
+        const byType = (t: 'PO' | 'PR') =>
+          flat.filter((i) => String(i?.type ?? '').toUpperCase() === t)
+        const prList = flat.length ? byType('PR') : payload?.pr_list ?? payload?.pr_numbers ?? []
+        const poList = flat.length ? byType('PO') : payload?.po_list ?? payload?.po_numbers ?? []
         const toOptions = (list: any[]): SearchOption[] =>
           (Array.isArray(list) ? list : []).map((item) => {
-            const value = typeof item === 'string' ? item : item?.pr_no ?? item?.po_no ?? item?.value ?? String(item)
+            const value = typeof item === 'string' ? item : item?.no ?? item?.pr_no ?? item?.po_no ?? item?.value ?? String(item)
             return { value, label: value }
           })
         if (!cancelled) {
@@ -121,6 +132,11 @@ const ICPoReceivePage: React.FC = () => {
   // Step 3: fetch PO list, refetching on search/toggle/pagination change.
   useEffect(() => {
     if (!project) return
+    if (!search) {
+      setRows([])
+      setTotal(0)
+      return
+    }
     let cancelled = false
     const fetchRows = async () => {
       setTableLoading(true)
@@ -128,17 +144,24 @@ const ICPoReceivePage: React.FC = () => {
         const res = await axios.get(`${BASE_URL}/ic/projects/${project.id}/pos`, {
           headers: authHeader,
           params: {
-            search: search || undefined,
-            receive_status: onlyCompleted ? 'completed' : 'pending',
+            search,
+            search_type: mode.toLowerCase(),
+            receive_status: mode === 'PO' && onlyCompleted ? 'completed' : 'pending',
             page,
             page_size: pageSize,
           },
         })
         const payload = res.data?.data ?? res.data
-        const list = Array.isArray(payload) ? payload : payload?.data ?? []
+        const raw = Array.isArray(payload) ? payload : payload?.data ?? []
+        const list: ICPoRow[] = Array.isArray(raw) ? raw : []
+        console.log('[ICPoReceivePage] DEBUG first raw row', list[0], 'keys:', list[0] && Object.keys(list[0]))
+        // Restrict matching to the selected mode's own field (backend `search` may cover both).
+        const field: 'po_no' | 'pr_no' = mode === 'PO' ? 'po_no' : 'pr_no'
+        const needle = search.toLowerCase()
+        const scoped = list.filter((r) => String(r[field] ?? '').toLowerCase().includes(needle))
         if (!cancelled) {
-          setRows(Array.isArray(list) ? list : [])
-          setTotal(payload?.total ?? (Array.isArray(list) ? list.length : 0))
+          setRows(scoped)
+          setTotal(scoped.length === list.length ? payload?.total ?? scoped.length : scoped.length)
         }
       } catch (err: any) {
         if (!cancelled) message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
@@ -151,11 +174,29 @@ const ICPoReceivePage: React.FC = () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, search, onlyCompleted, page, pageSize])
+  }, [project, mode, search, onlyCompleted, page, pageSize])
 
-  const handleSearchChange = (value: string | undefined) => {
-    setSearch(value)
+  const resetSelection = () => {
     setPage(1)
+    setSelectedRow(null)
+  }
+
+  const handleModeChange = (value: 'PO' | 'PR') => {
+    setMode(value)
+    setOnlyCompleted(false)
+    setPickedNo(undefined)
+    setSearchText('')
+    resetSelection()
+  }
+
+  const handlePickedChange = (value: string | undefined) => {
+    setPickedNo(value)
+    resetSelection()
+  }
+
+  const handleTextChange = (value: string) => {
+    setSearchText(value)
+    resetSelection()
   }
 
   const handleToggleChange = (checked: boolean) => {
@@ -163,15 +204,25 @@ const ICPoReceivePage: React.FC = () => {
     setPage(1)
   }
 
-  const handleRowClick = (record: ICPoRow) => {
-    setSelectedPoId(record.po_id)
+  const handleReceive = () => {
+    if (!selectedRow) return
+    setSelectedPoId(selectedRow.po_id)
     setModalOpen(true)
+  }
+
+  const handleReturn = () => {
+    if (!selectedRow) return
+    setSelectedPoId(selectedRow.po_id)
+    setReturnOpen(true)
   }
 
   const handleModalClose = () => {
     setModalOpen(false)
+    setReturnOpen(false)
     setSelectedPoId(null)
   }
+
+  const actionsDisabled = !selectedRow
 
   const columns = [
     {
@@ -189,7 +240,7 @@ const ICPoReceivePage: React.FC = () => {
       title: 'เลขที่ PO',
       dataIndex: 'po_no',
       key: 'po_no',
-      render: (value: string) => <span style={{ color: '#2563eb', fontWeight: 600 }}>{value}</span>,
+      render: (value: string | null | undefined) => value || '-',
     },
     {
       title: 'วันที่สร้าง PO',
@@ -240,50 +291,77 @@ const ICPoReceivePage: React.FC = () => {
         ]}
       />
       <Card style={cardStyle}>
-        <Space style={{ marginBottom: 16, flexWrap: 'wrap' }} size="middle">
-          <Select
-            allowClear
-            showSearch
-            placeholder="ค้นหาเลขที่ PR / PO"
-            value={search}
-            onChange={handleSearchChange}
-            style={{ width: 280 }}
-            optionFilterProp="label"
-            filterOption={(input, option) =>
-              (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-            }
-          >
-            <Select.OptGroup label="เลขที่ PR">
-              {prOptions.map((opt) => (
-                <Select.Option key={`pr-${opt.value}`} value={opt.value} label={opt.label}>
-                  {opt.label}
-                </Select.Option>
-              ))}
-            </Select.OptGroup>
-            <Select.OptGroup label="เลขที่ PO">
-              {poOptions.map((opt) => (
-                <Select.Option key={`po-${opt.value}`} value={opt.value} label={opt.label}>
-                  {opt.label}
-                </Select.Option>
-              ))}
-            </Select.OptGroup>
-          </Select>
-
-          <Space align="center">
-            <Switch checked={onlyCompleted} onChange={handleToggleChange} />
-            <Typography.Text style={{ color: '#374151' }}>แสดงเฉพาะรับครบแล้ว</Typography.Text>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <Space wrap size="middle">
+            <Select
+              value={mode}
+              onChange={handleModeChange}
+              style={{ width: 160 }}
+              options={[
+                { value: 'PO', label: 'ค้นหาจาก PO' },
+                { value: 'PR', label: 'ค้นหาจาก PR' },
+              ]}
+            />
+            <Select
+              allowClear
+              showSearch
+              placeholder={mode === 'PO' ? 'เลือกเลขที่ PO' : 'เลือกเลขที่ PR'}
+              value={pickedNo}
+              onChange={handlePickedChange}
+              options={mode === 'PO' ? poOptions : prOptions}
+              style={{ width: 240 }}
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+            <Input
+              allowClear
+              placeholder={mode === 'PO' ? 'ค้นหา PO' : 'ค้นหา PR'}
+              value={searchText}
+              onChange={(e) => handleTextChange(e.target.value)}
+              disabled={!!pickedNo}
+              style={{ width: 220 }}
+            />
+            {mode === 'PO' && (
+              <Space align="center">
+                <Switch checked={onlyCompleted} onChange={handleToggleChange} />
+                <Typography.Text style={{ color: '#374151' }}>แสดงเฉพาะรับครบแล้ว</Typography.Text>
+              </Space>
+            )}
           </Space>
-        </Space>
+          <Space>
+            <Button disabled={actionsDisabled} onClick={handleReceive}>
+              PO Receive
+            </Button>
+            <Button disabled={actionsDisabled} onClick={handleReturn}>
+              PO Return
+            </Button>
+          </Space>
+        </div>
 
+        {!search ? (
+          <Empty description="กรุณาเลือกหรือกรอกเลขที่ PO / PR เพื่อค้นหา" />
+        ) : (
         <Table
           rowKey="po_id"
           loading={tableLoading}
           columns={columns}
           dataSource={rows}
-          onRow={(record) => ({
-            onClick: () => handleRowClick(record),
-            style: { cursor: 'pointer' },
-          })}
+          rowSelection={{
+            type: 'radio',
+            columnWidth: 48,
+            selectedRowKeys: selectedRow ? [selectedRow.po_id] : [],
+            onChange: (_keys, selectedRows) => setSelectedRow(selectedRows[0] ?? null),
+          }}
           pagination={{
             current: page,
             pageSize,
@@ -296,9 +374,11 @@ const ICPoReceivePage: React.FC = () => {
           }}
           locale={{ emptyText: 'ไม่พบข้อมูล PO' }}
         />
+        )}
       </Card>
 
       <ICPoReceiveModal open={modalOpen} poId={selectedPoId} onClose={handleModalClose} />
+      <ICPoReturnModal open={returnOpen} poId={selectedPoId} onClose={handleModalClose} />
     </div>
   )
 }

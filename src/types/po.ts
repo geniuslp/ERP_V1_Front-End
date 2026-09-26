@@ -61,6 +61,14 @@ export interface POListItem {
   // COUNT of po_edit_log rows for this PO — 0 if never edited-and-resent for
   // re-approval, confirmed present on GET /po (list) as of this session.
   revision_round?: number
+  // Links this PO back to the PR(s) it was created from — confirmed present
+  // on GET /po (list) as of this session. Always an array (even for the
+  // common 0-or-1-item case) since nothing on the backend enforces a strict
+  // one-PO-to-one-PR relationship.
+  pr_nos?: string[]
+  // purchase_order.remarks — NOT confirmed present on GET /po (list) yet
+  // (only seen on GET /po/:id so far, see PODetail.remarks above).
+  remarks?: string | null
 }
 
 export interface POLine {

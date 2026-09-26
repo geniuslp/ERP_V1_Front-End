@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Modal,
   Tabs,
@@ -94,8 +94,8 @@ interface ICPoReceiveDocumentsListResponse {
 }
 
 interface FormValues {
-  tax_invoice_no: string
-  tax_invoice_date: Dayjs
+  tax_invoice_no?: string
+  tax_invoice_date?: Dayjs
   temp_delivery_no?: string
   temp_delivery_date?: Dayjs
   exchange_rate?: number
@@ -164,6 +164,14 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   // (selectedDocId) — either a just-created draft, an existing draft picked
   // from the list, or a received (closed) document.
   const [view, setView] = useState<'list' | 'detail'>('list')
+  // Which date field the user edited last — drives the estimated due date.
+  // Tab the next Tabs mount should open on (Tabs remounts when selectedDocId changes).
+  const initialTabRef = useRef<'document' | 'items'>('document')
+  // One-shot: consumed by the Tabs mount that follows a save, then reset.
+  useEffect(() => {
+    initialTabRef.current = 'document'
+  })
+  const [lastDueDateField, setLastDueDateField] = useState<'invoice' | 'temp' | null>(null)
 
   // PO-level context (po_no/supplier/project/job/currency/vat/credit days)
   // is the same regardless of which document is selected — fetched once per
@@ -416,8 +424,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       const res = await axios.post(
         `${BASE_URL}/ic/pos/${poId}/receive-document`,
         {
-          tax_invoice_no: values.tax_invoice_no,
-          tax_invoice_date: values.tax_invoice_date.format(DATE_FORMAT),
+          tax_invoice_no: values.tax_invoice_no || undefined,
+          tax_invoice_date: values.tax_invoice_date ? values.tax_invoice_date.format(DATE_FORMAT) : undefined,
           temp_delivery_no: values.temp_delivery_no || undefined,
           temp_delivery_date: values.temp_delivery_date ? values.temp_delivery_date.format(DATE_FORMAT) : undefined,
           exchange_rate: values.exchange_rate ?? undefined,
@@ -427,6 +435,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       )
       const created: ICPoReceiveDocument = res.data?.data ?? res.data
       message.success('บันทึกเอกสารสำเร็จ')
+      initialTabRef.current = 'items' // remount lands on "รายการสินค้า"
       setSelectedDoc(created)
       setSelectedDocId(created.id)
       setCreatingNew(false)
@@ -565,14 +574,27 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   const creditDisplay =
     context?.credit_days_from_supplier != null ? `${context.credit_days_from_supplier} วัน` : '-'
 
+  // Due date for a new document = (most recently edited of invoice date / temp delivery
+  // date) + credit days; falls back to the other field, then to today, when empty.
+  const invoiceDateWatch: Dayjs | undefined = Form.useWatch('tax_invoice_date', form)
+  const tempDateWatch: Dayjs | undefined = Form.useWatch('temp_delivery_date', form)
+  const dueBase: Dayjs | undefined =
+    lastDueDateField === 'temp'
+      ? tempDateWatch ?? invoiceDateWatch
+      : lastDueDateField === 'invoice'
+        ? invoiceDateWatch ?? tempDateWatch
+        : undefined
+
   const dueDateDisplay = selectedDoc
     ? (selectedDoc.due_date ? dayjs(selectedDoc.due_date).format(DATE_FORMAT) : '-')
     : (context?.credit_days_from_supplier != null
-        ? dayjs().add(context.credit_days_from_supplier, 'day').format(DATE_FORMAT)
+        ? (dueBase ?? dayjs()).add(context.credit_days_from_supplier, 'day').format(DATE_FORMAT)
         : '-')
 
   const dueDateExtra = !selectedDoc && context?.credit_days_from_supplier != null
-    ? 'ประมาณการจากวันนี้ — ระบบจะยืนยันวันที่จริงเมื่อบันทึกเอกสาร'
+    ? (dueBase
+        ? `คำนวณจาก${lastDueDateField === 'temp' ? 'วันที่ใบส่งของชั่วคราว' : 'วันที่ใบกำกับภาษี'}ที่กรอกล่าสุด — ระบบจะยืนยันวันที่จริงเมื่อบันทึกเอกสาร`
+        : 'ประมาณการจากวันนี้ — ระบบจะยืนยันวันที่จริงเมื่อบันทึกเอกสาร')
     : undefined
 
   const documentDetailTab = (
@@ -608,60 +630,53 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
             </Form.Item>
           </Col>
 
-          <Col span={12}>
-            <Form.Item
-              label="เลขที่ใบกำกับภาษี"
-              name="tax_invoice_no"
-              rules={headerReadOnly ? [] : [{ required: true, message: 'กรุณากรอกเลขที่ใบกำกับภาษี' }]}
-            >
+          {/* Row 3 */}
+          <Col lg={6} sm={12} xs={24}>
+            <Form.Item label="เลขที่ใบกำกับภาษี" name="tax_invoice_no">
               <Input placeholder="กรอกเลขที่ใบกำกับภาษี" />
             </Form.Item>
           </Col>
-
-          <Col span={8}>
-            <Form.Item
-              label="วันที่ใบกำกับภาษี"
-              name="tax_invoice_date"
-              rules={headerReadOnly ? [] : [{ required: true, message: 'กรุณาเลือกวันที่ใบกำกับภาษี' }]}
-            >
+          <Col lg={6} sm={12} xs={24}>
+            <Form.Item label="วันที่ใบกำกับภาษี" name="tax_invoice_date">
               <DatePicker
                 style={{ width: '100%' }}
                 format={DATE_FORMAT}
+                onChange={() => setLastDueDateField('invoice')}
               />
             </Form.Item>
           </Col>
-
-          <Col span={8}>
+          <Col lg={6} sm={12} xs={24}>
             <Form.Item label="ภาษีมูลค่าเพิ่ม">
               <Input value={vatDisplay} disabled readOnly />
             </Form.Item>
           </Col>
-
-          <Col span={8}>
-            <Form.Item label="เลขที่ใบส่งของชั่วคราว" name="temp_delivery_no">
-              <Input placeholder="กรอกเลขที่ใบส่งของชั่วคราว (ถ้ามี)" />
-            </Form.Item>
-          </Col>
-
-          <Col span={8}>
-            <Form.Item label="วันที่ใบส่งของชั่วคราว" name="temp_delivery_date">
-              <DatePicker style={{ width: '100%' }} format={DATE_FORMAT} />
-            </Form.Item>
-          </Col>
-
-          <Col span={8}>
-            <Form.Item label="เครดิต">
-              <Input value={creditDisplay} disabled readOnly />
-            </Form.Item>
-          </Col>
-
-          <Col span={8}>
+          <Col lg={6} sm={12} xs={24}>
             <Form.Item label="วันครบกำหนด" extra={dueDateExtra}>
               <Input value={dueDateDisplay} disabled readOnly />
             </Form.Item>
           </Col>
 
-          <Col span={8}>
+          {/* Row 4 */}
+          <Col lg={6} sm={12} xs={24}>
+            <Form.Item label="เลขที่ใบส่งของชั่วคราว" name="temp_delivery_no">
+              <Input placeholder="กรอกเลขที่ใบส่งของชั่วคราว (ถ้ามี)" />
+            </Form.Item>
+          </Col>
+          <Col lg={6} sm={12} xs={24}>
+            <Form.Item label="วันที่ใบส่งของชั่วคราว" name="temp_delivery_date">
+              <DatePicker
+                style={{ width: '100%' }}
+                format={DATE_FORMAT}
+                onChange={() => setLastDueDateField('temp')}
+              />
+            </Form.Item>
+          </Col>
+          <Col lg={6} sm={12} xs={24}>
+            <Form.Item label="เครดิต">
+              <Input value={creditDisplay} disabled readOnly />
+            </Form.Item>
+          </Col>
+          <Col lg={6} sm={12} xs={24}>
             <Form.Item label="สกุลเงิน">
               <Input value={context?.currency} disabled readOnly />
             </Form.Item>
@@ -996,7 +1011,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           selected document changes — switching documents, or moving between
           an existing document and the "create new" form, must never carry
           over a stale active tab or the previous document's lines. */}
-      <Tabs key={selectedDocId ?? 'new'} defaultActiveKey="document" items={tabItems} />
+      <Tabs key={selectedDocId ?? 'new'} defaultActiveKey={initialTabRef.current} items={tabItems} />
     </div>
   )
 
@@ -1006,7 +1021,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       open={open}
       onCancel={onClose}
       footer={null}
-      width={960}
+      width={1152}
       destroyOnHidden
       styles={{ body: { paddingTop: 8 } }}
     >
