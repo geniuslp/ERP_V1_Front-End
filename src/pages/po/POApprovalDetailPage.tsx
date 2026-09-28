@@ -439,7 +439,11 @@ const POApprovalDetailPage: React.FC = () => {
           column={3}
           labelStyle={{ fontWeight: 600, width: 140 }}
         >
-          <Descriptions.Item label="โครงการ">{po.project_name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="โครงการ">
+            {po.project_code || po.project_name
+              ? `${po.project_code ?? ''}${po.project_code && po.project_name ? ' ' : ''}${po.project_name ?? ''}`
+              : '-'}
+          </Descriptions.Item>
           <Descriptions.Item label="Job">
             {po.job_code ? (JOB_TYPES.find((jt) => jt.code === po.job_code)?.label ?? po.job_code) : '-'}
           </Descriptions.Item>

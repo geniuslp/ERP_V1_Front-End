@@ -129,6 +129,7 @@ const MemoCreateEditPage: React.FC = () => {
         note: raw.note ?? '',
         siteDeliveryDate: raw.site_delivery_date ? dayjs(raw.site_delivery_date).format('DD/MM/YYYY') : '',
         deliveryLocation: raw.delivery_location ?? '',
+        createdAt: raw.created_at ? dayjs(raw.created_at).format('DD/MM/YYYY') : '',
         approverName: raw.approver_name ?? '',
         status: raw.status,
         items: lines.map((l: any) => ({

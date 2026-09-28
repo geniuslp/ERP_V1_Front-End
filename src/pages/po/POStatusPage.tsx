@@ -203,15 +203,15 @@ const POStatusPage: React.FC = () => {
         width: projectColWidth,
         onResize: handleProjectColResize,
       }),
-      // project_name is nullable (LEFT JOIN) — fall back to project_code so
-      // the cell isn't blank when the join doesn't match.
+      // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
+      // a single space, no dash — the dash format is reserved for print pages only.
       render: (_: unknown, r) => {
-        const v = r.project_name || r.project_code || '-'
-        return (
+        const v = [r.project_code, r.project_name].filter(Boolean).join(' ')
+        return v ? (
           <Tooltip title={v}>
             <span>{v}</span>
           </Tooltip>
-        )
+        ) : '-'
       },
     },
     {

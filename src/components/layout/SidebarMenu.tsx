@@ -144,6 +144,11 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
         const children = menus.filter((m) => m.parent_id === top.id && m.is_active)
         if (children.length > 0) {
           const visibleChildren = children
+            // Frontend-only override: PR/PO "ตรวจสอบสถานะ" pages were consolidated
+            // into the history pages — hide these two menu entries regardless of
+            // the backend is_active/permission flags. The route/page files and
+            // their permissions are left untouched, only sidebar visibility.
+            .filter((c) => c.menu_code !== 'MENU_PR_STATUS' && c.menu_code !== 'MENU_PO_STATUS')
             .filter((c) => (isCreateMenu(c.menu_code) ? can(c.menu_code, 'write') : can(c.menu_code, 'read')))
             .sort((a, b) => a.order - b.order)
 

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin } from 'antd'
+import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin, Modal, DatePicker, message } from 'antd'
 import {
   SearchOutlined, DeleteOutlined, LinkOutlined, FileTextOutlined,
-  CalculatorOutlined, LeftOutlined, RightOutlined, CloseCircleFilled,
+  CalculatorOutlined, LeftOutlined, RightOutlined, CloseCircleFilled, HistoryOutlined,
 } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import axios from 'axios'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import type { Material } from '@/types'
@@ -14,6 +17,204 @@ import { calcDisc } from '@/utils/poCalc'
 import { formatItemLabel } from '@/utils/itemLabel'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+
+// Same local react-resizable pattern as POStatusPage.tsx / PRHistoryPage.tsx — no
+// shared component, so copied locally for this modal's table.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) {
+    return <th {...restProps} />
+  }
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            right: -5,
+            bottom: 0,
+            top: 0,
+            width: 10,
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
+interface PriceHistoryRow {
+  mat_code: string
+  mat_name: string
+  spec_name: string | null
+  supplier_name: string | null
+  po_date: string
+  unit_price: number
+  po_no: string
+}
+
+// GET /master/materials/:code/price-history — confirmed live backend endpoint
+// (page/limit params, PaginatedResponse shape, already sorted po_date DESC).
+const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void }> = ({ matCode, onClose }) => {
+  const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const [rows, setRows] = useState<PriceHistoryRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
+  const pageSize = 10
+
+  const rangePresets: { label: string; value: [dayjs.Dayjs, dayjs.Dayjs] }[] = [
+    { label: '3 เดือน', value: [dayjs().subtract(3, 'month'), dayjs()] },
+    { label: '6 เดือน', value: [dayjs().subtract(6, 'month'), dayjs()] },
+    { label: '1 ปี', value: [dayjs().subtract(1, 'year'), dayjs()] },
+  ]
+
+  const [matCodeColWidth, setMatCodeColWidth] = useState(144)
+  const [nameColWidth, setNameColWidth] = useState(288)
+  const [supplierColWidth, setSupplierColWidth] = useState(216)
+  const [dateColWidth, setDateColWidth] = useState(144)
+  const [priceColWidth, setPriceColWidth] = useState(144)
+  const handleMatCodeColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setMatCodeColWidth(data.size.width)
+  const handleNameColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setNameColWidth(data.size.width)
+  const handleSupplierColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setSupplierColWidth(data.size.width)
+  const handleDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setDateColWidth(data.size.width)
+  const handlePriceColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setPriceColWidth(data.size.width)
+
+  useEffect(() => {
+    if (!matCode) return
+    setPage(1)
+    setRange(null)
+  }, [matCode])
+
+  useEffect(() => {
+    if (!matCode) return
+    const fetchHistory = async () => {
+      setLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/materials/${matCode}/price-history`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: {
+            page,
+            limit: pageSize,
+            date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
+            date_to: range?.[1] ? range[1].format('YYYY-MM-DD') : undefined,
+          },
+        })
+        const body = res.data?.data ?? res.data
+        setRows(Array.isArray(body?.data) ? body.data : [])
+        setTotal(body?.total ?? 0)
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดราคาที่เคยซื้อไม่สำเร็จ')
+        setRows([])
+        setTotal(0)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchHistory()
+  }, [matCode, page, range, accessToken])
+
+  const handleRangeChange = (v: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) => {
+    setRange(v)
+    setPage(1)
+  }
+
+  return (
+    <Modal
+      title="ราคาที่เคยซื้อล่าสุด"
+      open={!!matCode}
+      onCancel={onClose}
+      footer={<Button onClick={onClose}>ปิด</Button>}
+      width={1056}
+      style={{ maxWidth: '95vw' }}
+      destroyOnClose
+    >
+      <div style={{ marginBottom: 12 }}>
+        <DatePicker.RangePicker
+          value={range as any}
+          onChange={(v) => handleRangeChange(v as any)}
+          format="DD/MM/YYYY"
+          placeholder={['วันเริ่ม', 'วันสิ้นสุด']}
+          allowClear
+          presets={rangePresets}
+        />
+      </div>
+      <Table
+        rowKey={(r: PriceHistoryRow) => `${r.po_no}-${r.po_date}`}
+        loading={loading}
+        dataSource={rows}
+        size="small"
+        components={{ header: { cell: ResizableTitle } }}
+        columns={[
+          {
+            title: 'รหัสวัสดุ',
+            dataIndex: 'mat_code',
+            width: matCodeColWidth,
+            onHeaderCell: () => ({ width: matCodeColWidth, onResize: handleMatCodeColResize }),
+          },
+          {
+            // Item name + SpecName on one line, single-space-joined, no dash —
+            // same display rule as PRPrint.tsx's ItemRow.
+            title: 'รายการ',
+            key: 'mat_name',
+            ellipsis: true,
+            width: nameColWidth,
+            onHeaderCell: () => ({ width: nameColWidth, onResize: handleNameColResize }),
+            render: (_: unknown, r: PriceHistoryRow) =>
+              r.spec_name ? `${r.mat_name} ${r.spec_name}` : r.mat_name,
+          },
+          {
+            title: 'ร้านค้า',
+            dataIndex: 'supplier_name',
+            width: supplierColWidth,
+            onHeaderCell: () => ({ width: supplierColWidth, onResize: handleSupplierColResize }),
+            render: (v: string | null) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+          },
+          {
+            title: 'วันที่',
+            dataIndex: 'po_date',
+            width: dateColWidth,
+            align: 'center' as const,
+            onHeaderCell: () => ({ width: dateColWidth, onResize: handleDateColResize }),
+            render: (v: string) => (v ? dayjs(v).format('DD/MM/YYYY') : '—'),
+          },
+          {
+            title: 'ราคา/หน่วย',
+            dataIndex: 'unit_price',
+            width: priceColWidth,
+            align: 'right' as const,
+            onHeaderCell: () => ({ width: priceColWidth, onResize: handlePriceColResize }),
+            render: (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+          },
+        ]}
+        pagination={{
+          current: page,
+          pageSize,
+          total,
+          showSizeChanger: false,
+          onChange: (p) => setPage(p),
+        }}
+        locale={{ emptyText: range ? 'ไม่พบประวัติการซื้อในช่วงเวลานี้' : 'ไม่พบประวัติการซื้อ' }}
+      />
+    </Modal>
+  )
+}
 
 interface POItemsTableProps {
   items: POLineItem[]
@@ -43,6 +244,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
   // key of the row whose Cost Code selection modal is open; null = closed
   const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
+  const [priceHistoryMatCode, setPriceHistoryMatCode] = useState<string | null>(null)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [stockMap, setStockMap] = useState<Record<string, number>>({})
   const [stockLoading, setStockLoading] = useState(false)
@@ -388,18 +590,28 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     {
       title: 'ราคา/หน่วย',
       dataIndex: 'unit_price',
-      width: 130,
+      width: 168,
       align: 'center' as const,
       render: (_: unknown, r: POLineItem) => (
-        <InputNumber
-          size="small"
-          min={0}
-          status={r.unit_price > 0 ? undefined : 'error'}
-          value={r.unit_price}
-          style={{ width: '100%' }}
-          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-          onChange={(v) => updateItem(r.key, 'unit_price', v ?? 0)}
-        />
+        <Space.Compact style={{ width: '100%' }}>
+          <InputNumber
+            size="small"
+            min={0}
+            status={r.unit_price > 0 ? undefined : 'error'}
+            value={r.unit_price}
+            style={{ width: '100%' }}
+            formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+            onChange={(v) => updateItem(r.key, 'unit_price', v ?? 0)}
+          />
+          <Tooltip title="ดูราคาที่เคยซื้อล่าสุด">
+            <Button
+              size="small"
+              icon={<HistoryOutlined />}
+              disabled={!r.mat_code}
+              onClick={() => setPriceHistoryMatCode(r.mat_code)}
+            />
+          </Tooltip>
+        </Space.Compact>
       ),
     },
     {
@@ -596,6 +808,8 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         }}
         jobTypeCode={jobTypeCode}
       />
+
+      <PriceHistoryModal matCode={priceHistoryMatCode} onClose={() => setPriceHistoryMatCode(null)} />
     </div>
   )
 }

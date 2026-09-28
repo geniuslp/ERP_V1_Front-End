@@ -321,6 +321,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       note: memo.note ?? '',
       siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',
       deliveryLocation: memo.deliveryLocation ?? '',
+      createdAt: memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '',
       approverName: memo.approverName ?? '',
       status: memo.status,
       items: memo.lines.map((l) => ({
@@ -422,7 +423,11 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
           <Descriptions.Item label="ผู้อนุมัติ">{memo?.approverName || '—'}</Descriptions.Item>
           <Descriptions.Item label="หน่วยงาน">{memo?.department || '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานที่ส่งของ">{memo?.deliveryLocation || '—'}</Descriptions.Item>
-          <Descriptions.Item label="โครงการ">{memo?.projectName || '—'}</Descriptions.Item>
+          <Descriptions.Item label="โครงการ">
+            {memo?.projectName
+              ? (projects.find((p) => p.value === memo.projectName)?.label.replace(' — ', ' ') ?? memo.projectName)
+              : '—'}
+          </Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {memo && <MemoStatusBadge status={memo.status} />}
           </Descriptions.Item>

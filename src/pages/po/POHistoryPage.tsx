@@ -1,21 +1,45 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, message, Tag, Typography, Tooltip } from 'antd'
-import { EyeOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Space, message, Tag, Typography, Tooltip } from 'antd'
+import { EyeOutlined, EditOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
+import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
+import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import type { POListItem } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 
+// Same convention as POStatusPage.tsx — edit is gated by the create page's
+// own menu code, not a history-specific one.
+const MENU_CODE = 'MENU_PO_CREATE'
 const { Text } = Typography
+
+// Row tint — order matters: the first matching rule wins when a PO could match
+// more than one (e.g. a PARTIALLY_RECEIVED PO that is also PENDING_REAPPROVAL).
+// No legend/label text on screen, background tint only, same approach as
+// MemoListPage.tsx / PRHistoryPage.tsx.
+const getRowStyle = (record: POListItem): React.CSSProperties => {
+  if (record.status_receive === 'PARTIALLY_RECEIVED') return { background: '#fff1f0' }
+  if (record.status === 'PENDING_APPROVAL' || record.status === 'PENDING_REAPPROVAL') {
+    return { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' }
+  }
+  if (record.status_receive === 'RECEIVED') return { background: '#f6ffed' }
+  return {}
+}
 
 const PROJECT_COLUMN_DEFAULT_WIDTH = 140
 const SUPPLIER_COLUMN_DEFAULT_WIDTH = 160
+const ACTION_COLUMN_DEFAULT_WIDTH = 220
+const PO_DATE_COLUMN_DEFAULT_WIDTH = 120
+const APPROVED_AT_COLUMN_DEFAULT_WIDTH = 150
+const EXPECTED_DATE_COLUMN_DEFAULT_WIDTH = 120
+const APPROVED_BY_COLUMN_DEFAULT_WIDTH = 140
 
 // Same react-resizable pattern as POStatusPage.tsx / PRStatusPage.tsx / PRHistoryPage.tsx —
 // only columns that pass width/onResize via onHeaderCell get a drag handle; every
@@ -78,6 +102,26 @@ const POHistoryPage: React.FC = () => {
   const handleSupplierColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setSupplierColWidth(data.size.width)
   }
+  const [actionColWidth, setActionColWidth] = useState(ACTION_COLUMN_DEFAULT_WIDTH)
+  const handleActionColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setActionColWidth(data.size.width)
+  }
+  const [poDateColWidth, setPoDateColWidth] = useState(PO_DATE_COLUMN_DEFAULT_WIDTH)
+  const handlePoDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setPoDateColWidth(data.size.width)
+  }
+  const [approvedAtColWidth, setApprovedAtColWidth] = useState(APPROVED_AT_COLUMN_DEFAULT_WIDTH)
+  const handleApprovedAtColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setApprovedAtColWidth(data.size.width)
+  }
+  const [expectedDateColWidth, setExpectedDateColWidth] = useState(EXPECTED_DATE_COLUMN_DEFAULT_WIDTH)
+  const handleExpectedDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setExpectedDateColWidth(data.size.width)
+  }
+  const [approvedByColWidth, setApprovedByColWidth] = useState(APPROVED_BY_COLUMN_DEFAULT_WIDTH)
+  const handleApprovedByColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setApprovedByColWidth(data.size.width)
+  }
 
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
@@ -134,8 +178,9 @@ const POHistoryPage: React.FC = () => {
       }),
     },
     {
+      // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
+      // a single space, no dash — the dash format is reserved for print pages only.
       title: 'โครงการ',
-      dataIndex: 'project_code',
       key: 'project_code',
       width: projectColWidth,
       ellipsis: true,
@@ -143,7 +188,14 @@ const POHistoryPage: React.FC = () => {
         width: projectColWidth,
         onResize: handleProjectColResize,
       }),
-      render: (v?: string) => v || '-',
+      render: (_: unknown, r) => {
+        const label = [r.project_code, r.project_name].filter(Boolean).join(' ')
+        return label ? (
+          <Tooltip title={label}>
+            <span>{label}</span>
+          </Tooltip>
+        ) : '-'
+      },
     },
     {
       // Confirmed against the live API response: GET /po (list) returns the
@@ -197,20 +249,52 @@ const POHistoryPage: React.FC = () => {
       },
     },
     {
-      title: 'วันที่สั่ง',
+      title: 'วันที่เปิด PO',
       dataIndex: 'po_date',
       key: 'po_date',
-      render: (v: string) => v?.slice(0, 10) ?? '-',
+      width: poDateColWidth,
+      onHeaderCell: () => ({
+        width: poDateColWidth,
+        onResize: handlePoDateColResize,
+      }),
+      render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '-',
     },
     {
-      title: 'กำหนดส่ง',
+      // approved_at — nullable ISO timestamp of the latest APPROVE action from
+      // approval_log (GET /po list, confirmed present). Date + time, not just date.
+      title: 'วันที่อนุมัติ PO',
+      dataIndex: 'approved_at',
+      key: 'approved_at',
+      width: approvedAtColWidth,
+      onHeaderCell: () => ({
+        width: approvedAtColWidth,
+        onResize: handleApprovedAtColResize,
+      }),
+      render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '—',
+    },
+    {
+      title: 'กำหนดส่งของ',
       dataIndex: 'expected_date',
       key: 'expected_date',
-      render: (v: string | null) => v?.slice(0, 10) ?? '-',
+      width: expectedDateColWidth,
+      onHeaderCell: () => ({
+        width: expectedDateColWidth,
+        onResize: handleExpectedDateColResize,
+      }),
+      render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY') : '-',
     },
-    // NOTE: GET /po's response (POListItem) has no closed/completed-date field —
-    // same gap flagged for PRHistoryPage's "วันที่ปิด" column. Not invented here;
-    // add this column once the backend actually returns such a field.
+    {
+      title: 'ผู้อนุมัติ',
+      dataIndex: 'approved_by_name',
+      key: 'approved_by_name',
+      width: approvedByColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: approvedByColWidth,
+        onResize: handleApprovedByColResize,
+      }),
+      render: (v: string | null) => v || '—',
+    },
     {
       title: 'หมายเหตุ PO',
       dataIndex: 'remarks',
@@ -224,17 +308,45 @@ const POHistoryPage: React.FC = () => {
       ),
     },
     {
-      title: '',
+      title: 'จัดการ',
       key: 'action',
+      width: actionColWidth,
+      onHeaderCell: () => ({
+        width: actionColWidth,
+        onResize: handleActionColResize,
+      }),
       render: (_: unknown, record) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          size="small"
-          onClick={() => navigate(`/po/approval/${record.po_id}`)}
-        >
-          ดู
-        </Button>
+        <Space size={4}>
+          <Button
+            type="link"
+            icon={<EyeOutlined />}
+            size="small"
+            onClick={() => navigate(`/po/approval/${record.po_id}`)}
+          >
+            ดู
+          </Button>
+          {(record.status === 'DRAFT' || record.status === 'PENDING_APPROVAL') && (
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
+              type="link"
+              icon={<EditOutlined />}
+              size="small"
+              onClick={() => navigate(`/po/${record.po_id}/edit`)}
+            >
+              แก้ไข
+            </PermissionButton>
+          )}
+          {/* Same reasoning as POStatusPage.tsx — record.can_edit_approved is
+              never actually set by GET /po (list), so check status + the
+              1-year window directly off record.created_at instead. */}
+          {(record.status === 'APPROVED' || record.status === 'PENDING_REAPPROVAL') &&
+            (record.created_at
+              ? Date.now() - new Date(record.created_at).getTime() < 365 * 24 * 60 * 60 * 1000
+              : false) && (
+              <EditApprovedButton poId={record.po_id} poNo={record.po_no} menuCode={MENU_CODE} size="small" />
+            )}
+        </Space>
       ),
     },
   ]
@@ -253,8 +365,9 @@ const POHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
+          onRow={(record) => ({ style: getRowStyle(record) })}
           size="small"
-          scroll={{ x: 1700 }}
+          scroll={{ x: 2200 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

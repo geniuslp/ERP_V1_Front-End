@@ -350,11 +350,11 @@ const POInfoBox = ({data}:{data:POData}) => (
       {data.supplier.address2&&<div style={{paddingLeft:52}}>{data.supplier.address2}</div>}
       {data.supplier.address3&&<div style={{paddingLeft:52}}>{data.supplier.address3}</div>}
       <div><b>Term of Payment :</b>&nbsp;{data.supplier.termOfPayment}</div>
-      <div><b>พนักงานขาย :</b>&nbsp;{data.supplier.salesPerson || '-'}&nbsp;&nbsp;<b>เบอร์ติดต่อ :</b>&nbsp;{data.supplier.contactPhone || '-'}</div>
+      <div><b>Contact :</b>&nbsp;{data.supplier.salesPerson || '-'}&nbsp;&nbsp;<b>Tel. :</b>&nbsp;{data.supplier.contactPhone || '-'}</div>
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
       <div style={{display:'flex',gap:8}}>
-        <span style={{fontSize:'14pt',fontWeight:700}}><b>Po No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
+        <span style={{fontSize:'14pt',fontWeight:700}}><b>PO No :</b>&nbsp;{formatPoNoWithRevision(data.poNo, data.revisionRound)}</span>
       </div>
       <div><b>PR No. :</b>&nbsp;{data.prNo}</div>
       <div><b>Quotation No. :</b>&nbsp;{data.quotationNo}</div>

@@ -1,19 +1,40 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Tooltip } from 'antd'
+import { Card, Table, Tag, message, Tooltip, Space, Button } from 'antd'
+import { EyeOutlined, EditOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
+import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-import { JOB_TYPES } from '@/constants/jobTypes'
+
+// Same convention as PRStatusPage.tsx's edit button — edit is gated by the
+// create page's own menu code, not a history-specific one.
+const MENU_CODE = 'MENU_PR_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-const PROJECT_COLUMN_DEFAULT_WIDTH = 240
-const JOB_COLUMN_DEFAULT_WIDTH = 120
+// Row tint by status — STOCK_CHECK (pending-equivalent), PARTIALLY_FILLED (partial),
+// and COMPLETED/FULFILLED (complete) get tinted. DRAFT/CANCELLED are left plain.
+const ROW_TINT: Record<string, React.CSSProperties> = {
+  PARTIALLY_FILLED: { background: '#fff1f0' },
+  STOCK_CHECK:       { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' },
+  COMPLETED:         { background: '#f6ffed' },
+  FULFILLED:         { background: '#f6ffed' },
+}
+const getRowStyle = (status?: string): React.CSSProperties => ROW_TINT[status ?? ''] ?? {}
+
+const PR_NO_COLUMN_DEFAULT_WIDTH = 110
+const MEMO_COLUMN_DEFAULT_WIDTH = 100
+const PROJECT_COLUMN_DEFAULT_WIDTH = 320
+const JOB_COLUMN_DEFAULT_WIDTH = 80
+const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
+const STATUS_COLUMN_DEFAULT_WIDTH = 130
 const REMARKS_COLUMN_DEFAULT_WIDTH = 220
+const CREATED_AT_COLUMN_DEFAULT_WIDTH = 120
+const ACTION_COLUMN_DEFAULT_WIDTH = 160
 
 // Same react-resizable pattern as POStatusPage.tsx / PRStatusPage.tsx — only
 // columns that pass width/onResize via onHeaderCell get a drag handle; every
@@ -81,6 +102,10 @@ interface PRItem {
   jobCode: string | null
   memoId: number | string | null
   memoNo: string | null
+  // GET /pr's has_active_po_link — same field/meaning as PRStatusPage.tsx's
+  // PRItem.hasActivePoLink; mirrors the backend's PUT /pr/:id guard so the
+  // edit button never appears when the save would just be rejected.
+  hasActivePoLink: boolean
 }
 
 const PRHistoryPage: React.FC = () => {
@@ -94,23 +119,49 @@ const PRHistoryPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
 
-  // Resizable widths for "โครงการ" / "Job" / "หมายเหตุ" — same pattern as
-  // POStatusPage.tsx / PRStatusPage.tsx, not persisted (resets on refresh).
+  // Resizable widths — all columns, same pattern as POStatusPage.tsx / PRStatusPage.tsx,
+  // not persisted (resets on refresh).
+  const [prNoColWidth, setPrNoColWidth] = useState(PR_NO_COLUMN_DEFAULT_WIDTH)
+  const [memoColWidth, setMemoColWidth] = useState(MEMO_COLUMN_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
   const [jobColWidth, setJobColWidth] = useState(JOB_COLUMN_DEFAULT_WIDTH)
+  const [requestedByColWidth, setRequestedByColWidth] = useState(REQUESTED_BY_COLUMN_DEFAULT_WIDTH)
+  const [statusColWidth, setStatusColWidth] = useState(STATUS_COLUMN_DEFAULT_WIDTH)
   const [remarksColWidth, setRemarksColWidth] = useState(REMARKS_COLUMN_DEFAULT_WIDTH)
+  const [createdAtColWidth, setCreatedAtColWidth] = useState(CREATED_AT_COLUMN_DEFAULT_WIDTH)
+  const handlePrNoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setPrNoColWidth(data.size.width)
+  }
+  const handleMemoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setMemoColWidth(data.size.width)
+  }
   const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setProjectColWidth(data.size.width)
   }
   const handleJobColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setJobColWidth(data.size.width)
   }
+  const handleRequestedByColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setRequestedByColWidth(data.size.width)
+  }
+  const handleStatusColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setStatusColWidth(data.size.width)
+  }
   const handleRemarksColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setRemarksColWidth(data.size.width)
   }
+  const handleCreatedAtColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setCreatedAtColWidth(data.size.width)
+  }
+  const [actionColWidth, setActionColWidth] = useState(ACTION_COLUMN_DEFAULT_WIDTH)
+  const handleActionColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setActionColWidth(data.size.width)
+  }
 
   // Same master/projects lookup used elsewhere (e.g. PRDetailPage.tsx, Memo pages)
-  // to resolve a project_code into "code — full name" — GET /pr only returns the raw code.
+  // to resolve a project_code into "code full name" — GET /pr only returns the raw code.
+  // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
+  // a single space, no dash — the dash format is reserved for print pages only.
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -124,7 +175,7 @@ const PRHistoryPage: React.FC = () => {
         setProjects(list.map((p: any) => ({
           value: p.project_code,
           label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
+            ? [p.project_code, p.project_name ?? p.name].filter(Boolean).join(' ')
             : (p.project_name ?? p.name ?? String(p.id)),
         })))
       } catch {
@@ -156,6 +207,7 @@ const PRHistoryPage: React.FC = () => {
         jobCode:      r.job_code       ?? null,
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
+        hasActivePoLink: r.has_active_po_link ?? false,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -172,6 +224,11 @@ const PRHistoryPage: React.FC = () => {
       title: 'เลขที่ PR',
       dataIndex: 'prNo',
       key: 'prNo',
+      width: prNoColWidth,
+      onHeaderCell: () => ({
+        width: prNoColWidth,
+        onResize: handlePrNoColResize,
+      }),
       render: (v: string, record: PRItem) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/pr/${record.id}`)}>
           {v}
@@ -181,6 +238,11 @@ const PRHistoryPage: React.FC = () => {
     {
       title: 'Ref. MEMO',
       key: 'memo',
+      width: memoColWidth,
+      onHeaderCell: () => ({
+        width: memoColWidth,
+        onResize: handleMemoColResize,
+      }),
       render: (_: unknown, record: PRItem) =>
         record.memoNo ? (
           <a
@@ -222,12 +284,36 @@ const PRHistoryPage: React.FC = () => {
         width: jobColWidth,
         onResize: handleJobColResize,
       }),
-      render: (v: string | null) => (v ? (JOB_TYPES.find((jt) => jt.code === v)?.label ?? v) : '—'),
+      align: 'center' as const,
+      // Short code only (e.g. "MP"), not the full "CODE - Name" label — same
+      // display pattern as POStatusPage.tsx's Job column.
+      render: (v: string | null) => {
+        if (!v) return <span style={{ color: '#9ca3af' }}>—</span>
+        const code = v.split(' - ')[0].trim()
+        return <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>{code}</Tag>
+      },
+    },
+    {
+      title: 'ผู้ขอซื้อ',
+      dataIndex: 'requestedBy',
+      key: 'requestedBy',
+      width: requestedByColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: requestedByColWidth,
+        onResize: handleRequestedByColResize,
+      }),
+      render: (v: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
+      width: statusColWidth,
+      onHeaderCell: () => ({
+        width: statusColWidth,
+        onResize: handleStatusColResize,
+      }),
       render: (v: string) => {
         const cfg = statusConfig[v] ?? { color: 'default', label: v }
         return <Tag color={cfg.color}>{cfg.label}</Tag>
@@ -250,7 +336,43 @@ const PRHistoryPage: React.FC = () => {
       dataIndex: 'prDate',
       key: 'prDate',
       align: 'center' as const,
+      width: createdAtColWidth,
+      onHeaderCell: () => ({
+        width: createdAtColWidth,
+        onResize: handleCreatedAtColResize,
+      }),
       render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
+    },
+    {
+      title: 'จัดการ',
+      key: 'action',
+      width: actionColWidth,
+      onHeaderCell: () => ({
+        width: actionColWidth,
+        onResize: handleActionColResize,
+      }),
+      render: (_: any, record: PRItem) => (
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/pr/${record.id}`)}
+          />
+          {record.status === 'DRAFT' && !record.hasActivePoLink && (
+            <PermissionButton
+              menuCode={MENU_CODE}
+              action="edit"
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => navigate(`/pr/${record.id}/edit`)}
+            >
+              แก้ไข
+            </PermissionButton>
+          )}
+        </Space>
+      ),
     },
   ]
 
@@ -268,8 +390,9 @@ const PRHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
+          onRow={(record) => ({ style: getRowStyle(record.status) })}
           size="small"
-          scroll={{ x: 1300 }}
+          scroll={{ x: 1460 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

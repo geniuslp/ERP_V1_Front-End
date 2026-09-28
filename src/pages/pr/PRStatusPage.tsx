@@ -249,14 +249,17 @@ const PRStatusPage: React.FC = () => {
         width: projectColWidth,
         onResize: handleProjectColResize,
       }),
-      render: (v: string | null, record: PRItem) =>
-        v ? (
-          <Tooltip title={record.projectName || v}>
-            <span>{record.projectName || v}</span>
+      // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
+      // a single space, no dash — the dash format is reserved for print pages only.
+      render: (v: string | null, record: PRItem) => {
+        if (!v) return <span style={{ color: '#9ca3af' }}>—</span>
+        const label = [v, record.projectName].filter(Boolean).join(' ')
+        return (
+          <Tooltip title={label}>
+            <span>{label}</span>
           </Tooltip>
-        ) : (
-          <span style={{ color: '#9ca3af' }}>—</span>
-        ),
+        )
+      },
     },
     {
       // Renamed from "วันที่" — must read the actual delivery/required

@@ -194,6 +194,8 @@ export interface Memo {
   attachments?: MemoAttachment[]
   createdAt: string
   updatedAt: string
+  // Nullable — set once the memo's approval_log has a latest APPROVE action.
+  approvedAt?: string | null
 }
 
 export interface MemoFormValues {

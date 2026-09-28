@@ -228,7 +228,9 @@ const PRDetailPage: React.FC = () => {
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
 
   // Same master/projects lookup used elsewhere (e.g. Memo pages) to resolve a
-  // project_code into "code — full name" — GET /pr/:id only returns the raw code.
+  // project_code into "code full name" — GET /pr/:id only returns the raw code.
+  // Space-separated (not dash) — this on-screen detail field uses a different
+  // format than the print pages, which keep their own "code — name" dash style.
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -242,7 +244,7 @@ const PRDetailPage: React.FC = () => {
         setProjects(list.map((p: any) => ({
           value: p.project_code,
           label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
+            ? `${p.project_code} ${p.project_name ?? p.name ?? ''}`
             : (p.project_name ?? p.name ?? String(p.id)),
         })))
       } catch {

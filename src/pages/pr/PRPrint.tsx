@@ -147,19 +147,19 @@ const AUTH_COLS = [
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
-    <td /><td /><td /><td /><td /><td />
+    <td /><td /><td /><td /><td />
   </tr>
 )
 
 const TABLE_COLS = (
   <colgroup>
     <col style={{ width: '11mm' }} /><col style={{ width: '28mm' }} />
-    <col /><col style={{ width: '18mm' }} /><col style={{ width: '16mm' }} /><col style={{ width: '30mm' }} />
+    <col /><col style={{ width: '18mm' }} /><col style={{ width: '16mm' }} />
   </colgroup>
 )
 const TABLE_HEAD = (
   <thead><tr>
-    {['ลำดับ', 'Cost Code', 'รายการ', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
+    {['ลำดับ', 'Cost Code', 'รายการ', 'จำนวน', 'หน่วย'].map((h) => <th key={h}>{h}</th>)}
   </tr></thead>
 )
 
@@ -199,13 +199,13 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
 
 const PRInfoBox = ({ data }: { data: PRData }) => (
   <div className="pr-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
-    <div><b>Project / Dept :</b>&nbsp;{data.projectDept}</div>
-    <div><b>Date Doc. :</b>&nbsp;{data.prDate}</div>
+    <div><b>โครงการ :</b>&nbsp;{data.projectDept}</div>
+    <div><b>วันที่ :</b>&nbsp;{data.prDate}</div>
     <div><b>ประเภทการซื้อ :</b>&nbsp;{ORDER_TYPE_LABEL[data.orderType] ?? ''}</div>
-    <div><b>Delivery Date :</b>&nbsp;{data.deliveryDate}</div>
-    <div><b>Delivery To :</b>&nbsp;{data.deliveryTo}</div>
+    <div><b>กำหนดส่งของ :</b>&nbsp;{data.deliveryDate}</div>
+    <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryTo}</div>
     <div style={{ display: 'flex', gap: 4 }}>
-      <b style={{ flexShrink: 0 }}>หมายเหตุ / Remark :</b>
+      <b style={{ flexShrink: 0 }}>หมายเหตุ :</b>
       <span>
         {(data.remark || '').split('\n').map((l, i) => <div key={i}>{l}</div>)}
       </span>
@@ -237,10 +237,12 @@ const ItemRow = ({ row }: { row: PRItem }) => (
     <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeForPrint(row.costCode)}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {cleanItemName(row.desc)}{row.spec ? ` ${row.spec}` : ''}
+      {row.remark && (
+        <div style={{ fontSize: '10.5pt', color: '#333' }}>{row.remark}</div>
+      )}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>
-    <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{row.remark}</td>
   </tr>
 )
 
@@ -334,7 +336,7 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
             <thead ref={refThead}>{TABLE_HEAD.props.children}</thead>
             <tbody><tr ref={refRow}>
               <td>1</td><td>CC-001</td><td>Sample desc</td>
-              <td>10</td><td>เส้น</td><td>—</td>
+              <td>10</td><td>เส้น</td>
             </tr></tbody>
           </table>
           <div ref={refFooter}><PRFooter data={data} /></div>

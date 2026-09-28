@@ -31,6 +31,7 @@ export interface MemoData {
   // own creation date) the same way PR's requiredDate is distinct from prDate.
   siteDeliveryDate: string
   deliveryLocation: string // memo.delivery_location
+  createdAt: string        // memo.created_at — document creation date, shown under both signatures
   approverName: string     // memo.approver_name — single signature line only, see MemoFooter comment
   // memo.status — drives the "DRAFT" print watermark only, same as PRPrint.
   status?: string
@@ -43,7 +44,7 @@ export const MOCK_DATA: MemoData = {
   memoNo: 'MEMO6906-0001', title: 'ขออนุมัติจัดซื้อวัสดุสำหรับงาน Zone B',
   department: 'ฝ่ายวิศวกรรม', projectName: 'GNS-033', requestedBy: 'สมชาย ใจดี',
   note: 'เร่งด่วนสำหรับงานหน้างาน', siteDeliveryDate: '25/06/2569',
-  deliveryLocation: 'โรงงานนครปฐม', approverName: 'สมหญิง รักงาน',
+  deliveryLocation: 'โรงงานนครปฐม', createdAt: '24/09/2569', approverName: 'สมหญิง รักงาน',
   items: [
     { no: '1', desc: 'Equal Angles Steel (เหล็กฉาก) 1-1/2"×1-1/2"×3mm×6M.', qty: 40, unit: 'เส้น', remark: '' },
     { no: '2', desc: 'Equal Angles Steel (เหล็กฉาก) 2"×2"×3mm×6M.', qty: 10, unit: 'เส้น', remark: 'Zone A อาคาร 2' },
@@ -112,7 +113,7 @@ const CSS = `
   .auth-body{display:flex;flex-direction:column;align-items:center;justify-content:center;
     font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;text-align:center;padding:10px 3px 2px 3px;height:6mm;}
   .auth-head{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
-    padding:2px 4px;font-family:'Cordia New',sans-serif;font-size:12pt;border-top:none;border-bottom:1px solid #000;}
+    padding:2px 4px;font-family:'Cordia New',sans-serif;font-size:12pt;border-top:none;}
   .auth-date{text-align:center;font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;padding:1px 4px;}
 `
 
@@ -126,19 +127,19 @@ const AUTH_COLS: { label: string; width: string; key: 'requestedBy' | 'approverN
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
-    <td /><td /><td /><td /><td />
+    <td /><td /><td /><td />
   </tr>
 )
 
 const TABLE_COLS = (
   <colgroup>
     <col style={{ width: '11mm' }} />
-    <col /><col style={{ width: '18mm' }} /><col style={{ width: '16mm' }} /><col style={{ width: '30mm' }} />
+    <col /><col style={{ width: '18mm' }} /><col style={{ width: '16mm' }} />
   </colgroup>
 )
 const TABLE_HEAD = (
   <thead><tr>
-    {['No', 'รายละเอียด', 'จำนวน', 'หน่วย', 'หมายเหตุ'].map((h) => <th key={h}>{h}</th>)}
+    {['ลำดับ', 'รายละเอียด', 'จำนวน', 'หน่วย'].map((h) => <th key={h}>{h}</th>)}
   </tr></thead>
 )
 
@@ -182,7 +183,7 @@ const MemoInfoBox = ({ data }: { data: MemoData }) => (
     <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryLocation}</div>
     <div><b>หน่วยงาน :</b>&nbsp;{data.department}</div>
     <div style={{ display: 'flex', gap: 4 }}>
-      <b style={{ flexShrink: 0 }}>หมายเหตุ / Remark :</b>
+      <b style={{ flexShrink: 0 }}>หมายเหตุ :</b>
       <span>
         {(data.note || '').split('\n').map((l, i) => <div key={i}>{l}</div>)}
       </span>
@@ -196,10 +197,12 @@ const ItemRow = ({ row }: { row: MemoItem }) => (
     <td style={{ textAlign: 'center' }}>{row.no}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {row.desc}
+      {row.remark && (
+        <div style={{ fontSize: '10.5pt', color: '#333' }}>{row.remark}</div>
+      )}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>
-    <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{row.remark}</td>
   </tr>
 )
 
@@ -213,6 +216,7 @@ const MemoFooter = ({ data }: { data: MemoData }) => (
             <div className="auth-body">
               <div style={{ fontWeight: 600 }}>{col.label}</div>
               <div>{data[col.key]}</div>
+              <div>{data.createdAt ? `วันที่ ${data.createdAt}` : ''}</div>
             </div>
             <div className="auth-date">(...............................)</div>
           </div>
@@ -294,7 +298,7 @@ const MemoPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
             <thead ref={refThead}>{TABLE_HEAD.props.children}</thead>
             <tbody><tr ref={refRow}>
               <td>1</td><td>Sample desc</td>
-              <td>10</td><td>เส้น</td><td>—</td>
+              <td>10</td><td>เส้น</td>
             </tr></tbody>
           </table>
           <div ref={refFooter}><MemoFooter data={data} /></div>

@@ -69,6 +69,10 @@ export interface POListItem {
   // purchase_order.remarks — NOT confirmed present on GET /po (list) yet
   // (only seen on GET /po/:id so far, see PODetail.remarks above).
   remarks?: string | null
+  // Confirmed present on GET /po (list) — latest APPROVE action from
+  // approval_log, nullable (never approved yet, or approval isn't logged there).
+  approved_at?: string | null
+  approved_by_name?: string | null
 }
 
 export interface POLine {

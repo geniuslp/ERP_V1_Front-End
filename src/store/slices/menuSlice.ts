@@ -11,7 +11,7 @@ const defaultMenus: MenuConfig[] = [
   { id: 'dashboard', key: 'dashboard', label: 'Dashboard', icon: 'DashboardOutlined', path: '/', parentId: null, order: 0, isActive: true },
   { id: 'pr', key: 'pr', label: 'ใบขอซื้อ (PR)', icon: 'FileTextOutlined', parentId: null, order: 2, isActive: true, children: [
     { id: 'pr-create', key: 'pr-create', label: 'สร้างใบขอซื้อ', path: '/pr/create', parentId: 'pr', order: 0, isActive: true },
-    { id: 'pr-status', key: 'pr-status', label: 'ตรวจสอบสถานะ', path: '/pr/status', parentId: 'pr', order: 1, isActive: true },
+    { id: 'pr-status', key: 'pr-status', label: 'ตรวจสอบสถานะ', path: '/pr/status', parentId: 'pr', order: 1, isActive: false },
     { id: 'pr-history', key: 'pr-history', label: 'ประวัติใบขอซื้อ', path: '/pr/history', parentId: 'pr', order: 2, isActive: true },
   ]},
   { id: 'memo', key: 'memo', label: 'ใบบันทึกขอซื้อ (Memo)', icon: 'FileTextOutlined', parentId: null, order: 1, isActive: true, children: [
@@ -21,7 +21,7 @@ const defaultMenus: MenuConfig[] = [
   ]},
   { id: 'po', key: 'po', label: 'ใบสั่งซื้อ (PO)', icon: 'ShoppingCartOutlined', parentId: null, order: 3, isActive: true, children: [
     { id: 'po-create', key: 'po-create', label: 'สร้างใบสั่งซื้อ', path: '/po/create', parentId: 'po', order: 0, isActive: true },
-    { id: 'po-status', key: 'po-status', label: 'ตรวจสอบสถานะ', path: '/po/status', parentId: 'po', order: 1, isActive: true },
+    { id: 'po-status', key: 'po-status', label: 'ตรวจสอบสถานะ', path: '/po/status', parentId: 'po', order: 1, isActive: false },
     { id: 'po-history', key: 'po-history', label: 'ประวัติใบสั่งซื้อ', path: '/po/history', parentId: 'po', order: 2, isActive: true },
     { id: 'po-approval', key: 'po-approval', label: 'อนุมัติ PO', path: '/po/approval', parentId: 'po', order: 3, isActive: true },
     { id: 'po-line-items', key: 'po-line-items', label: 'รายการ PO', path: '/po/line-items', parentId: 'po', order: 4, isActive: true },

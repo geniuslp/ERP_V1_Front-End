@@ -10,7 +10,6 @@ import dayjs from 'dayjs'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
-import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 import type { Memo, MemoStatus } from '@/types'
@@ -23,9 +22,24 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
+// Row tint by status — only the 3 statuses below get a tint; DRAFT/CANCELLED are left
+// plain. "Rejected" also covers a would-be "partial" bucket since Memo has no such
+// status in the real DB enum (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/CANCELLED only).
+const ROW_TINT: Record<string, React.CSSProperties> = {
+  PENDING_APPROVAL: { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' },
+  APPROVED:         { background: '#f6ffed' },
+  REJECTED:         { background: '#fff1f0' },
+}
+const getRowStyle = (status?: string): React.CSSProperties => ROW_TINT[status ?? ''] ?? {}
+
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
 const TITLE_COLUMN_DEFAULT_WIDTH = 280
 const PROJECT_COLUMN_DEFAULT_WIDTH = 240
+const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
+const APPROVER_COLUMN_DEFAULT_WIDTH = 140
+const APPROVED_AT_COLUMN_DEFAULT_WIDTH = 150
+const CREATED_AT_COLUMN_DEFAULT_WIDTH = 120
+const ACTIONS_COLUMN_DEFAULT_WIDTH = 140
 
 // Same react-resizable pattern as POStatusPage.tsx / PRStatusPage.tsx — only
 // columns that pass width/onResize via onHeaderCell get a drag handle; every
@@ -75,11 +89,13 @@ const mapMemo = (m: any): Memo => ({
   title:        m.title           ?? '',
   requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
   approverName: m.approver_name     ?? m.approverName ?? undefined,
-  projectName:  m.project_name    ?? m.projectName    ?? m.project_code ?? undefined,
+  projectCode:  m.project_code    ?? m.projectCode    ?? undefined,
+  projectName:  m.project_name    ?? m.projectName    ?? undefined,
   supplierName: m.supplier_code   ?? m.supplier_name ?? m.supplierName  ?? undefined,
   status:       m.status          ?? 'DRAFT',
   createdAt:    m.created_at      ?? m.createdAt     ?? '',
   updatedAt:    m.updated_at      ?? m.updatedAt     ?? '',
+  approvedAt:   m.approved_at     ?? m.approvedAt    ?? null,
 })
 
 const MemoListPage: React.FC = () => {
@@ -96,6 +112,11 @@ const MemoListPage: React.FC = () => {
   const [memoNoColWidth, setMemoNoColWidth] = useState(MEMO_NO_COLUMN_DEFAULT_WIDTH)
   const [titleColWidth, setTitleColWidth] = useState(TITLE_COLUMN_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
+  const [requestedByColWidth, setRequestedByColWidth] = useState(REQUESTED_BY_COLUMN_DEFAULT_WIDTH)
+  const [approverColWidth, setApproverColWidth] = useState(APPROVER_COLUMN_DEFAULT_WIDTH)
+  const [approvedAtColWidth, setApprovedAtColWidth] = useState(APPROVED_AT_COLUMN_DEFAULT_WIDTH)
+  const [createdAtColWidth, setCreatedAtColWidth] = useState(CREATED_AT_COLUMN_DEFAULT_WIDTH)
+  const [actionsColWidth, setActionsColWidth] = useState(ACTIONS_COLUMN_DEFAULT_WIDTH)
   const handleMemoNoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setMemoNoColWidth(data.size.width)
   }
@@ -104,6 +125,21 @@ const MemoListPage: React.FC = () => {
   }
   const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setProjectColWidth(data.size.width)
+  }
+  const handleRequestedByColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setRequestedByColWidth(data.size.width)
+  }
+  const handleApproverColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setApproverColWidth(data.size.width)
+  }
+  const handleApprovedAtColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setApprovedAtColWidth(data.size.width)
+  }
+  const handleCreatedAtColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setCreatedAtColWidth(data.size.width)
+  }
+  const handleActionsColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setActionsColWidth(data.size.width)
   }
 
   const fetchData = async () => {
@@ -195,7 +231,6 @@ const MemoListPage: React.FC = () => {
     },
     {
       title: 'โครงการ',
-      dataIndex: 'projectName',
       key: 'projectName',
       width: projectColWidth,
       ellipsis: true,
@@ -203,34 +238,64 @@ const MemoListPage: React.FC = () => {
         width: projectColWidth,
         onResize: handleProjectColResize,
       }),
-      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
+      // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
+      // a single space, no dash — the dash format is reserved for print pages only.
+      render: (_: unknown, record: Memo) => {
+        const label = [record.projectCode, record.projectName].filter(Boolean).join(' ')
+        return label || <span style={{ color: '#9ca3af' }}>—</span>
+      },
     },
     {
       title: 'ผู้สร้าง',
       dataIndex: 'requestedBy',
       key: 'requestedBy',
+      width: requestedByColWidth,
+      onHeaderCell: () => ({
+        width: requestedByColWidth,
+        onResize: handleRequestedByColResize,
+      }),
     },
     {
       title: 'ผู้อนุมัติ',
       dataIndex: 'approverName',
       key: 'approverName',
+      width: approverColWidth,
+      onHeaderCell: () => ({
+        width: approverColWidth,
+        onResize: handleApproverColResize,
+      }),
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      render: (s: MemoStatus) => <MemoStatusBadge status={s} />,
+      title: 'วันที่อนุมัติ',
+      dataIndex: 'approvedAt',
+      key: 'approvedAt',
+      width: approvedAtColWidth,
+      onHeaderCell: () => ({
+        width: approvedAtColWidth,
+        onResize: handleApprovedAtColResize,
+      }),
+      render: (val?: string | null) => val ? dayjs(val).format('DD/MM/YYYY HH:mm') : '—',
     },
     {
       title: 'วันที่สร้าง',
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: createdAtColWidth,
+      onHeaderCell: () => ({
+        width: createdAtColWidth,
+        onResize: handleCreatedAtColResize,
+      }),
       render: (val: string) => val ? dayjs(val).format('DD/MM/YYYY') : '—',
     },
     {
       title: 'จัดการ',
       key: 'actions',
+      width: actionsColWidth,
+      onHeaderCell: () => ({
+        width: actionsColWidth,
+        onResize: handleActionsColResize,
+      }),
       render: (_: any, record: Memo) => (
         <Space>
           <Tooltip title="ดู">
@@ -330,6 +395,21 @@ const MemoListPage: React.FC = () => {
           </Button>
         </Space>
 
+        <Space size={16} style={{ marginBottom: 12 }}>
+          <Space size={6}>
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#f5f5f5', border: '1px solid #8c8c8c', display: 'inline-block' }} />
+            <span style={{ fontSize: 13, color: '#595959' }}>รออนุมัติ</span>
+          </Space>
+          <Space size={6}>
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#f6ffed', border: '1px solid #b7eb8f', display: 'inline-block' }} />
+            <span style={{ fontSize: 13, color: '#595959' }}>อนุมัติแล้ว</span>
+          </Space>
+          <Space size={6}>
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#fff1f0', border: '1px solid #ffa39e', display: 'inline-block' }} />
+            <span style={{ fontSize: 13, color: '#595959' }}>ถูกปฏิเสธ</span>
+          </Space>
+        </Space>
+
         <Table
           rowKey="id"
           loading={loading}
@@ -337,6 +417,7 @@ const MemoListPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           dataSource={data}
           scroll={{ x: 1300 }}
+          onRow={(record) => ({ style: getRowStyle(record.status) })}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
