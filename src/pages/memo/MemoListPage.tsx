@@ -13,6 +13,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 import type { Memo, MemoStatus } from '@/types'
+import { ROW_TINT_CLASS } from '@/constants/rowTint'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -22,15 +23,17 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-// Row tint by status — only the 3 statuses below get a tint; DRAFT/CANCELLED are left
-// plain. "Rejected" also covers a would-be "partial" bucket since Memo has no such
-// status in the real DB enum (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/CANCELLED only).
-const ROW_TINT: Record<string, React.CSSProperties> = {
-  PENDING_APPROVAL: { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' },
-  APPROVED:         { background: '#f6ffed' },
-  REJECTED:         { background: '#fff1f0' },
+// Row tint by status — mapping unchanged, only the shared palette (src/index.css's
+// .row-tint-* classes, see src/constants/rowTint.ts) changed. Only the 3 statuses
+// below get a tint; DRAFT/CANCELLED are left plain. "Rejected" also covers a
+// would-be "partial" bucket since Memo has no such status in the real DB enum
+// (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/CANCELLED only).
+const ROW_TINT_CATEGORY: Record<string, string> = {
+  PENDING_APPROVAL: ROW_TINT_CLASS.gray,
+  APPROVED:         ROW_TINT_CLASS.green,
+  REJECTED:         ROW_TINT_CLASS.red,
 }
-const getRowStyle = (status?: string): React.CSSProperties => ROW_TINT[status ?? ''] ?? {}
+const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ?? ''] ?? ''
 
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
 const TITLE_COLUMN_DEFAULT_WIDTH = 280
@@ -397,15 +400,15 @@ const MemoListPage: React.FC = () => {
 
         <Space size={16} style={{ marginBottom: 12 }}>
           <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#f5f5f5', border: '1px solid #8c8c8c', display: 'inline-block' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#e5e7eb', border: '1px solid #8c8c8c', display: 'inline-block' }} />
             <span style={{ fontSize: 13, color: '#595959' }}>รออนุมัติ</span>
           </Space>
           <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#f6ffed', border: '1px solid #b7eb8f', display: 'inline-block' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#d9f7be', border: '1px solid #52c41a', display: 'inline-block' }} />
             <span style={{ fontSize: 13, color: '#595959' }}>อนุมัติแล้ว</span>
           </Space>
           <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#fff1f0', border: '1px solid #ffa39e', display: 'inline-block' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#ffccc7', border: '1px solid #f5222d', display: 'inline-block' }} />
             <span style={{ fontSize: 13, color: '#595959' }}>ถูกปฏิเสธ</span>
           </Space>
         </Space>
@@ -417,7 +420,7 @@ const MemoListPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           dataSource={data}
           scroll={{ x: 1300 }}
-          onRow={(record) => ({ style: getRowStyle(record.status) })}
+          rowClassName={(record) => getRowClassName(record.status)}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Tooltip, Space, Button } from 'antd'
-import { EyeOutlined, EditOutlined } from '@ant-design/icons'
+import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm } from 'antd'
+import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -9,6 +9,7 @@ import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
+import { ROW_TINT_CLASS } from '@/constants/rowTint'
 
 // Same convention as PRStatusPage.tsx's edit button — edit is gated by the
 // create page's own menu code, not a history-specific one.
@@ -16,15 +17,17 @@ const MENU_CODE = 'MENU_PR_CREATE'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-// Row tint by status — STOCK_CHECK (pending-equivalent), PARTIALLY_FILLED (partial),
-// and COMPLETED/FULFILLED (complete) get tinted. DRAFT/CANCELLED are left plain.
-const ROW_TINT: Record<string, React.CSSProperties> = {
-  PARTIALLY_FILLED: { background: '#fff1f0' },
-  STOCK_CHECK:       { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' },
-  COMPLETED:         { background: '#f6ffed' },
-  FULFILLED:         { background: '#f6ffed' },
+// Row tint by status — mapping unchanged, only the shared palette (src/index.css's
+// .row-tint-* classes, see src/constants/rowTint.ts) changed. STOCK_CHECK
+// (pending-equivalent), PARTIALLY_FILLED (partial), and COMPLETED/FULFILLED
+// (complete) get tinted. DRAFT/CANCELLED are left plain.
+const ROW_TINT_CATEGORY: Record<string, string> = {
+  PARTIALLY_FILLED: ROW_TINT_CLASS.orange,
+  STOCK_CHECK:       ROW_TINT_CLASS.gray,
+  COMPLETED:         ROW_TINT_CLASS.green,
+  FULFILLED:         ROW_TINT_CLASS.green,
 }
-const getRowStyle = (status?: string): React.CSSProperties => ROW_TINT[status ?? ''] ?? {}
+const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ?? ''] ?? ''
 
 const PR_NO_COLUMN_DEFAULT_WIDTH = 110
 const MEMO_COLUMN_DEFAULT_WIDTH = 100
@@ -34,7 +37,7 @@ const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
 const STATUS_COLUMN_DEFAULT_WIDTH = 130
 const REMARKS_COLUMN_DEFAULT_WIDTH = 220
 const CREATED_AT_COLUMN_DEFAULT_WIDTH = 120
-const ACTION_COLUMN_DEFAULT_WIDTH = 160
+const ACTION_COLUMN_DEFAULT_WIDTH = 150
 
 // Same react-resizable pattern as POStatusPage.tsx / PRStatusPage.tsx — only
 // columns that pass width/onResize via onHeaderCell get a drag handle; every
@@ -219,6 +222,25 @@ const PRHistoryPage: React.FC = () => {
 
   useEffect(() => { fetchData(page, limit) }, [page, limit])
 
+  const handleDelete = async (id: number) => {
+    try {
+      await axios.delete(`${BASE_URL}/pr/${id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      message.success('ลบใบขอซื้อสำเร็จ')
+      // Stay on the current page after refresh, unless the deleted row was the
+      // last one on this page — then step back one page (which refetches via
+      // the [page, limit] effect above).
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1)
+      } else {
+        fetchData(page, limit)
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'ลบใบขอซื้อไม่สำเร็จ')
+    }
+  }
+
   const columns = [
     {
       title: 'เลขที่ PR',
@@ -352,24 +374,42 @@ const PRHistoryPage: React.FC = () => {
         onResize: handleActionColResize,
       }),
       render: (_: any, record: PRItem) => (
-        <Space size={4}>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => navigate(`/pr/${record.id}`)}
-          />
-          {record.status === 'DRAFT' && !record.hasActivePoLink && (
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="edit"
-              type="link"
+        <Space>
+          <Tooltip title="ดูรายละเอียด">
+            <Button
               size="small"
-              icon={<EditOutlined />}
-              onClick={() => navigate(`/pr/${record.id}/edit`)}
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/pr/${record.id}`)}
+            />
+          </Tooltip>
+          {record.status === 'DRAFT' && !record.hasActivePoLink && (
+            <Tooltip title="แก้ไข">
+              <PermissionButton
+                menuCode={MENU_CODE}
+                action="edit"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => navigate(`/pr/${record.id}/edit`)}
+              />
+            </Tooltip>
+          )}
+          {record.status === 'DRAFT' && !record.hasActivePoLink && (
+            <Popconfirm
+              title="ต้องการลบเอกสารนี้ใช่หรือไม่"
+              okText="ลบ"
+              cancelText="ยกเลิก"
+              onConfirm={() => handleDelete(record.id)}
             >
-              แก้ไข
-            </PermissionButton>
+              <Tooltip title="ลบ">
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action="delete"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                />
+              </Tooltip>
+            </Popconfirm>
           )}
         </Space>
       ),
@@ -390,7 +430,7 @@ const PRHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
-          onRow={(record) => ({ style: getRowStyle(record.status) })}
+          rowClassName={(record) => getRowClassName(record.status)}
           size="small"
           scroll={{ x: 1460 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}

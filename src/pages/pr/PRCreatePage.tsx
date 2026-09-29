@@ -539,7 +539,7 @@ const PRCreatePage: React.FC = () => {
           // No navigation — stay on this page so the user can keep editing.
         } else {
           message.success('บันทึก PR สำเร็จ')
-          navigate('/pr/status')
+          navigate('/pr/history')
         }
       } else {
         const res = await axios.post(`${BASE_URL}/pr`, payload, {
@@ -555,7 +555,7 @@ const PRCreatePage: React.FC = () => {
           // No navigation — stay on this page so the user can keep editing.
         } else {
           message.success('บันทึก PR สำเร็จ')
-          navigate('/pr/status')
+          navigate('/pr/history')
         }
       }
     } catch (err: any) {
@@ -1191,7 +1191,7 @@ const PRCreatePage: React.FC = () => {
                   // reservation so the next fresh open gets a genuinely new number
                   // instead of resuming this abandoned one.
                   if (!isEdit) sessionStorage.removeItem('pr_reserved_number')
-                  navigate(isEdit ? `/pr/${id}` : '/pr/status')
+                  navigate(isEdit ? `/pr/${id}` : '/pr/history')
                 }}
               >
                 กลับหน้าหลัก

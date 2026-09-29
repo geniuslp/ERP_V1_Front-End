@@ -489,6 +489,172 @@ touch-ups (`ICPoReceivePage.tsx`, `ICPoReceiveModal.tsx`, `ICPoReturnModal.tsx`,
 `ICProjectCostTransactionPage.tsx`, `ICProjectListPage.tsx`) and shared table components
 (`MaterialPickerModal.tsx`, `POItemsTable.tsx`, `PRItemsTable.tsx`).
 
+## 🧭 Session learnings (2026-09-28) — PR/PO status→history consolidation, price-history modal filters, print label fixes
+
+**1. Resizable columns — no shared component.** Every page that has drag-to-resize columns
+copies the same local pattern independently: a `ResizableTitle` component (wraps `react-resizable`'s
+`Resizable` + `import 'react-resizable/css/styles.css'`) wired in via
+`<Table components={{ header: { cell: ResizableTitle } }}>`, with one `useState`/`onResize` handler
+pair per resizable column. Confirmed present on: `POStatusPage.tsx`, `PRStatusPage.tsx`,
+`MemoListPage.tsx`, `PRHistoryPage.tsx`, `POHistoryPage.tsx`, and the price-history `Modal` inside
+`POItemsTable.tsx`. **There is no shared `ResizableTitle` component to import** — a new page copies
+the local pattern rather than extracting one (this has been true across every session that's added
+it so far; if it's ever worth extracting, that's a deliberate future refactor, not something to
+assume already exists).
+
+**2. Project display rule — confirmed consistent.** On-screen tables and detail sections (Memo, PR,
+PO) render the project as `"{project_code} {project_name}"`, single space, no dash:
+`MemoListPage.tsx`, `PRHistoryPage.tsx`, `PRStatusPage.tsx`, `POHistoryPage.tsx`, `POStatusPage.tsx`,
+`POApprovalDetailPage.tsx`'s detail Descriptions block. Print pages keep the em-dash form
+`"{code} — {name}"` — confirmed still true in `MemoPrint.tsx` (built in `MemoDetailPage.tsx`'s
+project-label mapping) and unchanged in `PRPrint.tsx`/`PurchaseOrderPrint.tsx`. No page was found
+still mixing the two conventions as of this session.
+
+**3. Row tint — actual current rules per page (verified against source, not aspirational):**
+- `MemoListPage.tsx`: gray = `PENDING_APPROVAL`, green = `APPROVED`, light red = `REJECTED`, no tint
+  for `DRAFT`/`CANCELLED` (Memo's DB enum has no "partial" status). **Note:** the tint keys off
+  `status` alone — it does **not** additionally check `linkedPoIds`. If "green only when a PO is
+  already linked" is actually wanted, that's still open (see "Requested, not verified" below).
+- `PRHistoryPage.tsx`: gray = `STOCK_CHECK`, light red/orange = `PARTIALLY_FILLED`, green =
+  `COMPLETED`/`FULFILLED`, no tint for `DRAFT`/`CANCELLED`. No live PR currently has `STOCK_CHECK` or
+  `PARTIALLY_FILLED`, so only the green tint is visibly exercised today — the other two are wired
+  and correct, just unobserved in real data.
+- `POHistoryPage.tsx`: light red/orange = `status_receive === 'PARTIALLY_RECEIVED'`, gray =
+  `status === 'PENDING_APPROVAL' || 'PENDING_REAPPROVAL'`, green =
+  `status_receive === 'RECEIVED'`, no tint otherwise — first matching rule wins (checked in that
+  order).
+- **Root-cause lesson (applies to `PRStatusPage.tsx`'s separate `po_conversion_status` tint, not the
+  three above):** a tint applied only as an inline `style` on `onRow` (as `MemoListPage`/
+  `PRHistoryPage`/`POHistoryPage` all do) is high-enough CSS specificity to just work. But
+  `PRStatusPage.tsx`'s conversion-status tint uses `rowClassName` (`.pr-row-fulfilled` /
+  `.pr-row-partial`) instead, and antd's own `.ant-table-tbody > tr > td` background rules otherwise
+  win and render the row white. The actual fix (see `src/index.css`) is CSS on
+  `.ant-table-tbody > tr.pr-row-fulfilled > td` / `.pr-row-partial > td` with `!important`, **plus** an
+  explicit `:hover > td` override (also `!important`) — without the hover override, antd's own
+  `tr:hover > td` rule wins on specificity and every tinted row flashes to the default hover blue.
+  Two different tint mechanisms coexist in this codebase (`onRow` inline style vs. `rowClassName` +
+  `!important` CSS) — check which one a given page already uses before adding a new tint to it.
+
+**4. PR/PO status pages retired, consolidated into history pages.** `PRStatusPage.tsx`'s and
+`POStatusPage.tsx`'s "จัดการ" actions (ดู detail / แก้ไข / ลบ — though see below, no delete
+actually existed to move) were copied onto `PRHistoryPage.tsx`/`POHistoryPage.tsx` as a new resizable
+"จัดการ" column, using the identical `PermissionButton`/menu-code gating and visibility conditions.
+Both status pages are hidden from the sidebar (a frontend-only filter in `SidebarMenu.tsx` excludes
+`MENU_PR_STATUS`/`MENU_PO_STATUS` regardless of the backend's `is_active` flag — sidebar menus are
+otherwise 100% backend-driven via `GET /menus`, so there was no other way to hide them without a
+backend/DB change). Routes and page files were deliberately **not** deleted. Remaining references to
+the retired paths (`/pr/status`, `/po/status`) as of this session:
+  - `src/App.tsx` — the routes themselves (kept on purpose)
+  - `src/pages/pr/PRDetailPage.tsx` (back button), `src/pages/pr/PRCreatePage.tsx` (post-save/edit
+    navigation, 3 call sites), `src/pages/po/POCreatePage.tsx` (post-create navigation)
+  - `src/config/routes.ts` — `STATUS` path constants
+  - `src/pages/po/POApprovalDetailPage.tsx`, `src/pages/po/components/EditApprovedButton.tsx` — both
+    still reference `MENU_PO_STATUS` as a permission code (not navigation)
+  These are candidates to repoint to the history pages later — left alone since that wasn't asked
+  for yet.
+  **Correction from this session:** neither status page actually had a delete action to carry over
+  (both only ever had view + edit) — the original consolidation ask assumed one existed. Don't
+  invent a delete endpoint/button without a separate explicit decision to add one.
+
+**5. `PRStatusPage.tsx` filters and edit condition.** Confirmed live (not disabled placeholders):
+search/status/date-range/job filters are wired to `GET /pr`'s `search`, `status`, `date_from`,
+`date_to`, `job_code` params. Edit button condition:
+`record.status === 'DRAFT' && !record.hasActivePoLink` (mapped from the API's
+`has_active_po_link`) — the same condition is now also used on `PRHistoryPage.tsx`'s new "จัดการ"
+column, and both read the same `GET /pr` field so there's no backend gap.
+
+**6. `PRHistoryPage.tsx` columns (current, left-to-right):** เลขที่ PR, Ref. MEMO, โครงการ, Job
+(short code only, e.g. "MP" — not the full "CODE - Name" label), ผู้ขอซื้อ, สถานะ, หมายเหตุ,
+วันที่สร้าง, จัดการ (added this session) — horizontal scroll, every column resizable. There is no
+มูลค่า column. "วันที่อนุมัติ" was deliberately **not** added here — PR has no approval concept at
+all (see the 2026-07 session note above: PR flow is `DRAFT → COMPLETED` directly, no approve/reject
+endpoints exist).
+
+**7. `POHistoryPage.tsx` / `POStatusPage.tsx` columns.** Both now show เลข PR (from the `pr_nos`
+array, joined with `, `) and หมายเหตุ PO. `POHistoryPage.tsx` additionally has วันที่เปิด PO
+(`po_date`), วันที่อนุมัติ PO (`approved_at`, date+time, "—" when null), กำหนดส่งของ
+(`expected_date`), ผู้อนุมัติ (`approved_by_name`, "—" when null) — all four resizable, added this
+session once the backend confirmed these fields on `GET /po`. Both pages' Job column reads
+`job_code` (`job_names` is dead — never populated by the backend, see the 2026-08-07 note above).
+**Money-format inconsistency found, not yet fixed:** `POHistoryPage.tsx`'s "มูลค่า (หลังหักส่วนลด)"
+and `POApprovalDetailPage.tsx`'s equivalent both force 2 decimals
+(`minimumFractionDigits: 2, maximumFractionDigits: 2`) + "บาท", but `POStatusPage.tsx`'s "มูลค่าก่อน
+VAT" column calls plain `.toLocaleString('th-TH')` with no fraction-digit options, so it can render
+with 0–3 decimals depending on the value. Not touched this session since `POStatusPage.tsx` is being
+retired — flagging so it isn't assumed fixed everywhere.
+
+**8. `POApprovalDetailPage.tsx` (`/po/approval/:id`) head/items restructuring — confirmed
+implemented**, not just requested: the head `Descriptions` block is exactly 5 rows
+(โครงการ/Job/ประเภทการซื้อ; ชื่อบริษัท/เงื่อนไข; ผู้รับของ/เบอร์โทร/สถานที่ส่ง;
+วันที่ส่ง/มูลค่าหักส่วนลดก่อนหักภาษี; — remarks live in the header's own remarks field, not this
+grid); the items table has no Brand or status column (`ลำดับ, Cost Code, รหัสวัสดุ, ชื่อวัสดุ,
+จำนวนสั่ง, ราคา/หน่วย, มูลค่า, หมายเหตุ` only), quantity renders with its unit
+(`qty_ordered` + `unit_name`), and both price/value columns are 2-decimal + "บาท".
+
+**9. Price-history modal (`POItemsTable.tsx`) — confirmed implemented end-to-end.** Title
+"ราคาที่เคยซื้อล่าสุด"; endpoint `GET /master/materials/:code/price-history` with `page`, `limit`,
+`date_from`, `date_to` (both dates optional/combinable, confirmed live on the backend — see
+`internal/handlers/master.go` `GetMaterialPriceHistory` in the `erp-api` repo: uses the
+`AND ($n::date IS NULL OR ...)` pattern on both the row query and its `COUNT(*)`, so `total`/
+`total_pages` already reflect the filtered set). Columns: รหัสวัสดุ (`mat_code`), รายการ (`mat_name`
++ `spec_name` joined by a single space on one line, no separator when `spec_name` is empty — same
+convention as `PRPrint.tsx`'s `ItemRow`), ร้านค้า, วันที่, ราคา/หน่วย. Modal widened 20% (880→1056,
+capped at `maxWidth: '95vw'`), all 5 columns scaled 20% too, all still resizable. Date-range filter
+added above the table (`DatePicker.RangePicker` + 3/6/12-month `presets`), resets to page 1 and
+clears on a different `matCode`, distinct empty-state text when a range is active. **`mat_code`/
+`spec_name` are confirmed actually rendered**, not just requested — verified by reading the backend
+SQL directly (`SELECT pol.mat_code, ..., ss.spec_description AS spec_name ...`, `mat_code` marshalled
+without `omitempty` so it's always present and is literally the endpoint's own filter value, so it
+can't come back empty for a real row).
+
+**10. Print pages — label/layout state as of this session:**
+  - `MemoPrint.tsx`: info-box field order is โครงการ (code + full name, em-dash), เรื่อง (title),
+    สถานที่ส่งของ, หน่วยงาน (dept, full name), หมายเหตุ (label is just "หมายเหตุ", not
+    "หมายเหตุ / Remark"), กำหนดส่งของหน้างาน. Requester (`ผู้ขอ / Requester`) now has its own
+    signature box next to Approver (`AUTH_COLS`), not a plain text line in the info box. "No" →
+    "ลำดับ". Per-line remarks render under the item row itself (`ItemRow`'s `row.remark`), not as a
+    separate table column.
+  - `PRPrint.tsx`: Thai labels โครงการ/วันที่/กำหนดส่งของ/สถานที่ส่งของ/หมายเหตุ; header "ลำดับ";
+    item column "รายการ" renders ItemName + SpecName on one line via `cleanItemName()` (strips a
+    legacy literal `"--"` divider some old rows still carry, replacing it with a single space) +
+    `` `${desc}${spec ? ' ' + spec : ''}` ``; the PR number itself renders at 15pt vs. its "PR No :"
+    label's 10pt (visibly bigger).
+  - `PurchaseOrderPrint.tsx`: labels changed this session — "พนักงานขาย" → "Contact :", "เบอร์ติดต่อ"
+    → "Tel." (was "เบอร์ติดต่อ :"), "Po No" → "PO No" (casing fix; the on-page text has always been
+    "Po No :" with a colon, not "Po No." with a period — fixed the casing only, didn't add a period
+    that was never there).
+  - All of the above keep the shared logo-preload + `onReady()`-gated `window.print()` pattern —
+    untouched.
+
+**11. Other confirmed UI state:** `PRCreatePage.tsx`'s action bar is one merged row — พิมพ์ +
+กลับหน้าหลัก on the left, บันทึกร่าง + ส่งใบขอซื้อ on the right (previously two separate rows).
+`MemoListPage.tsx` has no "สร้างใบบันทึกขอซื้อ" create button (confirmed absent — create lives
+elsewhere in the Memo menu group, see `menuSlice.ts`'s `memo-create` entry). `MemoListPage.tsx`'s
+columns are all resizable, and its "สถานะ" column was replaced by "วันที่อนุมัติ"
+(`approvedAt`, date+time, "—" when null) this session — **confirmed done**, not just requested;
+`status` itself stays on the row interface purely to drive the row tint in #3 above.
+
+**12. `api.ts` error sanitizer.** `src/services/api.ts`'s response interceptor
+(`sanitizeDbError`/`looksLikeRawDbError`, ~line 32-52) replaces any `response.data.message` or
+`.error` that looks like a raw Postgres/pgx error (matches `SQLSTATE|violates|foreign key
+constraint|duplicate key|null value in column|pq:`) with the generic
+`"ข้อมูลที่กรอกไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง"` before any page's catch block ever sees it. **When
+this generic message shows up anywhere, that's a signal to check the actual backend response
+first** — it usually means a raw SQL error leaked through unwrapped, not that the frontend
+validation itself is at fault.
+
+**13. Infra note (not a code issue).** `erp-frontend`'s container has previously crash-looped from
+an nginx config error ("unknown directive ssl" at `/etc/nginx/conf.d/default.conf:9`) — unrelated to
+the React code itself. When debugging a crash-looping frontend container, get the real container
+name from `docker ps` first (it's `erp-frontend`) rather than trusting a truncated `docker ps` column
+that might suggest a different name.
+
+**Requested, not verified — do not treat as done:**
+- MemoListPage's green tint checking `linkedPoIds` (non-empty) in addition to `status === 'APPROVED'`
+  — the actual code only checks `status`.
+- `POStatusPage.tsx`'s money column forcing 2 decimals — it doesn't (`POHistoryPage.tsx` and
+  `POApprovalDetailPage.tsx` do). Not fixed this session since the page is being retired.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

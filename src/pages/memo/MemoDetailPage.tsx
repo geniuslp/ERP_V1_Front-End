@@ -81,6 +81,10 @@ interface MemoDetail {
   projectName?: string
   note?: string
   createdAt: string
+  // GET /memo/:id's requester_signature/approval_signature — both null unless
+  // the memo is past DRAFT (requester) / actually APPROVED (approver).
+  requesterSignature: { fullName: string; signatureDataUrl: string } | null
+  approvalSignature: { fullName: string; signatureDataUrl: string; approvedAt: string | null } | null
   lines: MemoLineItem[]
   attachments?: MemoAttachmentFile[]
 }
@@ -154,6 +158,15 @@ const mapMemo = (raw: any): MemoDetail => {
     projectName:   raw.project_code,
     note:          raw.note,
     createdAt:     raw.created_at     ?? '',
+    requesterSignature: raw.requester_signature ? {
+      fullName:         raw.requester_signature.full_name ?? '',
+      signatureDataUrl: raw.requester_signature.signature_data_url ?? '',
+    } : null,
+    approvalSignature: raw.approval_signature ? {
+      fullName:         raw.approval_signature.full_name ?? '',
+      signatureDataUrl: raw.approval_signature.signature_data_url ?? '',
+      approvedAt:       raw.approval_signature.approved_at ?? null,
+    } : null,
     lines,
     attachments:   raw.attachments,
   }
@@ -323,6 +336,13 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       deliveryLocation: memo.deliveryLocation ?? '',
       createdAt: memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '',
       approverName: memo.approverName ?? '',
+      requesterSignature: memo.requesterSignature,
+      approvalSignature: memo.approvalSignature ? {
+        ...memo.approvalSignature,
+        approvedAt: memo.approvalSignature.approvedAt
+          ? dayjs(memo.approvalSignature.approvedAt).format('DD/MM/YYYY')
+          : undefined,
+      } : null,
       status: memo.status,
       items: memo.lines.map((l) => ({
         no: String(l.lineNo),

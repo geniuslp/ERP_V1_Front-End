@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Modal, Form, Input } from 'antd'
+import { Modal, Form, Input, Tooltip } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import PermissionButton from '@/components/common/PermissionButton'
@@ -35,15 +35,15 @@ const EditApprovedButton: React.FC<EditApprovedButtonProps> = ({
 
   return (
     <>
-      <PermissionButton
-        menuCode={menuCode}
-        action="edit"
-        icon={<EditOutlined />}
-        size={size}
-        onClick={() => setOpen(true)}
-      >
-        แก้ไข
-      </PermissionButton>
+      <Tooltip title="แก้ไข">
+        <PermissionButton
+          menuCode={menuCode}
+          action="edit"
+          icon={<EditOutlined />}
+          size={size}
+          onClick={() => setOpen(true)}
+        />
+      </Tooltip>
       <Modal
         open={open}
         title="แก้ไขใบสั่งซื้อที่อนุมัติแล้ว"

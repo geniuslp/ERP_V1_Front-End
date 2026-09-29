@@ -1894,7 +1894,7 @@ const POCreatePage: React.FC = () => {
                   // Leaving create-PO without saving — clear the cached
                   // reservation so the next fresh open gets a genuinely new number.
                   if (!isEdit) sessionStorage.removeItem('po_reserved_number')
-                  navigate('/po/status')
+                  navigate('/po/history')
                 }}>กลับหน้าหลัก</Button>
               </Space>
 

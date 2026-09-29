@@ -6,6 +6,7 @@ import axios from 'axios'
 import { useAppSelector } from '@/store'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { PermRole, Department } from '@/types/permission.types'
+import SignatureUpload from '@/components/user/SignatureUpload'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 interface UserRole { role_id: number; role_code: string; role_name: string }
@@ -13,6 +14,7 @@ interface UserRecord {
   key: string; id: string; username: string; fullName: string; email: string
   role: string; department: string; isActive: boolean
   roleId: number | null; roleIds: number[]; roles: UserRole[]; deptCode: string | null
+  hasSignature: boolean
 }
 const user = JSON.parse(sessionStorage.getItem('user') ?? '{}')
 const UsersPage: React.FC = () => {
@@ -30,6 +32,10 @@ const UsersPage: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>([])
   const [allRoles, setAllRoles] = useState<PermRole[]>([])
   const [roleOptions, setRoleOptions] = useState<PermRole[]>([])
+  // Create-mode only — the locally-picked signature file, uploaded after the new
+  // user's id exists (see handleOk's create branch). Not used in edit mode, where
+  // SignatureUpload talks to the API directly.
+  const [signatureFile, setSignatureFile] = useState<File | null>(null)
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -52,6 +58,7 @@ const UsersPage: React.FC = () => {
         roleIds: (u.roles ?? []).map((rl: UserRole) => rl.role_id),
         roles: u.roles ?? [],
         deptCode: u.dept_code ?? null,
+        hasSignature: u.has_signature ?? false,
       })))
       } catch {
         message.error('โหลดข้อมูลผู้ใช้ไม่สำเร็จ')
@@ -68,7 +75,7 @@ const UsersPage: React.FC = () => {
     permissionMatrixService.getRoles(accessToken).then(setAllRoles).catch(() => {})
   }, [accessToken])
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setRoleOptions([]); setOpen(true) }
+  const openCreate = () => { setEditing(null); form.resetFields(); setRoleOptions([]); setSignatureFile(null); setOpen(true) }
   const openEdit = async (r: UserRecord) => {
     setEditing(r)
     const deptCode = r.deptCode ?? departments.find((d) => d.dept_name === r.department)?.dept_code ?? undefined
@@ -91,6 +98,11 @@ const UsersPage: React.FC = () => {
       })
       const fresh = res.data?.data ?? res.data
       if (Array.isArray(fresh?.roles)) roleIds = fresh.roles.map((rl: UserRole) => rl.role_id)
+      // GET /users/:id includes the freshest has_signature — prefer it over the
+      // list row's copy in case the signature was changed since the list loaded.
+      if (typeof fresh?.has_signature === 'boolean') {
+        setEditing((prev) => (prev ? { ...prev, hasSignature: fresh.has_signature } : prev))
+      }
     } catch {
       // fall back to roleIds already present on the row from the list fetch
     }
@@ -302,6 +314,24 @@ const UsersPage: React.FC = () => {
             headers: { Authorization: `Bearer ${accessToken}` },
           })
           const created = res.data?.data ?? res.data
+          const newUserId = created?.id
+
+          // Independent of the create call above — a failed upload here must not
+          // roll back the just-created user, per product decision. Only attempted
+          // when the backend actually returned an id and a file was picked.
+          let signatureUploadFailed = false
+          if (newUserId && signatureFile) {
+            try {
+              const formData = new FormData()
+              formData.append('file', signatureFile)
+              await axios.post(`${BASE_URL}/users/${newUserId}/signature`, formData, {
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'multipart/form-data' },
+              })
+            } catch {
+              signatureUploadFailed = true
+            }
+          }
+
           const dept = departments.find((d) => d.dept_code === values.deptCode)
           const selectedRoles = allRoles
             .filter((r) => (values.roleIds ?? []).includes(r.id))
@@ -319,9 +349,15 @@ const UsersPage: React.FC = () => {
             roleIds: values.roleIds ?? [],
             roles: selectedRoles,
             deptCode: values.deptCode ?? null,
+            hasSignature: !signatureUploadFailed && !!signatureFile,
           }
           setData([...data, newUser])
-          message.success('เพิ่มผู้ใช้เรียบร้อย')
+          if (signatureUploadFailed) {
+            message.warning('สร้างผู้ใช้สำเร็จ แต่อัปโหลดลายเซ็นไม่สำเร็จ กรุณาอัปโหลดใหม่ในหน้าแก้ไข')
+          } else {
+            message.success('เพิ่มผู้ใช้เรียบร้อย')
+          }
+          setSignatureFile(null)
           setOpen(false)
         } catch (err: any) {
           const errMsg =
@@ -367,7 +403,7 @@ const UsersPage: React.FC = () => {
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
         <Table dataSource={data} columns={columns} loading={loading} size="small" pagination={{ pageSize: 10 }} />
       </Card>
-      <Modal title={editing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก">
+      <Modal title={editing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก" destroyOnClose>
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="ชื่อผู้ใช้" name="username" rules={[{ required: true }]}><Input prefix={<UserOutlined />} /></Form.Item>
           <Form.Item label="ชื่อ-นามสกุล" name="fullName" rules={[{ required: true }]}><Input /></Form.Item>
@@ -388,6 +424,11 @@ const UsersPage: React.FC = () => {
             />
           </Form.Item>
         </Form>
+        <SignatureUpload
+          userId={editing?.id}
+          hasSignature={editing?.hasSignature}
+          onChange={setSignatureFile}
+        />
       </Modal>
       <Modal
         title={`เปลี่ยน Password: ${passwordTarget?.username ?? ''}`}

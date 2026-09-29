@@ -60,6 +60,54 @@ body {
   background: #fef3c7 !important;
 }
 
+/* Shared row-tint palette — MemoListPage.tsx, PRHistoryPage.tsx, POHistoryPage.tsx.
+   Class names come from src/constants/rowTint.ts (ROW_TINT_CLASS); each page maps
+   its own status/category logic onto one of these 4 shared classes, so any future
+   color change only happens here. Explicit :hover overrides are required — without
+   them, the global ".ant-table-tbody > tr:hover > td" rule above wins on
+   specificity and flashes every tinted row to plain blue on hover. The 4px
+   left-border on the first cell gives an at-a-glance status read without any
+   on-screen legend text. */
+.row-tint-green > td {
+  background: #d9f7be !important;
+}
+.row-tint-green:hover > td {
+  background: #b7eb8f !important;
+}
+.row-tint-green > td:first-child {
+  border-left: 4px solid #52c41a !important;
+}
+
+.row-tint-orange > td {
+  background: #ffe7ba !important;
+}
+.row-tint-orange:hover > td {
+  background: #ffd591 !important;
+}
+.row-tint-orange > td:first-child {
+  border-left: 4px solid #fa8c16 !important;
+}
+
+.row-tint-red > td {
+  background: #ffccc7 !important;
+}
+.row-tint-red:hover > td {
+  background: #ffa39e !important;
+}
+.row-tint-red > td:first-child {
+  border-left: 4px solid #f5222d !important;
+}
+
+.row-tint-gray > td {
+  background: #e5e7eb !important;
+}
+.row-tint-gray:hover > td {
+  background: #d1d5db !important;
+}
+.row-tint-gray > td:first-child {
+  border-left: 4px solid #8c8c8c !important;
+}
+
 /* GRN receiving checklist — unchecked lines are grayed out and excluded
    from the submitted request; the dimming is purely visual. */
 .grn-line-unchecked > td {

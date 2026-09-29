@@ -31,6 +31,13 @@ export interface PRItem {
   remark?: string
 }
 
+// PR has no approval flow, so this is only ever the requester's signature
+// (never an approver) — approvedAt is intentionally not part of this shape.
+export interface PRUserSignature {
+  fullName: string
+  signatureDataUrl: string
+}
+
 export interface PRData {
   prNo: string
   prDate: string
@@ -45,6 +52,10 @@ export interface PRData {
   // Not used for anything else here (PR has no approval flow on this status,
   // see CLAUDE.md); optional because older callers may not pass it.
   status?: string
+  // GET /pr/:id's requester_signature — null whenever the PR is DRAFT (backend
+  // rule) or the requester has never uploaded a signature. Only PRDetailPage's
+  // print call site has this; PRCreatePage's unsaved-print never passes it.
+  requesterSignature?: PRUserSignature | null
   items: PRItem[]
 }
 
@@ -138,11 +149,16 @@ const CSS = `
 // Same structure/labels/styling as PO's four-column auth block, minus
 // "Supplier Signature" — a PR is an internal document created before any
 // supplier is selected (that happens later, at RFQ/PO stage), so that box
-// has no PR equivalent.
+// has no PR equivalent. "ผู้ขอซื้อ / Requester" is a 4th leading column added
+// to carry the requester's signature — all 4 columns are equal width so the
+// row's total width matches what it was before (19.4cm / 4 = 4.85cm each),
+// instead of just appending a narrower/wider column that would shift the
+// page layout.
+const AUTH_COL_WIDTH = '4.85cm'
 const AUTH_COLS = [
-  { label: 'Supply Chain Department', width: '6.3cm' },
-  { label: 'Section Head', width: '6.69cm' },
-  { label: 'Authorized Signature', width: '6.41cm' },
+  { label: 'Supply Chain Department', width: AUTH_COL_WIDTH },
+  { label: 'Section Head', width: AUTH_COL_WIDTH },
+  { label: 'Authorized Signature', width: AUTH_COL_WIDTH },
 ]
 
 const FillerTr = () => (
@@ -246,10 +262,34 @@ const ItemRow = ({ row }: { row: PRItem }) => (
   </tr>
 )
 
+// Signature image, sized to fit inside the existing empty auth-head slot
+// (flex:1, above the label/name) without growing the box — max-height keeps
+// it from ever exceeding that slot's available space in the fixed 26mm
+// footer, so the page layout/pagination never shifts.
+const SignatureImg = ({ src, alt }: { src: string; alt: string }) => (
+  <img
+    src={src}
+    alt={alt}
+    style={{ maxHeight: 50, maxWidth: '70%', height: 'auto', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 6px' }}
+  />
+)
+
 const PRFooter = ({ data }: { data: PRData }) => (
   <>
-    <div style={{ height: '28mm', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '26mm', display: 'flex', flexDirection: 'column' }}>
       <div className="pr-box" style={{ display: 'flex', flex: 1 }}>
+        <div className="auth-col" style={{ width: AUTH_COL_WIDTH }}>
+          <div className="auth-head">
+            {data.requesterSignature?.signatureDataUrl && (
+              <SignatureImg src={data.requesterSignature.signatureDataUrl} alt="ผู้ขอซื้อ" />
+            )}
+          </div>
+          <div className="auth-body">
+            <div style={{ fontWeight: 600 }}>ผู้ขอซื้อ / Requester</div>
+            {data.requesterSignature?.fullName && <div>{data.requesterSignature.fullName}</div>}
+          </div>
+          <div className="auth-date">({data.prDate})</div>
+        </div>
         {AUTH_COLS.map((col, i) => (
           <div key={i} className="auth-col" style={{ width: col.width }}>
             <div className="auth-head" />
@@ -279,7 +319,7 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const [pages, setPages] = useState<PRItem[][] | null>(null)
   const [rowsLast, setRowsLast] = useState(10)
-  const [logoReady, setLogoReady] = useState(false)
+  const [imagesReady, setImagesReady] = useState(false)
 
   useEffect(() => {
     const s = document.createElement('style')
@@ -288,15 +328,28 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
     return () => { document.getElementById('pr-print-style')?.remove() }
   }, [])
 
-  // Preload the logo so onReady (and window.print()) never fires before the
-  // browser has actually finished loading/decoding the image — the source of
-  // an intermittent missing-logo-on-print bug.
+  // Preload the logo AND the requester's signature image (if any) so onReady
+  // (and window.print()) never fires before the browser has actually finished
+  // loading/decoding every image — the source of an intermittent
+  // missing-logo/missing-signature-on-print bug. A failed load still counts
+  // toward "ready" (never hangs) and just leaves that box/logo blank.
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => setLogoReady(true)
-    img.onerror = () => { console.warn('[PR] logo image failed to load, printing without it'); setLogoReady(true) }
-    img.src = logo
-  }, [])
+    const sources = [logo, data.requesterSignature?.signatureDataUrl].filter(
+      (s): s is string => !!s,
+    )
+    let loaded = 0
+    const onDone = () => {
+      loaded += 1
+      if (loaded === sources.length) setImagesReady(true)
+    }
+    sources.forEach((src) => {
+      const img = new Image()
+      img.onload = onDone
+      img.onerror = () => { console.warn('[PR] an image failed to load, printing without it'); onDone() }
+      img.src = src
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.requesterSignature?.signatureDataUrl])
 
   useEffect(() => {
     if (pages !== null) return
@@ -323,8 +376,8 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   })
 
   useEffect(() => {
-    if (pages !== null && logoReady) onReady?.()
-  }, [pages, logoReady])
+    if (pages !== null && imagesReady) onReady?.()
+  }, [pages, imagesReady])
 
   if (pages === null) {
     return ReactDOM.createPortal(

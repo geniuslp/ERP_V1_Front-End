@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Tag, Typography, Tooltip } from 'antd'
-import { EyeOutlined, EditOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm } from 'antd'
+import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
@@ -14,23 +15,26 @@ import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
+import { ROW_TINT_CLASS } from '@/constants/rowTint'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
 // own menu code, not a history-specific one.
 const MENU_CODE = 'MENU_PO_CREATE'
+const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const { Text } = Typography
 
-// Row tint — order matters: the first matching rule wins when a PO could match
-// more than one (e.g. a PARTIALLY_RECEIVED PO that is also PENDING_REAPPROVAL).
-// No legend/label text on screen, background tint only, same approach as
-// MemoListPage.tsx / PRHistoryPage.tsx.
-const getRowStyle = (record: POListItem): React.CSSProperties => {
-  if (record.status_receive === 'PARTIALLY_RECEIVED') return { background: '#fff1f0' }
+// Row tint — mapping unchanged, only the shared palette (src/index.css's
+// .row-tint-* classes, see src/constants/rowTint.ts) changed. Order matters:
+// the first matching rule wins when a PO could match more than one (e.g. a
+// PARTIALLY_RECEIVED PO that is also PENDING_REAPPROVAL). No legend/label text
+// on screen, background tint only, same approach as MemoListPage.tsx / PRHistoryPage.tsx.
+const getRowClassName = (record: POListItem): string => {
+  if (record.status_receive === 'PARTIALLY_RECEIVED') return ROW_TINT_CLASS.orange
   if (record.status === 'PENDING_APPROVAL' || record.status === 'PENDING_REAPPROVAL') {
-    return { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' }
+    return ROW_TINT_CLASS.gray
   }
-  if (record.status_receive === 'RECEIVED') return { background: '#f6ffed' }
-  return {}
+  if (record.status_receive === 'RECEIVED') return ROW_TINT_CLASS.green
+  return ''
 }
 
 const PROJECT_COLUMN_DEFAULT_WIDTH = 140
@@ -140,6 +144,25 @@ const POHistoryPage: React.FC = () => {
   }
 
   useEffect(() => { fetchData(page, limit) }, [page, limit])
+
+  const handleDelete = async (poId: number) => {
+    try {
+      await axios.delete(`${BASE_URL}/po/${poId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      message.success('ลบใบสั่งซื้อสำเร็จ')
+      // Stay on the current page after refresh, unless the deleted row was the
+      // last one on this page — then step back one page (which refetches via
+      // the [page, limit] effect above).
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1)
+      } else {
+        fetchData(page, limit)
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'ลบใบสั่งซื้อไม่สำเร็จ')
+    }
+  }
 
   const columns: ColumnsType<POListItem> = [
     {
@@ -316,26 +339,42 @@ const POHistoryPage: React.FC = () => {
         onResize: handleActionColResize,
       }),
       render: (_: unknown, record) => (
-        <Space size={4}>
-          <Button
-            type="link"
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => navigate(`/po/approval/${record.po_id}`)}
-          >
-            ดู
-          </Button>
-          {(record.status === 'DRAFT' || record.status === 'PENDING_APPROVAL') && (
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="edit"
-              type="link"
-              icon={<EditOutlined />}
+        <Space>
+          <Tooltip title="ดูรายละเอียด">
+            <Button
+              icon={<EyeOutlined />}
               size="small"
-              onClick={() => navigate(`/po/${record.po_id}/edit`)}
+              onClick={() => navigate(`/po/approval/${record.po_id}`)}
+            />
+          </Tooltip>
+          {(record.status === 'DRAFT' || record.status === 'PENDING_APPROVAL') && (
+            <Tooltip title="แก้ไข">
+              <PermissionButton
+                menuCode={MENU_CODE}
+                action="edit"
+                icon={<EditOutlined />}
+                size="small"
+                onClick={() => navigate(`/po/${record.po_id}/edit`)}
+              />
+            </Tooltip>
+          )}
+          {record.status === 'DRAFT' && record.status_receive === 'NOT_SENT' && (
+            <Popconfirm
+              title="ต้องการลบเอกสารนี้ใช่หรือไม่"
+              okText="ลบ"
+              cancelText="ยกเลิก"
+              onConfirm={() => handleDelete(record.po_id)}
             >
-              แก้ไข
-            </PermissionButton>
+              <Tooltip title="ลบ">
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action="delete"
+                  icon={<DeleteOutlined />}
+                  size="small"
+                  danger
+                />
+              </Tooltip>
+            </Popconfirm>
           )}
           {/* Same reasoning as POStatusPage.tsx — record.can_edit_approved is
               never actually set by GET /po (list), so check status + the
@@ -365,7 +404,7 @@ const POHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
-          onRow={(record) => ({ style: getRowStyle(record) })}
+          rowClassName={(record) => getRowClassName(record)}
           size="small"
           scroll={{ x: 2200 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}

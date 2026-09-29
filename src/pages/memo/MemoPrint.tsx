@@ -19,6 +19,14 @@ export interface MemoItem {
   remark?: string
 }
 
+export interface MemoUserSignature {
+  fullName: string
+  signatureDataUrl: string
+  // Only ever set on the approver's signature — a requester signature has no
+  // approval date (same rule as PR's requester_signature).
+  approvedAt?: string
+}
+
 export interface MemoData {
   memoNo: string
   title: string
@@ -33,6 +41,10 @@ export interface MemoData {
   deliveryLocation: string // memo.delivery_location
   createdAt: string        // memo.created_at — document creation date, shown under both signatures
   approverName: string     // memo.approver_name — single signature line only, see MemoFooter comment
+  // GET /memo/:id's requester_signature/approval_signature — both null unless
+  // the memo is past DRAFT (requester) / actually APPROVED (approver).
+  requesterSignature?: MemoUserSignature | null
+  approvalSignature?: MemoUserSignature | null
   // memo.status — drives the "DRAFT" print watermark only, same as PRPrint.
   status?: string
   items: MemoItem[]
@@ -120,10 +132,22 @@ const CSS = `
 // Two signature columns — ผู้ขอ (requestedBy) and ผู้อนุมัติ (approverName). Previously
 // only the approver had a signature cell; requester was shown as a plain text line in
 // the info block instead — moved here to match the approver's box/line treatment.
-const AUTH_COLS: { label: string; width: string; key: 'requestedBy' | 'approverName' }[] = [
-  { label: 'ผู้ขอ / Requester', width: '9cm', key: 'requestedBy' },
-  { label: 'ผู้อนุมัติ / Approver', width: '9cm', key: 'approverName' },
+const AUTH_COLS: { label: string; width: string; key: 'requestedBy' | 'approverName'; sigKey: 'requesterSignature' | 'approvalSignature' }[] = [
+  { label: 'ผู้ขอ / Requester', width: '9cm', key: 'requestedBy', sigKey: 'requesterSignature' },
+  { label: 'ผู้อนุมัติ / Approver', width: '9cm', key: 'approverName', sigKey: 'approvalSignature' },
 ]
+
+// Signature image, sized to fit inside the existing empty auth-head slot
+// (flex:1, above the label/name) without growing the box — max-height keeps
+// it from ever exceeding that slot's available space in the fixed 28mm
+// footer, so the page layout/pagination never shifts.
+const SignatureImg = ({ src, alt }: { src: string; alt: string }) => (
+  <img
+    src={src}
+    alt={alt}
+    style={{ maxHeight: 75, maxWidth: '90%', height: 'auto', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }}
+  />
+)
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
@@ -208,19 +232,31 @@ const ItemRow = ({ row }: { row: MemoItem }) => (
 
 const MemoFooter = ({ data }: { data: MemoData }) => (
   <>
-    <div style={{ height: '28mm', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '34mm', display: 'flex', flexDirection: 'column' }}>
       <div className="memo-box" style={{ display: 'flex', flex: 1, justifyContent: 'center' }}>
-        {AUTH_COLS.map((col, i) => (
-          <div key={i} className="auth-col" style={{ width: col.width }}>
-            <div className="auth-head" />
-            <div className="auth-body">
-              <div style={{ fontWeight: 600 }}>{col.label}</div>
-              <div>{data[col.key]}</div>
-              <div>{data.createdAt ? `วันที่ ${data.createdAt}` : ''}</div>
+        {AUTH_COLS.map((col, i) => {
+          const sig = data[col.sigKey]
+          // Approver's date must reflect when it was actually approved
+          // (approvalSignature.approvedAt), not the document's own createdAt —
+          // requester keeps createdAt (the document's own creation date), same
+          // as before.
+          const dateLine = col.sigKey === 'approvalSignature'
+            ? (sig?.approvedAt ? `วันที่ ${sig.approvedAt}` : '')
+            : (data.createdAt ? `วันที่ ${data.createdAt}` : '')
+          return (
+            <div key={i} className="auth-col" style={{ width: col.width }}>
+              <div className="auth-head">
+                {sig?.signatureDataUrl && <SignatureImg src={sig.signatureDataUrl} alt={col.label} />}
+              </div>
+              <div className="auth-body">
+                <div style={{ fontWeight: 600 }}>{col.label}</div>
+                <div>{data[col.key]}</div>
+                <div>{dateLine}</div>
+              </div>
+              <div className="auth-date">(...............................)</div>
             </div>
-            <div className="auth-date">(...............................)</div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   </>
@@ -241,7 +277,7 @@ const MemoPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const [pages, setPages] = useState<MemoItem[][] | null>(null)
   const [rowsLast, setRowsLast] = useState(10)
-  const [logoReady, setLogoReady] = useState(false)
+  const [imagesReady, setImagesReady] = useState(false)
 
   useEffect(() => {
     const s = document.createElement('style')
@@ -250,15 +286,28 @@ const MemoPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
     return () => { document.getElementById('memo-print-style')?.remove() }
   }, [])
 
-  // Preload the logo so onReady (and window.print()) never fires before the
-  // browser has actually finished loading/decoding the image — same fix as
-  // PRPrint.tsx's, for the same intermittent missing-logo-on-print bug.
+  // Preload the logo AND both signature images (if any) so onReady (and
+  // window.print()) never fires before the browser has actually finished
+  // loading/decoding every image — same fix as PRPrint.tsx's, for the same
+  // intermittent missing-logo/missing-signature-on-print bug. A failed load
+  // still counts toward "ready" (never hangs) and just leaves that box/logo blank.
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => setLogoReady(true)
-    img.onerror = () => { console.warn('[Memo] logo image failed to load, printing without it'); setLogoReady(true) }
-    img.src = logo
-  }, [])
+    const sources = [logo, data.requesterSignature?.signatureDataUrl, data.approvalSignature?.signatureDataUrl].filter(
+      (s): s is string => !!s,
+    )
+    let loaded = 0
+    const onDone = () => {
+      loaded += 1
+      if (loaded === sources.length) setImagesReady(true)
+    }
+    sources.forEach((src) => {
+      const img = new Image()
+      img.onload = onDone
+      img.onerror = () => { console.warn('[Memo] an image failed to load, printing without it'); onDone() }
+      img.src = src
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.requesterSignature?.signatureDataUrl, data.approvalSignature?.signatureDataUrl])
 
   useEffect(() => {
     if (pages !== null) return
@@ -285,8 +334,8 @@ const MemoPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   })
 
   useEffect(() => {
-    if (pages !== null && logoReady) onReady?.()
-  }, [pages, logoReady])
+    if (pages !== null && imagesReady) onReady?.()
+  }, [pages, imagesReady])
 
   if (pages === null) {
     return ReactDOM.createPortal(

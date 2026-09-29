@@ -1,9 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
+import dayjs from 'dayjs'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, sumLineAmtDiscounts, type DiscType } from '@/utils/poCalc'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { formatItemLabel } from '@/utils/itemLabel'
+
+// GET /po/:id/print-data returns this nested as-is (raw snake_case, the shared
+// Go UserSignatureInfo shape) — this file has no page-level remapping layer
+// (both call sites just spread the whole response into POData), so it's kept
+// snake_case here too rather than inventing a translation step just for this
+// one field.
+export interface POUserSignature {
+  user_id: number
+  full_name: string
+  approved_at?: string | null
+  signature_data_url: string
+}
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -63,6 +76,9 @@ export interface POData {
   // purchase_order.status (approval status, NOT status_receive) — drives the
   // "DRAFT" print watermark only. Optional because older callers may not pass it.
   status?: string
+  // Only populated when the PO's status is APPROVED (backend rule, resolvePOApprovalSignature).
+  // null/absent renders the "Authorized Signature" box exactly as it was before.
+  approval_signature?: POUserSignature | null
 }
 
 // Dev-only fixture — use for isolated preview/testing only, never as a silent
@@ -280,9 +296,23 @@ const CSS = `
 const AUTH_COLS = [
   {label:'Supply Chain Department',sublabel:'Supply Chain Department'},
   {label:'Section Head',sublabel:'Section Head'},
+  // approval_signature (when present) renders in this existing column — no new
+  // column, no relabel, per the product decision.
   {label:'Authorized Signature',sublabel:'Authorized Signature'},
   {label:'Supplier Signature',sublabel:'Supplier Signature'},
 ]
+
+// Signature image, sized to fit inside the existing empty auth-head slot
+// (flex:1, above the label) without growing the box — max-height keeps it
+// from ever exceeding that slot's available space in the fixed 28mm footer,
+// so the page layout/pagination never shifts.
+const SignatureImg = ({src,alt}:{src:string;alt:string}) => (
+  <img
+    src={src}
+    alt={alt}
+    style={{maxHeight:75,maxWidth:'90%',height:'auto',width:'auto',objectFit:'contain',display:'block',margin:'0 auto 8px'}}
+  />
+)
 
 const FillerTr = () => (
   <tr style={{height:'100%'}}>
@@ -442,19 +472,24 @@ const POFooter = ({data}:{data:POData}) => {
           </div>
         </div>
       </div>
-      <div style={{height:'28mm',display:'flex',flexDirection:'column'}}>
+      <div style={{height:'34mm',display:'flex',flexDirection:'column'}}>
         <div className="po-box" style={{display:'flex',flex:1}}>
-          {AUTH_COLS.map((col,i)=>(
-            <div key={i} className="auth-col">
-              <div className="auth-head">
-
+          {AUTH_COLS.map((col,i)=>{
+            const sig = col.label === 'Authorized Signature' ? data.approval_signature : null
+            return (
+              <div key={i} className="auth-col">
+                <div className="auth-head">
+                  {sig?.signature_data_url && <SignatureImg src={sig.signature_data_url} alt={col.label} />}
+                </div>
+                <div className="auth-body">
+                  <div style={{fontWeight:600}}>{col.label}</div>
+                  {sig?.full_name && <div>{sig.full_name}</div>}
+                  {sig?.approved_at && <div>{dayjs(sig.approved_at).format('DD/MM/YYYY')}</div>}
+                </div>
+                <div className="auth-date">({data.poDate})</div>
               </div>
-              <div className="auth-body">
-                <div style={{fontWeight:600}}>{col.label}</div>
-              </div>
-              <div className="auth-date">({data.poDate})</div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </>
@@ -478,7 +513,7 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   const [pages,    setPages]    = useState<POItem[][]|null>(null)
   const [rowsLast, setRowsLast] = useState(10)
-  const [logoReady, setLogoReady] = useState(false)
+  const [imagesReady, setImagesReady] = useState(false)
 
   useEffect(()=>{
     const s = document.createElement('style')
@@ -487,15 +522,28 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
     return ()=>{ document.getElementById('po-style')?.remove() }
   },[])
 
-  // Preload the logo so onReady (and window.print()) never fires before the
-  // browser has actually finished loading/decoding the image — the source of
-  // an intermittent missing-logo-on-print bug.
+  // Preload the logo AND the approval signature image (if any) so onReady
+  // (and window.print()) never fires before the browser has actually finished
+  // loading/decoding every image — the source of an intermittent
+  // missing-logo/missing-signature-on-print bug. A failed load still counts
+  // toward "ready" (never hangs) and just leaves that box/logo blank.
   useEffect(()=>{
-    const img = new Image()
-    img.onload = () => setLogoReady(true)
-    img.onerror = () => { console.warn('[PO] logo image failed to load, printing without it'); setLogoReady(true) }
-    img.src = logo
-  },[])
+    const sources = [logo, data.approval_signature?.signature_data_url].filter(
+      (s): s is string => !!s,
+    )
+    let loaded = 0
+    const onDone = () => {
+      loaded += 1
+      if (loaded === sources.length) setImagesReady(true)
+    }
+    sources.forEach((src) => {
+      const img = new Image()
+      img.onload = onDone
+      img.onerror = () => { console.warn('[PO] an image failed to load, printing without it'); onDone() }
+      img.src = src
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[data.approval_signature?.signature_data_url])
 
   useEffect(()=>{
     if(pages!==null) return
@@ -526,8 +574,8 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   })
 
   useEffect(() => {
-    if (pages !== null && logoReady) onReady?.()
-  }, [pages, logoReady])
+    if (pages !== null && imagesReady) onReady?.()
+  }, [pages, imagesReady])
 
   if(pages===null){
     return ReactDOM.createPortal(

@@ -176,12 +176,69 @@ Render เฉพาะ section ที่ key นั้น**มีอยู่จ
 ห้ามเช็คแค่ length เพราะ backend จะไม่ส่ง key มาเลยถ้าเอกสารนั้นไม่มี chain link (ไม่ใช่ส่งเป็น
 `[]`) ดู `CLAUDE.md` หัวข้อ session 2026-08-26 สำหรับรายละเอียด behavior
 
+### แสดงชื่อโครงการ (Project display)
+บนจอ (ตาราง list/history และ detail section) ของ Memo/PR/PO ให้แสดงเป็น
+`"{project_code} {project_name}"` เว้นวรรค 1 ช่อง **ไม่มีขีด** — ส่วนหน้าพิมพ์ (print) ทุกใบยังคง
+รูปแบบเดิม `"{code} — {name}"` (em dash) ไว้เหมือนเดิม ห้ามเปลี่ยน
+
 ### Print page (logo-preload gated)
 ทุกหน้าพิมพ์ (`PurchaseOrderPrint.tsx`, `PRPrint.tsx`, `WorkOrderPrintStandard.tsx`,
 `WorkOrderPrintPOStyle.tsx`, `ICPoReceivePrint.tsx`) ใช้ pattern เดียวกัน: preload รูป logo แล้วเรียก
 `window.print()` ผ่าน `onReady()` callback ที่ยิงหลังโหลดรูปเสร็จเท่านั้น (กันปัญหา race condition
 พิมพ์ก่อนโลโก้โหลดเสร็จแล้วได้กระดาษโลโก้ว่าง) — ดู `CLAUDE.md` session 2026-08-26 และ 2026-09-21
 สำหรับรายละเอียด ใช้ pattern นี้กับหน้าพิมพ์ใหม่ทุกหน้าที่มีโลโก้/รูปจากเน็ต
+
+### Resizable table columns (local pattern, no shared component)
+เพจไหนอยากให้ user ลากขยาย/ย่อความกว้าง column ได้ ให้ copy pattern นี้ไปทั้งชุด (ไม่มี shared
+component ให้ import — ทุกเพจที่มี resizable column ประกาศ `ResizableTitle` ของตัวเองในไฟล์เดียวกัน):
+```tsx
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
+
+const ResizableTitle: React.FC<...> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) return <th {...restProps} />
+  return (
+    <Resizable width={width} height={0} minConstraints={[60, 0]}
+      handle={<span className="react-resizable-handle" onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }} />}
+      onResize={onResize} draggableOpts={{ enableUserSelectHack: false }}>
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+// per resizable column: const [xColWidth, setXColWidth] = useState(DEFAULT)
+// column def: { width: xColWidth, onHeaderCell: () => ({ width: xColWidth, onResize: handleXColResize }) }
+<Table components={{ header: { cell: ResizableTitle } }} ... />
+```
+ใช้อยู่ใน `POStatusPage.tsx`, `PRStatusPage.tsx`, `MemoListPage.tsx`, `PRHistoryPage.tsx`,
+`POHistoryPage.tsx`, และ price-history `Modal` ใน `POItemsTable.tsx` — ไม่ persist ความกว้าง (reset
+ทุกครั้งที่ refresh) ยกเว้นระบุไว้เป็นอย่างอื่น
+
+### Row tint (สี background แถวตามสถานะ)
+ใช้กับตาราง list/history ที่อยากให้ user เห็นสถานะแบบเร็ว ๆ โดยไม่ต้องมี legend/label บนจอ (สีต้องอ่อน
+พอให้ตัวหนังสือใน cell ยังอ่านออกชัดเจน) — มี 2 วิธีที่ใช้อยู่ในโค้ดจริง เลือกให้ตรงกับที่หน้านั้นใช้อยู่แล้ว
+ก่อนเพิ่ม tint ใหม่:
+
+1. **`onRow` inline style (ค่าเริ่มต้น แนะนำสำหรับหน้าใหม่)** — ใช้ได้ตรง ๆ ไม่ต้องพึ่ง CSS เพิ่ม เพราะ
+   inline style ชนะ specificity ของ antd เองอยู่แล้ว:
+   ```tsx
+   const getRowStyle = (record): React.CSSProperties => { /* first-match-wins mapping */ }
+   <Table onRow={(record) => ({ style: getRowStyle(record) })} ... />
+   ```
+   ใช้ใน `MemoListPage.tsx`, `PRHistoryPage.tsx`, `POHistoryPage.tsx`.
+2. **`rowClassName` + CSS ใน `index.css` (ของเดิม, ยังใช้ใน `PRStatusPage.tsx`)** — ต้องมี `!important`
+   ทั้งบน background ปกติและ `:hover` (ไม่งั้น antd's `.ant-table-tbody > tr > td` /
+   `tr:hover > td` จะชนะแล้วเห็นแถวขาวหรือกระพริบสีฟ้าตอน hover):
+   ```css
+   .my-row-tint > td { background: #f0fdf4 !important; }
+   .my-row-tint:hover > td { background: #dcfce7 !important; }
+   ```
+
+โทนสีที่ใช้จริง (ไม่ใช่ legend, ใช้เป็นสี background เท่านั้น):
+- Success/complete: `#f6ffed` (เขียวอ่อน)
+- Pending/รอ: `#f5f5f5` + `borderLeft: 3px solid #8c8c8c` (เทา)
+- Rejected/partial ปัญหา: `#fff1f0` (แดง/ส้มอ่อน)
 
 ### Repeatable-row table with + button
 Pattern สำหรับฟอร์มที่มีรายการย่อยแบบเพิ่ม/ลบแถวได้ไม่จำกัดจำนวน (เช่น

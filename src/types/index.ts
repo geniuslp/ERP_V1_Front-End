@@ -13,6 +13,7 @@ export interface User {
   roles: string[]
   avatar?: string
   department?: string
+  has_signature?: boolean
 }
 
 export interface AuthTokens {
