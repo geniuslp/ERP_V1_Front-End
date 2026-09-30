@@ -57,7 +57,6 @@ const mapMemo = (raw: any): Memo => ({
   ...raw,
   id:          String(raw.id),
   memoNo:      raw.memo_no           ?? raw.memoNo        ?? '',
-  title:       raw.title             ?? '',
   status:      raw.status            ?? 'DRAFT',
   requestedBy: raw.requested_by_name ?? raw.requestedBy   ?? '',
   department:  raw.department,
@@ -209,7 +208,6 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                     <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 12 }}>{memo.memoNo}</span>
                     <MemoStatusBadge status={memo.status} />
                   </div>
-                  <div style={{ fontSize: 13, marginBottom: 2 }}>{memo.title}</div>
                   <div style={{ fontSize: 11, color: '#60a5fa' }}>
                     {memo.requestedBy} · {memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
                   </div>

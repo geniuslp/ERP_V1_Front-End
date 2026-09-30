@@ -36,7 +36,6 @@ const ROW_TINT_CATEGORY: Record<string, string> = {
 const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ?? ''] ?? ''
 
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
-const TITLE_COLUMN_DEFAULT_WIDTH = 280
 const PROJECT_COLUMN_DEFAULT_WIDTH = 240
 const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
 const APPROVER_COLUMN_DEFAULT_WIDTH = 140
@@ -89,7 +88,6 @@ const mapMemo = (m: any): Memo => ({
   ...m,
   id:           String(m.id),
   memoNo:       m.memo_no         ?? m.memoNo        ?? '',
-  title:        m.title           ?? '',
   requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
   approverName: m.approver_name     ?? m.approverName ?? undefined,
   projectCode:  m.project_code    ?? m.projectCode    ?? undefined,
@@ -110,10 +108,9 @@ const MemoListPage: React.FC = () => {
   const [status, setStatus] = useState<MemoStatus | undefined>(undefined)
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
 
-  // Resizable widths for "เลขที่ Memo" / "หัวข้อ / เรื่อง" / "โครงการ" — same
+  // Resizable widths for "เลขที่ Memo" / "โครงการ" — same
   // pattern as POStatusPage.tsx / PRStatusPage.tsx, not persisted (resets on refresh).
   const [memoNoColWidth, setMemoNoColWidth] = useState(MEMO_NO_COLUMN_DEFAULT_WIDTH)
-  const [titleColWidth, setTitleColWidth] = useState(TITLE_COLUMN_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
   const [requestedByColWidth, setRequestedByColWidth] = useState(REQUESTED_BY_COLUMN_DEFAULT_WIDTH)
   const [approverColWidth, setApproverColWidth] = useState(APPROVER_COLUMN_DEFAULT_WIDTH)
@@ -122,9 +119,6 @@ const MemoListPage: React.FC = () => {
   const [actionsColWidth, setActionsColWidth] = useState(ACTIONS_COLUMN_DEFAULT_WIDTH)
   const handleMemoNoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setMemoNoColWidth(data.size.width)
-  }
-  const handleTitleColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
-    setTitleColWidth(data.size.width)
   }
   const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setProjectColWidth(data.size.width)
@@ -220,17 +214,6 @@ const MemoListPage: React.FC = () => {
           {memoNo}
         </a>
       ),
-    },
-    {
-      title: 'หัวข้อ / เรื่อง',
-      dataIndex: 'title',
-      key: 'title',
-      width: titleColWidth,
-      ellipsis: true,
-      onHeaderCell: () => ({
-        width: titleColWidth,
-        onResize: handleTitleColResize,
-      }),
     },
     {
       title: 'โครงการ',
@@ -366,7 +349,7 @@ const MemoListPage: React.FC = () => {
       <Card style={cardStyle}>
         <Space style={{ marginBottom: 16, width: '100%', flexWrap: 'wrap' }}>
           <Input
-            placeholder="ค้นหาเลขที่/หัวข้อ"
+            placeholder="ค้นหาเลขที่ Memo / รหัสโครงการ"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onPressEnter={fetchData}

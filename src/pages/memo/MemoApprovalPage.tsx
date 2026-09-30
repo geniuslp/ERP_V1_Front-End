@@ -18,7 +18,7 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 interface MemoItem {
   id: string
   memoNo: string
-  title: string
+  title?: string | null
   requestedBy: string
   department?: string
   projectCode?: string
@@ -51,7 +51,6 @@ const MemoApprovalPage: React.FC = () => {
       setData(list.map((m: any) => ({
         id:          String(m.id),
         memoNo:      m.memo_no           ?? m.memoNo        ?? '',
-        title:       m.title             ?? '',
         requestedBy: m.requested_by_name ?? m.requestedBy   ?? '',
         department:  m.department,
         projectCode: m.project_code       ?? m.projectCode,
@@ -125,12 +124,6 @@ const MemoApprovalPage: React.FC = () => {
           {memoNo}
         </a>
       ),
-    },
-    {
-      title: 'Title',
-      dataIndex: 'title',
-      key: 'title',
-      ellipsis: true,
     },
     {
       title: 'Requested By',

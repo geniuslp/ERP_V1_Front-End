@@ -67,7 +67,7 @@ interface MemoAttachmentFile {
 interface MemoDetail {
   id: string
   memoNo: string
-  title: string
+  title?: string | null
   status: string
   requestedBy: string
   requestedById: number
@@ -144,7 +144,6 @@ const mapMemo = (raw: any): MemoDetail => {
   return {
     id:            String(raw.id),
     memoNo:        raw.memo_no        ?? '',
-    title:         raw.title          ?? '',
     status:        raw.status         ?? 'DRAFT',
     requestedBy:   raw.requested_by_name ?? '',
     requestedById: raw.requested_by   ?? 0,
@@ -327,7 +326,6 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === memo.department)?.label ?? memo.department ?? ''
     setPrintData({
       memoNo: memo.memoNo,
-      title: memo.title,
       department: departmentLabel,
       projectName: projectLabel,
       requestedBy: memo.requestedBy,
@@ -396,7 +394,6 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     <div>
       <PageHeader
         title={memo?.memoNo ?? '...'}
-        subtitle={memo?.title}
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: memo?.memoNo ?? '' }]}
         extra={
           <Space>

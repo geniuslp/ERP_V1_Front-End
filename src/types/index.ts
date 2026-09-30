@@ -180,7 +180,8 @@ export interface MemoAttachment {
 export interface Memo {
   id: string
   memoNo: string
-  title: string
+  // Removed from the UI — new memos omit this key; old memos may still carry it.
+  title?: string | null
   projectName?: string
   projectCode?: string
   requestedBy: string
@@ -200,7 +201,7 @@ export interface Memo {
 }
 
 export interface MemoFormValues {
-  title: string
+  title?: string | null
   project_code?: string
   department?: string
   delivery_location?: string

@@ -29,7 +29,6 @@ export interface MemoUserSignature {
 
 export interface MemoData {
   memoNo: string
-  title: string
   department: string       // memo.department
   projectName: string      // memo.project_code / project_name
   requestedBy: string      // memo.requested_by_name
@@ -53,7 +52,7 @@ export interface MemoData {
 // Dev-only fixture — isolated preview/testing only, never a silent production fallback.
 // Real usage must always pass real `data` from the API.
 export const MOCK_DATA: MemoData = {
-  memoNo: 'MEMO6906-0001', title: 'ขออนุมัติจัดซื้อวัสดุสำหรับงาน Zone B',
+  memoNo: 'MEMO6906-0001',
   department: 'ฝ่ายวิศวกรรม', projectName: 'GNS-033', requestedBy: 'สมชาย ใจดี',
   note: 'เร่งด่วนสำหรับงานหน้างาน', siteDeliveryDate: '25/06/2569',
   deliveryLocation: 'โรงงานนครปฐม', createdAt: '24/09/2569', approverName: 'สมหญิง รักงาน',
@@ -203,7 +202,6 @@ const MemoHeader = ({ data, pageNum, totalPages }: { data: MemoData; pageNum: nu
 const MemoInfoBox = ({ data }: { data: MemoData }) => (
   <div className="memo-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
     <div><b>โครงการ :</b>&nbsp;{data.projectName}</div>
-    <div><b>เรื่อง :</b>&nbsp;{data.title}</div>
     <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryLocation}</div>
     <div><b>หน่วยงาน :</b>&nbsp;{data.department}</div>
     <div style={{ display: 'flex', gap: 4 }}>

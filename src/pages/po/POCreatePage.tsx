@@ -1281,7 +1281,7 @@ const POCreatePage: React.FC = () => {
           type="info"
           showIcon
           style={{ marginBottom: 16, borderRadius: 8 }}
-          message={`กำลังสร้าง PO จากใบบันทึกขอซื้อ (Memo): ${fromMemo.memoNo} — ${fromMemo.title}`}
+          message={`กำลังสร้าง PO จากใบบันทึกขอซื้อ (Memo): ${fromMemo.memoNo}`}
           description="ข้อมูลถูก pre-fill จากใบบันทึกขอซื้อ (Memo) แล้ว สามารถแก้ไขได้ก่อนบันทึก"
         />
       )}

@@ -122,7 +122,6 @@ const MemoCreateEditPage: React.FC = () => {
       const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === raw.department)?.label ?? raw.department ?? ''
       setPrintData({
         memoNo: raw.memo_no ?? '',
-        title: raw.title ?? '',
         department: departmentLabel,
         projectName: projectLabel,
         requestedBy: raw.requested_by_name ?? '',
@@ -264,7 +263,6 @@ const MemoCreateEditPage: React.FC = () => {
       const siteDeliveryDate = memo.site_delivery_date ?? memo.siteDeliveryDate
       form.setFieldsValue({
         requested_by: memo.requested_by ?? memo.requestedBy,
-        title:        memo.title,
         project_code: memo.project_code ?? memo.projectCode,
         approver_id:  memo.approver_id ?? memo.approverId,
         department:   memo.department,
@@ -430,7 +428,6 @@ const MemoCreateEditPage: React.FC = () => {
 
       const payload: any = {
         requested_by: values.requested_by,
-        title:        values.title,
         project_code: values.project_code ?? undefined,
         approver_id:  values.approver_id,
         department:   values.department   ?? undefined,
@@ -645,11 +642,6 @@ const MemoCreateEditPage: React.FC = () => {
                   }
                   options={projects}
                 />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="หัวข้อ / เรื่อง" name="title" rules={[{ required: true, message: 'กรุณากรอกหัวข้อ' }]}>
-                <Input />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
