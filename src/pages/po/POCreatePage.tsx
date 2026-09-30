@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import {
   Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip,
 } from 'antd'
@@ -348,7 +349,7 @@ const POCreatePage: React.FC = () => {
   // burning another one; cleared on successful create or explicit cancel.
   useEffect(() => {
     if (isEdit) return
-    const cached = sessionStorage.getItem('po_reserved_number')
+    const cached = sessionStorage.getItem(storageKey('po_reserved_number'))
     if (cached) {
       setNextPoNumber(cached)
       return
@@ -365,7 +366,7 @@ const POCreatePage: React.FC = () => {
           signal: controller.signal,
         })
         const poNo = res.data.data.po_no
-        sessionStorage.setItem('po_reserved_number', poNo)
+        sessionStorage.setItem(storageKey('po_reserved_number'), poNo)
         setNextPoNumber(poNo)
       } catch (err: any) {
         if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
@@ -1057,7 +1058,7 @@ const POCreatePage: React.FC = () => {
           poId = res.data?.data?.po_id ?? res.data?.data?.po?.po_id ?? res.data?.po_id ?? res.data?.po?.po_id ?? null
           // Reserved number is now consumed by a real saved PO — clear the
           // per-tab cache so the next fresh create-PO open gets a new one.
-          sessionStorage.removeItem('po_reserved_number')
+          sessionStorage.removeItem(storageKey('po_reserved_number'))
           if (poId) {
             setSavedPoId(poId)
             // Move the route from /po/create to /po/:id/edit now that the PO
@@ -1893,7 +1894,7 @@ const POCreatePage: React.FC = () => {
                 <Button icon={<ArrowLeftOutlined />} onClick={() => {
                   // Leaving create-PO without saving — clear the cached
                   // reservation so the next fresh open gets a genuinely new number.
-                  if (!isEdit) sessionStorage.removeItem('po_reserved_number')
+                  if (!isEdit) sessionStorage.removeItem(storageKey('po_reserved_number'))
                   navigate('/po/history')
                 }}>กลับหน้าหลัก</Button>
               </Space>

@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { storageKey } from '@/config/env'
 import { AuthState, AuthTokens, User } from '@/types'
 
-const STORAGE_KEY = 'erp_tokens'
-const USER_STORAGE_KEY = 'erp_user'
+const STORAGE_KEY = storageKey('erp_tokens')
+const USER_STORAGE_KEY = storageKey('erp_user')
 
 const loadTokens = (): AuthTokens | null => {
   try {

@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from 'react'
+import { ROUTER_BASENAME } from '@/config/env'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { App as AntApp, ConfigProvider, Spin } from 'antd'
 import thTH from 'antd/locale/th_TH'
@@ -352,7 +353,7 @@ const App: React.FC = () => (
   <Provider store={store}>
     <ConfigProvider theme={antdTheme} locale={thTH}>
       <AntApp>
-        <BrowserRouter basename="/erp">
+        <BrowserRouter basename={ROUTER_BASENAME}>
           <AppRoutes />
         </BrowserRouter>
       </AntApp>

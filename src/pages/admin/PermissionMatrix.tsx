@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Button, Modal, message, Select, Tabs, Popconfirm, Skeleton } from 'antd'
 import { ReloadOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons'
 import { useAppSelector } from '@/store'
@@ -1183,7 +1184,7 @@ const UserTab: React.FC<{ token: string }> = ({ token }) => {
 const PermissionMatrix: React.FC = () => {
   const token =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
-    sessionStorage.getItem('accessToken') ??
+    sessionStorage.getItem(storageKey('accessToken')) ??
     ''
 
   return (

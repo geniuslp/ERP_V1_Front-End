@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Button, Space, Modal, message, Badge, Select, Skeleton } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import { useAppSelector } from '@/store'
@@ -39,7 +40,7 @@ interface ModuleGroup {
 const UserPermissionMatrix: React.FC = () => {
   const accessToken =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
-    sessionStorage.getItem('accessToken') ??
+    sessionStorage.getItem(storageKey('accessToken')) ??
     ''
 
   const [users, setUsers] = useState<{ id: number; username: string; full_name: string; department: string }[]>([])

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useCallback, useEffect, useState } from 'react'
+import { storageKey } from '@/config/env'
 import { useAppSelector } from '@/store'
 import { approvalConfigService } from '@/services/approvalConfig.service'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
@@ -40,7 +41,7 @@ const EFFECTIVE_DEPT_FIELD: Record<PermissionAction, keyof EffectivePermission &
 
 export const PermissionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAppSelector((state) => state.auth)
-  const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? sessionStorage.getItem('accessToken') ?? ''
+  const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? sessionStorage.getItem(storageKey('accessToken')) ?? ''
 
   // Starts true, not false — the fetch only kicks off inside the useEffect
   // below, which runs after the first render/paint. A false initial value

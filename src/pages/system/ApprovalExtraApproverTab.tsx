@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Button, Table, Select, Input, Modal, Form, message, Tooltip } from 'antd'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -32,7 +33,7 @@ ActionsCell.displayName = 'ActionsCell'
 const ApprovalExtraApproverTab: React.FC = () => {
   const accessToken =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
-    sessionStorage.getItem('accessToken') ??
+    sessionStorage.getItem(storageKey('accessToken')) ??
     ''
 
   const [loading, setLoading] = useState(false)

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Button, Space, Modal, message, Badge, Skeleton } from 'antd'
 import { ReloadOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons'
 import { useAppSelector } from '@/store'
@@ -48,7 +49,7 @@ interface ModuleGroup {
 const DeptPermissionMatrix: React.FC = () => {
   const accessToken =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
-    sessionStorage.getItem('accessToken') ??
+    sessionStorage.getItem(storageKey('accessToken')) ??
     ''
 
   const [loading, setLoading] = useState(false)

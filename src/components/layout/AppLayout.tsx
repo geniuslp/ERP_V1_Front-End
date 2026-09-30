@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
 import SidebarMenu from './SidebarMenu'
 import BrandLogo from '@/components/common/BrandLogo'
+import { APP_ENV } from '@/config/env'
 
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
@@ -139,6 +140,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {isMobile ? 'ERP' : 'ระบบบริหารองค์กร'}
               </Text>
+              {APP_ENV === 'uat' && (
+                <span style={{
+                  flexShrink: 0, padding: '1px 8px', borderRadius: 6,
+                  background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.35)',
+                  color: '#d97706', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, lineHeight: '18px',
+                }}>UAT</span>
+              )}
             </div>
           </div>
 

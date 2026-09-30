@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { storageKey } from '@/config/env'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Avatar, message } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -16,7 +17,7 @@ interface UserRecord {
   roleId: number | null; roleIds: number[]; roles: UserRole[]; deptCode: string | null
   hasSignature: boolean
 }
-const user = JSON.parse(sessionStorage.getItem('user') ?? '{}')
+const user = JSON.parse(sessionStorage.getItem(storageKey('user')) ?? '{}')
 const UsersPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<UserRecord[]>([])

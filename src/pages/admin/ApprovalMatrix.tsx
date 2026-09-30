@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Button, Space, Table, Switch, Select, Tooltip, Popconfirm, Modal, message, Badge, Tabs } from 'antd'
 import {
   AppstoreOutlined, ReloadOutlined, CheckOutlined, CloseOutlined,
@@ -24,7 +25,7 @@ const parseCellKey = (key: string): { docType: string; roleId: number } => {
 const ApprovalMatrixOverviewTab: React.FC = () => {
   const accessToken =
     useAppSelector((s) => s.auth.tokens?.accessToken) ??
-    sessionStorage.getItem('accessToken') ??
+    sessionStorage.getItem(storageKey('accessToken')) ??
     ''
 
   // ── Data ──────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { storageKey } from '@/config/env'
 import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal, Alert, Spin } from 'antd'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, DeleteOutlined,
@@ -301,7 +302,7 @@ const PRCreatePage: React.FC = () => {
     // Cleared on successful create or on explicit "back"/cancel; a genuinely
     // fresh open of this page (new tab, or after a prior cache clear) still goes
     // through the API + StrictMode-safe abort guard below.
-    const cached = sessionStorage.getItem('pr_reserved_number')
+    const cached = sessionStorage.getItem(storageKey('pr_reserved_number'))
     if (cached) {
       setPrNumber(cached)
       return
@@ -319,7 +320,7 @@ const PRCreatePage: React.FC = () => {
           signal: controller.signal,
         })
         const prNo = res.data.data.pr_no
-        sessionStorage.setItem('pr_reserved_number', prNo)
+        sessionStorage.setItem(storageKey('pr_reserved_number'), prNo)
         setPrNumber(prNo)
       } catch (err: any) {
         if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
@@ -571,7 +572,7 @@ const PRCreatePage: React.FC = () => {
         if (raw?.id != null) setPrId(Number(raw.id))
         // Reserved number is now consumed by a real saved PR — clear the
         // per-tab cache so the next fresh create-PR open gets a new one.
-        sessionStorage.removeItem('pr_reserved_number')
+        sessionStorage.removeItem(storageKey('pr_reserved_number'))
         if (status === 'DRAFT') {
           message.success('บันทึกร่าง PR สำเร็จ')
           // No navigation — stay on this page so the user can keep editing.
@@ -1213,7 +1214,7 @@ const PRCreatePage: React.FC = () => {
                   // Leaving the create-PR page without saving — clear the cached
                   // reservation so the next fresh open gets a genuinely new number
                   // instead of resuming this abandoned one.
-                  if (!isEdit) sessionStorage.removeItem('pr_reserved_number')
+                  if (!isEdit) sessionStorage.removeItem(storageKey('pr_reserved_number'))
                   navigate(isEdit ? `/pr/${id}` : '/pr/history')
                 }}
               >

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { storageKey } from '@/config/env'
 import axios from 'axios'
 import { Form, Input, Button, Checkbox, message, Typography } from 'antd'
 import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
@@ -46,9 +47,9 @@ const LoginPage: React.FC = () => {
       }
 
       // ✅ เก็บลง sessionStorage
-      sessionStorage.setItem('accessToken', access_token)
-      sessionStorage.setItem('refreshToken', refresh_token)
-      sessionStorage.setItem('user', JSON.stringify(mappedUser))
+      sessionStorage.setItem(storageKey('accessToken'), access_token)
+      sessionStorage.setItem(storageKey('refreshToken'), refresh_token)
+      sessionStorage.setItem(storageKey('user'), JSON.stringify(mappedUser))
       dispatch(loginSuccess({
         user: mappedUser,
         tokens: { accessToken: access_token, refreshToken: refresh_token }

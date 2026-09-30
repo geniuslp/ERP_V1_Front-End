@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosStatic, InternalAxiosRequestConfig } from 'axios'
 import { store } from '@/store'
 import { logout, setTokens } from '@/store/slices/authSlice'
+import { appPath } from '@/config/env'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -17,8 +18,10 @@ const bareClient: AxiosInstance = axios.create({ baseURL: BASE_URL, timeout: 150
 
 const redirectToLogin = () => {
   store.dispatch(logout())
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+  // Full-page redirect bypasses the router, so build the path under the current base.
+  const loginPath = appPath('login')
+  if (window.location.pathname !== loginPath) {
+    window.location.href = loginPath
   }
 }
 
