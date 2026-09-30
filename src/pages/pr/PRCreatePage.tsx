@@ -431,6 +431,26 @@ const PRCreatePage: React.FC = () => {
     }
   }, [isEdit, id])
 
+  // POST/PUT /pr responses carry no per-line qty, so re-read GET /pr/:id after a
+  // confirm to report what the backend actually reserved vs left to order.
+  // Best-effort: any failure falls back to '' so the plain success text still shows.
+  const fetchReservationSummary = async (targetId: number | string | null | undefined) => {
+    if (targetId == null) return ''
+    try {
+      const res = await axios.get(`${BASE_URL}/pr/${targetId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const raw = res.data?.data ?? res.data
+      const lines: any[] = raw?.lines ?? []
+      if (lines.length === 0) return ''
+      const reserved = lines.filter((l) => Number(l.qty_reserved ?? 0) > 0).length
+      const toOrder = lines.filter((l) => Number(l.qty_to_order ?? 0) > 0).length
+      return `ตัดจาก Stock ${reserved} รายการ, สั่งซื้อ ${toOrder} รายการ`
+    } catch {
+      return ''
+    }
+  }
+
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
     if (submitting) return
     setSubmitting(true)
@@ -521,9 +541,10 @@ const PRCreatePage: React.FC = () => {
         await axios.post(`${BASE_URL}/pr/${prId}/submit`, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
+        const summary = await fetchReservationSummary(prId)
         Modal.success({
           title: 'บันทึกและส่งใบขอซื้อสำเร็จ',
-          content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว`,
+          content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว${summary ? ` (${summary})` : ''}`,
         })
         navigate(`/pr/${prId}`)
       } else if (prId != null) {
@@ -538,7 +559,8 @@ const PRCreatePage: React.FC = () => {
           message.success('บันทึกร่าง PR สำเร็จ')
           // No navigation — stay on this page so the user can keep editing.
         } else {
-          message.success('บันทึก PR สำเร็จ')
+          const summary = await fetchReservationSummary(prId)
+          message.success(`บันทึก PR สำเร็จ${summary ? ` — ${summary}` : ''}`, 5)
           navigate('/pr/history')
         }
       } else {
@@ -554,7 +576,8 @@ const PRCreatePage: React.FC = () => {
           message.success('บันทึกร่าง PR สำเร็จ')
           // No navigation — stay on this page so the user can keep editing.
         } else {
-          message.success('บันทึก PR สำเร็จ')
+          const summary = await fetchReservationSummary(raw?.id)
+          message.success(`บันทึก PR สำเร็จ${summary ? ` — ${summary}` : ''}`, 5)
           navigate('/pr/history')
         }
       }

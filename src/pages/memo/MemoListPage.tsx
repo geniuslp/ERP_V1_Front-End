@@ -308,13 +308,15 @@ const MemoListPage: React.FC = () => {
               onClick={() => navigate(ROUTES.MEMO.DETAIL.replace(':id', record.id))}
             />
           </Tooltip>
-          <Tooltip title="แก้ไข">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => navigate(ROUTES.MEMO.EDIT.replace(':id', record.id))}
-            />
-          </Tooltip>
+          {!['APPROVED', 'CANCELLED'].includes(String(record.status ?? '').toUpperCase()) && (
+            <Tooltip title="แก้ไข">
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => navigate(ROUTES.MEMO.EDIT.replace(':id', record.id))}
+              />
+            </Tooltip>
+          )}
           {(record.status === 'PENDING_PO' || record.status === 'pending_po') && (
             <Tooltip title="สร้าง PO">
               <Button

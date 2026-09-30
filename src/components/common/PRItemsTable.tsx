@@ -174,7 +174,8 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         const list = Array.isArray(raw) ? raw : []
         const map: Record<string, number> = {}
         list.forEach((r: any) => {
-          map[r.mat_code] = r.qty ?? 0
+          // Missing/null qty stays absent (unknown), never coerced to 0.
+          if (r.qty != null) map[r.mat_code] = Number(r.qty)
         })
         setStockMap(map)
       } catch {
@@ -187,21 +188,9 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.map((i: any) => i.code).join(',')])
 
-  // Zero-stock lines must never carry deductStock=true — force it off in state
-  // (not just visually) whenever a row's looked-up qty is exactly 0.
-  useEffect(() => {
-    setItems((prev) => {
-      let changed = false
-      const next = prev.map((i) => {
-        if (i.code && stockMap[i.code] === 0 && i.deductStock) {
-          changed = true
-          return { ...i, deductStock: false }
-        }
-        return i
-      })
-      return changed ? next : prev
-    })
-  }, [stockMap])
+  // deductStock is only ever changed by the user's switch or by loading a
+  // saved value — never by stock lookup results. The backend reserves
+  // min(requested, stock), so a true flag on a zero-stock line is harmless.
 
   const addItem = () => {
     const no = items.length + 1
@@ -441,8 +430,10 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
             ? <Spin size="small" />
             : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
         }
-        const color = qty === 0 ? '#dc2626' : '#16a34a'
-        return <span style={{ color, fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
+        if (qty === 0) {
+          return <span style={{ color: '#dc2626', fontWeight: 500 }}>0 <span style={{ fontSize: 12 }}>(ไม่มีสต็อก)</span></span>
+        }
+        return <span style={{ color: '#16a34a', fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
       },
     },
     {
@@ -472,7 +463,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
           <Switch
             size="small"
             checked={r.deductStock}
-            disabled={!r.code || stockMap[r.code] === 0}
+            disabled={!r.code}
             onChange={(checked) => toggleDeductStock(r.key, checked)}
             style={{ backgroundColor: r.deductStock ? '#16a34a' : '#dc2626' }}
           />

@@ -355,7 +355,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   }
 
   const isOwner   = memo && user && String(memo.requestedById) === String(user.id)
-  const canEdit   = memo && (memo.status === 'DRAFT' || memo.status === 'draft' || memo.status === 'PENDING_APPROVAL' || memo.status === 'pending_approval') && isOwner
+  const canEdit   = memo && ['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(String(memo.status).toUpperCase()) && isOwner
 
   const columns = [
     { title: '#', key: 'no', align: 'center' as const, render: (_: any, __: any, idx: number) => idx + 1, width: 50 },

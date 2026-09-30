@@ -19,15 +19,21 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
 // Row tint by status — mapping unchanged, only the shared palette (src/index.css's
 // .row-tint-* classes, see src/constants/rowTint.ts) changed. STOCK_CHECK
-// (pending-equivalent), PARTIALLY_FILLED (partial), and COMPLETED/FULFILLED
-// (complete) get tinted. DRAFT/CANCELLED are left plain.
+// (pending-equivalent) and PARTIALLY_FILLED (partial) get tinted regardless of
+// PO-conversion state. COMPLETED/FULFILLED only tint green once every line has
+// actually been converted to a PO (poConversionStatus === 'FULLY_CONVERTED') —
+// a PR that's COMPLETED/FULFILLED but still has lines needing a PO stays plain,
+// same as DRAFT/CANCELLED. Applies the same way regardless of order_type.
 const ROW_TINT_CATEGORY: Record<string, string> = {
   PARTIALLY_FILLED: ROW_TINT_CLASS.orange,
   STOCK_CHECK:       ROW_TINT_CLASS.gray,
-  COMPLETED:         ROW_TINT_CLASS.green,
-  FULFILLED:         ROW_TINT_CLASS.green,
 }
-const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ?? ''] ?? ''
+const getRowClassName = (status?: string, poConversionStatus?: string): string => {
+  if ((status === 'COMPLETED' || status === 'FULFILLED') && poConversionStatus === 'FULLY_CONVERTED') {
+    return ROW_TINT_CLASS.green
+  }
+  return ROW_TINT_CATEGORY[status ?? ''] ?? ''
+}
 
 const PR_NO_COLUMN_DEFAULT_WIDTH = 110
 const MEMO_COLUMN_DEFAULT_WIDTH = 100
@@ -105,6 +111,11 @@ interface PRItem {
   jobCode: string | null
   memoId: number | string | null
   memoNo: string | null
+  // GET /pr's po_conversion_status — same field PRStatusPage.tsx already reads
+  // ('FULLY_CONVERTED' | 'PARTIALLY_CONVERTED' | 'NOT_CONVERTED') — used to gate
+  // the green tint so COMPLETED/FULFILLED only tints green once every line has
+  // actually been converted to PO.
+  poConversionStatus: string
   // GET /pr's has_active_po_link — same field/meaning as PRStatusPage.tsx's
   // PRItem.hasActivePoLink; mirrors the backend's PUT /pr/:id guard so the
   // edit button never appears when the save would just be rejected.
@@ -210,6 +221,7 @@ const PRHistoryPage: React.FC = () => {
         jobCode:      r.job_code       ?? null,
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
+        poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
         hasActivePoLink: r.has_active_po_link ?? false,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
@@ -430,7 +442,7 @@ const PRHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
-          rowClassName={(record) => getRowClassName(record.status)}
+          rowClassName={(record) => getRowClassName(record.status, record.poConversionStatus)}
           size="small"
           scroll={{ x: 1460 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}

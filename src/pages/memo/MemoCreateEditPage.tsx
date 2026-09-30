@@ -254,7 +254,12 @@ const MemoCreateEditPage: React.FC = () => {
 
       const status = memo.status ?? ''
       setMemoStatus(status)
-      setCanEdit(!LOCKED_STATUSES.includes(status.toUpperCase()))
+      if (LOCKED_STATUSES.includes(status.toUpperCase())) {
+        message.warning('Memo นี้ไม่สามารถแก้ไขได้ในสถานะปัจจุบัน')
+        navigate(ROUTES.MEMO.DETAIL.replace(':id', String(id)), { replace: true })
+        return
+      }
+      setCanEdit(true)
 
       const siteDeliveryDate = memo.site_delivery_date ?? memo.siteDeliveryDate
       form.setFieldsValue({
