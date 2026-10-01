@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm } from 'antd'
+import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm, Select } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
@@ -16,6 +16,7 @@ import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 import { ROW_TINT_CLASS } from '@/constants/rowTint'
+import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS, isOhOrderType } from '@/constants/orderTypes'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
 // own menu code, not a history-specific one.
@@ -95,6 +96,7 @@ const POHistoryPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(false)
+  const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
 
   // Resizable widths for "โครงการ" / "ผู้ขาย" — same pattern as POStatusPage.tsx,
   // not persisted (resets on refresh).
@@ -130,7 +132,7 @@ const POHistoryPage: React.FC = () => {
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
     try {
-      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l })
+      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, order_type: orderTypeFilter })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
@@ -143,7 +145,7 @@ const POHistoryPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit])
+  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter])
 
   const handleDelete = async (poId: number) => {
     try {
@@ -245,10 +247,18 @@ const POHistoryPage: React.FC = () => {
       },
     },
     {
+      title: 'ประเภทการสั่งซื้อ',
+      dataIndex: 'order_type',
+      key: 'order_type',
+      width: 150,
+      render: (v?: string) =>
+        v ? <Tag color="blue" style={{ margin: 0 }}>{ORDER_TYPE_LABEL[v] ?? v}</Tag> : <Text type="secondary">-</Text>,
+    },
+    {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
-      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} orderType={r.order_type} />,
     },
     {
       // total_amount - discount_amount = after-discount, before VAT/WHT.
@@ -358,7 +368,7 @@ const POHistoryPage: React.FC = () => {
               />
             </Tooltip>
           )}
-          {record.status === 'DRAFT' && record.status_receive === 'NOT_SENT' && (
+          {record.status === 'DRAFT' && (record.status_receive === 'NOT_SENT' || isOhOrderType(record.order_type)) && (
             <Popconfirm
               title="ต้องการลบเอกสารนี้ใช่หรือไม่"
               okText="ลบ"
@@ -398,6 +408,14 @@ const POHistoryPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบสั่งซื้อ' }, { title: 'ประวัติ' }]}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
+        <Select
+          allowClear
+          placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
+          style={{ width: 220, marginBottom: 12 }}
+          value={orderTypeFilter}
+          options={ORDER_TYPE_OPTIONS}
+          onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
+        />
         <Table
           rowKey="po_id"
           loading={loading}
@@ -406,7 +424,7 @@ const POHistoryPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           rowClassName={(record) => getRowClassName(record)}
           size="small"
-          scroll={{ x: 2200 }}
+          scroll={{ x: 2350 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

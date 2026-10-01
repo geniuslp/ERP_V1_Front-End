@@ -230,6 +230,8 @@ interface POItemsTableProps {
   // PO's job_code is header-level (one per PO), so every line shares this
   // same filter context.
   jobTypeCode?: string
+  // OH order types: Cost Code picker loads only GET /master/cost-code/full?scope=oh.
+  ohOnly?: boolean
 }
 
 const POItemsTable: React.FC<POItemsTableProps> = ({
@@ -239,6 +241,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   useVat = false,
   useWht = false,
   jobTypeCode,
+  ohOnly = false,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
@@ -807,6 +810,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           if (costCodeModalRowKey) handleCostCodeSelect(costCodeModalRowKey, item)
         }}
         jobTypeCode={jobTypeCode}
+        ohOnly={ohOnly}
       />
 
       <PriceHistoryModal matCode={priceHistoryMatCode} onClose={() => setPriceHistoryMatCode(null)} />

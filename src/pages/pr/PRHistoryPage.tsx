@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm } from 'antd'
+import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
@@ -10,6 +10,7 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { ROW_TINT_CLASS } from '@/constants/rowTint'
+import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS } from '@/constants/orderTypes'
 
 // Same convention as PRStatusPage.tsx's edit button — edit is gated by the
 // create page's own menu code, not a history-specific one.
@@ -120,6 +121,7 @@ interface PRItem {
   // PRItem.hasActivePoLink; mirrors the backend's PUT /pr/:id guard so the
   // edit button never appears when the save would just be rejected.
   hasActivePoLink: boolean
+  orderType: string | null
 }
 
 const PRHistoryPage: React.FC = () => {
@@ -132,6 +134,7 @@ const PRHistoryPage: React.FC = () => {
   const [limit, setLimit] = useState(20)
   const [loading, setLoading] = useState(false)
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
 
   // Resizable widths — all columns, same pattern as POStatusPage.tsx / PRStatusPage.tsx,
   // not persisted (resets on refresh).
@@ -204,7 +207,7 @@ const PRHistoryPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/pr`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { page: p, limit: l },
+        params: { page: p, limit: l, order_type: orderTypeFilter },
       })
       const d = res.data?.data ?? res.data
       const raw = Array.isArray(d) ? d : d?.items ?? []
@@ -223,6 +226,7 @@ const PRHistoryPage: React.FC = () => {
         memoNo:       r.memo_no        ?? null,
         poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
         hasActivePoLink: r.has_active_po_link ?? false,
+        orderType:    r.order_type     ?? null,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
     } catch (err: any) {
@@ -232,7 +236,7 @@ const PRHistoryPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit])
+  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter])
 
   const handleDelete = async (id: number) => {
     try {
@@ -326,6 +330,14 @@ const PRHistoryPage: React.FC = () => {
         const code = v.split(' - ')[0].trim()
         return <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>{code}</Tag>
       },
+    },
+    {
+      title: 'ประเภทการสั่งซื้อ',
+      dataIndex: 'orderType',
+      key: 'orderType',
+      width: 150,
+      render: (v: string | null) =>
+        v ? <Tag color="blue" style={{ margin: 0 }}>{ORDER_TYPE_LABEL[v] ?? v}</Tag> : <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'ผู้ขอซื้อ',
@@ -436,6 +448,14 @@ const PRHistoryPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'ประวัติ' }]}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
+        <Select
+          allowClear
+          placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
+          style={{ width: 220, marginBottom: 12 }}
+          value={orderTypeFilter}
+          options={ORDER_TYPE_OPTIONS}
+          onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
+        />
         <Table
           rowKey="id"
           loading={loading}
@@ -444,7 +464,7 @@ const PRHistoryPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           rowClassName={(record) => getRowClassName(record.status, record.poConversionStatus)}
           size="small"
-          scroll={{ x: 1460 }}
+          scroll={{ x: 1610 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

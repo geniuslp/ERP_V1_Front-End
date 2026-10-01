@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '@/store'
 import type { PRListItem, PRLineWithPOStatus, PRPriceHistoryEntry } from '@/types/pr'
+import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -492,6 +493,11 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                       <Tag style={{ margin: 0, fontSize: 11 }}>{pr.status}</Tag>
                     </div>
                     <div style={{ fontSize: 13, marginBottom: 2 }}>{pr.requested_by || '—'}</div>
+                    {pr.order_type && (
+                      <Tag color="blue" style={{ margin: '0 0 2px', fontSize: 11 }}>
+                        {ORDER_TYPE_LABEL[pr.order_type] ?? pr.order_type}
+                      </Tag>
+                    )}
                     <div style={{ fontSize: 11, color: '#60a5fa' }}>
                       {pr.pr_date ? dayjs(pr.pr_date).format('DD/MM/YYYY') : '—'}
                     </div>

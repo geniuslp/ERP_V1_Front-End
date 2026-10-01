@@ -52,7 +52,7 @@ export interface MenuConfig {
 // ─── PR ────────────────────────────────────────────────────────
 export type PRStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled'
 
-export type PROrderType = 'stock' | 'cost'
+export type PROrderType = 'stock' | 'cost' | 'asset_equipment' | 'office_equipment' | 'asset_tool'
 
 export type PRType = 'PO_WO' | 'PO_ONLY' | 'WO_ONLY'
 
@@ -73,7 +73,6 @@ export interface CreatePRLineRequest {
 }
 
 export interface CreatePRRequest {
-  pr_no: string
   pr_date: string
   requested_by: number
   created_by: number

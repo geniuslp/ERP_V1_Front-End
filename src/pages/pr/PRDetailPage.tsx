@@ -9,6 +9,8 @@ import { useAppSelector } from '@/store'
 import { usePermissionContext } from '@/contexts/PermissionContext'
 import PRPrint, { type PRData } from './PRPrint'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
+import type { PROrderType } from '@/types'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import { formatItemLabel } from '@/utils/itemLabel'
 
@@ -41,10 +43,7 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 
 // Same labels as the order_type <Select> options in PRCreatePage.tsx — no shared
 // mapping exists yet for this enum, mirrored here rather than duplicating a new wording.
-const orderTypeLabel: Record<string, string> = {
-  stock: 'คลังสินค้า (Stock)',
-  cost:  'โครงการ (Cost)',
-}
+const orderTypeLabel = ORDER_TYPE_LABEL
 
 interface PRLineItem {
   id: number
@@ -79,7 +78,7 @@ interface PRDetail {
   approverName: string | null
   locationText: string
   projectCode: string | null
-  orderType: 'stock' | 'cost' | null
+  orderType: PROrderType | null
   jobCode: string | null
   remarks: string | null
   prDate: string

@@ -17,6 +17,7 @@ import { resolveFileUrl } from '@/utils/fileUrl'
 import { useAppSelector } from '@/store'
 import type { PODetail, PODetailResponse, POLine, POAttachment } from '@/types/po'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 import { poApprovalService } from '@/services/poApprovalService'
 import PermissionButton from '@/components/common/PermissionButton'
 import EditApprovedButton from './components/EditApprovedButton'
@@ -346,7 +347,7 @@ const POApprovalDetailPage: React.FC = () => {
           <span style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>
             {formatPoNoWithRevision(po.po_no, po.revision_round)}
           </span>
-          <POStatusBadges status={po.status} statusReceive={po.status_receive} />
+          <POStatusBadges status={po.status} statusReceive={po.status_receive} orderType={po.order_type} />
         </Space>
 
         <Space>
@@ -448,7 +449,7 @@ const POApprovalDetailPage: React.FC = () => {
             {po.job_code ? (JOB_TYPES.find((jt) => jt.code === po.job_code)?.label ?? po.job_code) : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="ประเภทการซื้อ">
-            {po.order_type === 'cost' ? 'โครงการ (Cost)' : po.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '-'}
+            {po.order_type ? (ORDER_TYPE_LABEL[po.order_type] ?? po.order_type) : '-'}
           </Descriptions.Item>
 
           <Descriptions.Item label="ชื่อบริษัท" span={2}>{po.supplier_name}</Descriptions.Item>

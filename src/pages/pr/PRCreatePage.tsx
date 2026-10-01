@@ -18,6 +18,8 @@ import axios from 'axios'
 import type { User, Memo, PROrderType, CreatePRRequest } from '@/types'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { isOhOrderType, OH_JOB_CODE } from '@/constants/orderTypes'
+import OrderTypeSelect from '@/components/common/OrderTypeSelect'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { Department } from '@/types/permission.types'
 import { isExemptMatCode } from '@/utils/matCode'
@@ -172,6 +174,7 @@ const PRCreatePage: React.FC = () => {
   // be included in the submit payload.
   const [remark, setRemark] = useState('')
   const orderType: PROrderType | undefined = Form.useWatch('order_type', form)
+  const isOh = isOhOrderType(orderType)
   const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
   // Mutually exclusive with selectedMemo — see the "แผนก" Field (disabled by
   // selectedMemo) and the Memo Reference trigger below (disabled by this).
@@ -200,12 +203,28 @@ const PRCreatePage: React.FC = () => {
   // never as "lock the user out".
   const jobOptions = useMemo(() => {
     const allOptions = JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))
-    if (!projectCode) return allOptions
+    // OH order types always use job_code 'G' regardless of project.
+    if (isOh || !projectCode) return allOptions
     const project = projects.find((p) => p.value === projectCode)
     if (!project || !project.jobCodes || project.jobCodes.length === 0) return allOptions
     const filtered = allOptions.filter((o) => project.jobCodes.includes(o.value))
     return filtered.length > 0 ? filtered : allOptions
-  }, [projectCode, projects])
+  }, [projectCode, projects, isOh])
+
+  // OH order types: job_code is fixed to 'G' (the field is read-only). When
+  // switching back to stock/cost, drop the auto-set 'G' so the user picks a
+  // real job type again. Declared before the jobOptions effect below so the
+  // reset lands first and doesn't trigger its "ประเภทงานเดิมไม่ตรง" toast.
+  const prevIsOh = useRef(false)
+  useEffect(() => {
+    if (isOh) {
+      if (form.getFieldValue('job_code') !== OH_JOB_CODE) form.setFieldValue('job_code', OH_JOB_CODE)
+    } else if (prevIsOh.current && form.getFieldValue('job_code') === OH_JOB_CODE) {
+      form.setFieldValue('job_code', undefined)
+    }
+    prevIsOh.current = isOh
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOh])
 
   // Keep job_code valid against the (possibly newly restricted) jobOptions —
   // clear a now-invalid selection, or auto-select the sole remaining option.
@@ -294,43 +313,12 @@ const PRCreatePage: React.FC = () => {
   }, [])
 
 
+  // The backend now generates pr_no on save (GET /pr/reserve-number is
+  // deprecated and no longer called). Drop any reservation cached by an older
+  // build so stale values in open tabs don't linger.
   useEffect(() => {
     if (isEdit) return
-    // Per-tab cache (sessionStorage, not localStorage — two tabs creating two
-    // separate PRs must each get their own reservation) so an F5 refresh before
-    // saving reuses the already-reserved number instead of burning another one.
-    // Cleared on successful create or on explicit "back"/cancel; a genuinely
-    // fresh open of this page (new tab, or after a prior cache clear) still goes
-    // through the API + StrictMode-safe abort guard below.
-    const cached = sessionStorage.getItem(storageKey('pr_reserved_number'))
-    if (cached) {
-      setPrNumber(cached)
-      return
-    }
-    // reserve-number is atomic (unlike the old next-number preview) — every real
-    // call consumes a sequence value. An ignore-flag alone only hides the stale
-    // result; it doesn't stop the first StrictMode invocation's request from
-    // reaching the backend and burning a number. Abort it instead so the request
-    // itself never completes.
-    const controller = new AbortController()
-    const fetchReservedNumber = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/pr/reserve-number`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          signal: controller.signal,
-        })
-        const prNo = res.data.data.pr_no
-        sessionStorage.setItem(storageKey('pr_reserved_number'), prNo)
-        setPrNumber(prNo)
-      } catch (err: any) {
-        if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
-        message.error(err?.response?.data?.message || 'โหลดเลข PR ไม่สำเร็จ')
-      }
-    }
-    fetchReservedNumber()
-    return () => {
-      controller.abort()
-    }
+    try { sessionStorage.removeItem(storageKey('pr_reserved_number')) } catch { /* ignore */ }
   }, [isEdit])
 
   // Edit mode: load the reopened PR's header/lines and check for lines whose
@@ -452,6 +440,20 @@ const PRCreatePage: React.FC = () => {
     }
   }
 
+  const resolveCreatedPrNo = async (raw: any): Promise<string> => {
+    if (raw?.pr_no) return String(raw.pr_no)
+    if (raw?.id == null) return ''
+    try {
+      const res = await axios.get(`${BASE_URL}/pr/${raw.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const d = res.data?.data ?? res.data
+      return d?.pr_no ? String(d.pr_no) : ''
+    } catch {
+      return ''
+    }
+  }
+
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
     if (submitting) return
     setSubmitting(true)
@@ -478,6 +480,13 @@ const PRCreatePage: React.FC = () => {
         return
       }
 
+      // OH order types: cost code (from the OH list) is required on every line.
+      if (isOhOrderType(order_type) && lineItems.some((item) => item.cost_subgroup_id == null)) {
+        message.error('กรุณาเลือก Cost Code ให้ครบทุกรายการ')
+        setSubmitting(false)
+        return
+      }
+
       // 1. Upload newly-added files.
       const uploadedFiles: UploadedFile[] = []
       for (const f of attachmentsRef.current) {
@@ -499,7 +508,6 @@ const PRCreatePage: React.FC = () => {
       }
 
       const payload: CreatePRRequest = {
-        pr_no: prNumber,
         pr_date: dayjs().format('YYYY-MM-DD'),
         requested_by,
         created_by: requested_by,
@@ -570,15 +578,17 @@ const PRCreatePage: React.FC = () => {
         })
         const raw = res.data?.data ?? res.data
         if (raw?.id != null) setPrId(Number(raw.id))
-        // Reserved number is now consumed by a real saved PR — clear the
-        // per-tab cache so the next fresh create-PR open gets a new one.
-        sessionStorage.removeItem(storageKey('pr_reserved_number'))
+        // pr_no comes back on the create response next to id; if it's missing,
+        // load it from GET /pr/:id rather than show an empty/stale number.
+        const createdNo = await resolveCreatedPrNo(raw)
+        if (createdNo) setPrNumber(createdNo)
+        const noText = createdNo ? ` (เลขที่ ${createdNo})` : ''
         if (status === 'DRAFT') {
-          message.success('บันทึกร่าง PR สำเร็จ')
+          message.success(`บันทึกร่าง PR สำเร็จ${noText}`)
           // No navigation — stay on this page so the user can keep editing.
         } else {
           const summary = await fetchReservationSummary(raw?.id)
-          message.success(`บันทึก PR สำเร็จ${summary ? ` — ${summary}` : ''}`, 5)
+          message.success(`บันทึก PR สำเร็จ${noText}${summary ? ` — ${summary}` : ''}`, 5)
           navigate('/pr/history')
         }
       }
@@ -694,10 +704,12 @@ const PRCreatePage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: isEdit ? 'แก้ไขใบขอซื้อ' : 'สร้างใบขอซื้อ' }]}
       />
 
-      <div style={{ marginBottom: 16 }}>
-        <span style={{ color: '#999' }}>{isEdit ? 'เลขที่ PR : ' : 'PR ล่าสุด : '}</span>
-        <span style={{ color: 'red', fontWeight: 'bold', fontSize: 18 }}>{prNumber}</span>
-      </div>
+      {prNumber && (
+        <div style={{ marginBottom: 16 }}>
+          <span style={{ color: '#999' }}>เลขที่ PR : </span>
+          <span style={{ color: 'red', fontWeight: 'bold', fontSize: 18 }}>{prNumber}</span>
+        </div>
+      )}
 
       {isEdit && (
         <Alert
@@ -737,14 +749,18 @@ const PRCreatePage: React.FC = () => {
           <Row gutter={[40, 0]}>
             {/* ── Left column ── */}
             <Col xs={24} lg={12}>
-              <div className="pr-field-row">
-                <div className="pr-field-label">
-                  <span style={{ color: '#cc0000', fontWeight: 600 }}>หมายเลข PR :</span>
+              {/* Hidden only while creating a new PR before its first save — the
+                  number doesn't exist yet. Shown in edit mode and once saved. */}
+              {(isEdit || prNumber) && (
+                <div className="pr-field-row">
+                  <div className="pr-field-label">
+                    <span style={{ color: '#cc0000', fontWeight: 600 }}>หมายเลข PR :</span>
+                  </div>
+                  <div className="pr-field-control">
+                    <Input disabled value={prNumber} placeholder="จะออกเลขอัตโนมัติเมื่อบันทึก" style={{ color: '#cc0000', fontWeight: 700 }} />
+                  </div>
                 </div>
-                <div className="pr-field-control">
-                  <Input disabled value={prNumber} style={{ color: '#cc0000', fontWeight: 700 }} />
-                </div>
-              </div>
+              )}
 
               <Field label="โครงการ" required={orderType === 'stock' && !selectedMemo}>
                 <Form.Item
@@ -780,10 +796,10 @@ const PRCreatePage: React.FC = () => {
               <Field label="ประเภท Job" required>
                 <Form.Item name="job_code" noStyle rules={[{ required: true, message: 'กรุณาเลือกประเภท Job' }]}>
                   <Select
-                    placeholder={projectCode ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการก่อน'}
+                    placeholder={isOh || projectCode ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการก่อน'}
                     style={{ width: '100%' }}
                     showSearch
-                    disabled={!projectCode}
+                    disabled={isOh || !projectCode}
                     filterOption={(input, option) =>
                       String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
@@ -827,14 +843,11 @@ const PRCreatePage: React.FC = () => {
 
               <Field label="ประเภทการสั่งซื้อ">
                 <Form.Item name="order_type" noStyle>
-                  <Select
+                  <OrderTypeSelect
                     placeholder="- เลือกประเภท -"
-                    style={{ width: '100%' }}
                     allowClear
-                    options={[
-                      { value: 'stock', label: 'คลังสินค้า (Stock)' },
-                      { value: 'cost', label: 'โครงการ (Cost)' },
-                    ]}
+                    hasCostCodes={lineItems.some((l) => l.cost_subgroup_id != null)}
+                    onClearCostCodes={() => itemsTableRef.current?.clearCostCodes()}
                   />
                 </Form.Item>
               </Field>
@@ -1202,19 +1215,18 @@ const PRCreatePage: React.FC = () => {
             style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}
           >
             <Space wrap>
-              <Button
-                icon={<PrinterOutlined />}
-                onClick={() => handlePrintCurrent(itemsTableRef.current?.getPrintItems() ?? [])}
-              >
-                พิมพ์
-              </Button>
+              <Tooltip title={prNumber ? undefined : 'บันทึกก่อนจึงจะพิมพ์ได้'}>
+                <Button
+                  icon={<PrinterOutlined />}
+                  disabled={!prNumber}
+                  onClick={() => handlePrintCurrent(itemsTableRef.current?.getPrintItems() ?? [])}
+                >
+                  พิมพ์
+                </Button>
+              </Tooltip>
               <Button
                 icon={<RollbackOutlined />}
                 onClick={() => {
-                  // Leaving the create-PR page without saving — clear the cached
-                  // reservation so the next fresh open gets a genuinely new number
-                  // instead of resuming this abandoned one.
-                  if (!isEdit) sessionStorage.removeItem(storageKey('pr_reserved_number'))
                   navigate(isEdit ? `/pr/${id}` : '/pr/history')
                 }}
               >

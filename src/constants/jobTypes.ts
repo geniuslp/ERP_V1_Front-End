@@ -47,5 +47,5 @@ export const JOB_TYPES: JobTypeOption[] = [
   { code: 'FB', label: 'FB - Stock FAC-BO', filterSubjectCodes: null, filterJobCode: null },
   { code: 'DE', label: 'DE - Dead Stock', filterSubjectCodes: null, filterJobCode: null },
   { code: 'RE', label: 'RE - Return Project', filterSubjectCodes: null, filterJobCode: null },
-  { code: 'OH', label: 'OH - General Code', filterSubjectCodes: null, filterJobCode: null },
+  { code: 'G', label: 'G - General Code', filterSubjectCodes: null, filterJobCode: null },
 ]

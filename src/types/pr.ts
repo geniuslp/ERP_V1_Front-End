@@ -13,6 +13,8 @@ export interface PRListItem {
   // purchase_request.job_code — "ประเภท Job", shared 12-code JOB_TYPES list
   // with PO. Required (NOT NULL) on the backend, always present.
   job_code: string
+  // purchase_request.order_type — present on GET /pr list responses.
+  order_type?: string | null
 }
 
 export interface PRLine {

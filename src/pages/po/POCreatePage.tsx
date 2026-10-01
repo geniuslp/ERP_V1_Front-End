@@ -24,6 +24,8 @@ import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { isOhOrderType, OH_JOB_CODE, type OrderType } from '@/constants/orderTypes'
+import OrderTypeSelect from '@/components/common/OrderTypeSelect'
 
 const MENU_CODE = 'MENU_PO_CREATE'
 
@@ -117,7 +119,10 @@ const POCreatePage: React.FC = () => {
   // Drives the conditional required-ness of PR Order (required only when
   // order_type = 'cost') — re-renders reactively as the user changes the
   // Select, same pattern as PR's own order_type-driven fields.
-  const orderType: 'stock' | 'cost' | undefined = Form.useWatch('order_type', form)
+  const orderType: OrderType | undefined = Form.useWatch('order_type', form)
+  // OH order types (asset_equipment/office_equipment/asset_tool): job_code is
+  // fixed to 'G' (read-only), cost codes come from the OH list only.
+  const isOh = isOhOrderType(orderType)
   // The 4 dedicated "warehouse projects" the backend derives PO warehouse_code
   // from (project.warehouse_code is only populated for these) — บางแค /
   // ศาลายา / บางบ่อ / ปราจีน. Same hardcoded-allowlist mechanism as
@@ -129,6 +134,18 @@ const POCreatePage: React.FC = () => {
   // Drives the CostCode picker's job-type filter on every line — PO's
   // "ประเภท Job" is header-level, same watched-field pattern as orderType above.
   const jobTypeCode: string | undefined = Form.useWatch('job_code', form)
+  // Same OH job_code handling as PRCreatePage.tsx: force 'G' for OH types,
+  // drop the auto-set 'G' again when switching back to stock/cost.
+  const prevIsOh = useRef(false)
+  useEffect(() => {
+    if (isOh) {
+      if (form.getFieldValue('job_code') !== OH_JOB_CODE) form.setFieldValue('job_code', OH_JOB_CODE)
+    } else if (prevIsOh.current && form.getFieldValue('job_code') === OH_JOB_CODE) {
+      form.setFieldValue('job_code', undefined)
+    }
+    prevIsOh.current = isOh
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOh])
   const [poLoading, setPoLoading] = useState(false)
   const [poStatus, setPoStatus] = useState('')
   const [canEdit, setCanEdit] = useState(true)
@@ -220,9 +237,6 @@ const POCreatePage: React.FC = () => {
   const [savedPoId, setSavedPoId] = useState<number | string | null>(id ?? null)
   const [printData, setPrintData] = useState<POData | null>(null)
   const [printing, setPrinting] = useState(false)
-  // Read-only preview of the next PO number (not reserved) — create mode only.
-  // Empty string means "no hint" (either not fetched yet, or the fetch failed).
-  const [nextPoNumber, setNextPoNumber] = useState('')
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -341,44 +355,12 @@ const POCreatePage: React.FC = () => {
   }, [])
 
 
-  // Atomic reservation of the next PO number — create mode only. An existing
-  // PO already has its real saved po_no (populated from GET /po/:id below),
-  // so this preview would be irrelevant/misleading there.
-  // Per-tab sessionStorage cache (mirrors PRCreatePage.tsx's pilot) so an F5
-  // refresh before saving reuses the already-reserved number instead of
-  // burning another one; cleared on successful create or explicit cancel.
+  // The backend now generates po_no on save (GET /po/reserve-number is
+  // deprecated and no longer called). Drop any reservation cached by an older
+  // build so stale values in open tabs don't linger.
   useEffect(() => {
     if (isEdit) return
-    const cached = sessionStorage.getItem(storageKey('po_reserved_number'))
-    if (cached) {
-      setNextPoNumber(cached)
-      return
-    }
-    // reserve-number is atomic — every real call consumes a sequence value.
-    // Abort on StrictMode's mount->cleanup->mount so the first invocation's
-    // request never completes (an ignore-flag alone wouldn't stop it from
-    // reaching the backend).
-    const controller = new AbortController()
-    const fetchReservedNumber = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/po/reserve-number`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          signal: controller.signal,
-        })
-        const poNo = res.data.data.po_no
-        sessionStorage.setItem(storageKey('po_reserved_number'), poNo)
-        setNextPoNumber(poNo)
-      } catch (err: any) {
-        if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return
-        // Non-fatal — hide the hint rather than show an error or fall back to
-        // stale mock text; the field itself isn't required to show a number.
-        setNextPoNumber('')
-      }
-    }
-    fetchReservedNumber()
-    return () => {
-      controller.abort()
-    }
+    try { sessionStorage.removeItem(storageKey('po_reserved_number')) } catch { /* ignore */ }
   }, [isEdit])
 
   useEffect(() => {
@@ -865,6 +847,10 @@ const POCreatePage: React.FC = () => {
       message.warning('กรุณากรอกรหัสวัสดุ จำนวน และราคาต่อหน่วยให้ถูกต้อง (มากกว่า 0) ทุกรายการ')
       return false
     }
+    if (isOh && items.some((i) => i.cost_subgroup_id == null)) {
+      message.warning('กรุณาเลือก Cost Code ให้ครบทุกรายการ')
+      return false
+    }
     const overRemaining = items.find((i) => i.pr_qty_remaining != null && i.qty > i.pr_qty_remaining)
     if (overRemaining) {
       message.error(
@@ -927,28 +913,11 @@ const POCreatePage: React.FC = () => {
       return
     }
 
-    // Create mode only: po_no must have been reserved successfully on page load
-    // (see the reserve-number effect above). If that call failed, nextPoNumber
-    // was left as '' (its non-fatal fallback) — block here with an actionable
-    // message instead of sending an empty po_no and surfacing the backend's
-    // generic "document number is required, call reserve-number first" 400.
-    if (!isEdit && !nextPoNumber) {
-      message.error('ไม่สามารถออกเลขที่ PO ได้ กรุณารีเฟรชหน้าใหม่')
-      submittingRef.current = false
-      return
-    }
-
     const doSubmit = async () => {
       setSubmitting(true)
       try {
         const payload = {
           // ── Header ──
-          // po_no: only meaningful on create — an existing PO already has its
-          // real saved po_no server-side, and edit mode never reserves one
-          // (nextPoNumber stays '' the whole time when isEdit, see the
-          // reserve-number effect's early return), so this key is omitted
-          // entirely on PUT rather than sent as ''.
-          ...(isEdit ? {} : { po_no: nextPoNumber }),
           supplier_id: values.supplier_code,
           location_text: values.deliveryLocation,
           receiver_name: values.receiver_name || undefined,
@@ -1044,6 +1013,7 @@ const POCreatePage: React.FC = () => {
             )
 
         let poId: number | string | null = null
+        let createdPoNo = ''
         if (isEdit) {
           poId = id ?? null
           setSavedPoId(poId)
@@ -1056,9 +1026,7 @@ const POCreatePage: React.FC = () => {
           )
         } else {
           poId = res.data?.data?.po_id ?? res.data?.data?.po?.po_id ?? res.data?.po_id ?? res.data?.po?.po_id ?? null
-          // Reserved number is now consumed by a real saved PO — clear the
-          // per-tab cache so the next fresh create-PO open gets a new one.
-          sessionStorage.removeItem(storageKey('po_reserved_number'))
+          createdPoNo = res.data?.data?.po_no ?? res.data?.data?.po?.po_no ?? res.data?.po_no ?? res.data?.po?.po_no ?? ''
           if (poId) {
             setSavedPoId(poId)
             // Move the route from /po/create to /po/:id/edit now that the PO
@@ -1073,7 +1041,9 @@ const POCreatePage: React.FC = () => {
             // don't leave savedPoId silently unset with no trace of why.
             console.warn('POST /po succeeded but no id found in response:', res.data)
           }
-          message.success(status === 'DRAFT' ? 'บันทึกร่าง PO สำเร็จ' : 'ส่งใบสั่งซื้อเรียบร้อยแล้ว')
+          message.success(
+            `${status === 'DRAFT' ? 'บันทึกร่าง PO สำเร็จ' : 'ส่งใบสั่งซื้อเรียบร้อยแล้ว'}${createdPoNo ? ` (เลขที่ ${createdPoNo})` : ''}`
+          )
         }
 
         // Upload + attach each newly-added file now that the PO has an id —
@@ -1318,7 +1288,8 @@ const POCreatePage: React.FC = () => {
                 <Col xs={24} lg={12}>
                   <Row gutter={16}>
 
-                    {/* PO Number */}
+                    {/* PO Number — hidden while creating (no number until first save) */}
+                    {isEdit && (
                     <Col xs={24}>
                       <Form.Item
                         label={
@@ -1329,18 +1300,13 @@ const POCreatePage: React.FC = () => {
                         name="poNumber"
                       >
                         <Input
-                          disabled={isEdit}
+                          disabled
+                          placeholder="จะออกเลขอัตโนมัติเมื่อบันทึก"
                           style={{ color: '#cc0000', fontWeight: 600 }}
-                          prefix={
-                            !isEdit && nextPoNumber ? (
-                              <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>
-                                ล่าสุด: <span style={{ color: '#cc0000' }}>{nextPoNumber}</span>
-                              </span>
-                            ) : undefined
-                          }
                         />
                       </Form.Item>
                     </Col>
+                    )}
 
                     {/* โครงการ */}
                     <Col xs={24}>
@@ -1603,14 +1569,15 @@ const POCreatePage: React.FC = () => {
                         name="order_type"
                         initialValue={selectedPrId ? undefined : 'stock'}
                       >
-                        <Select
+                        <OrderTypeSelect
                           placeholder="- เลือกประเภท -"
                           allowClear={!selectedPrId}
+                          // Inherited from (and locked to) the linked PR.
                           disabled={Boolean(selectedPrId)}
-                          options={[
-                            { value: 'stock', label: 'คลังสินค้า (Stock)' },
-                            { value: 'cost', label: 'โครงการ (Cost)' },
-                          ]}
+                          hasCostCodes={items.some((i) => i.cost_subgroup_id != null)}
+                          onClearCostCodes={() =>
+                            setItems((prev) => prev.map((i) => ({ ...i, cost_subgroup_id: null, cost_code_label: null })))
+                          }
                         />
                       </Form.Item>
                     </Col>
@@ -1625,6 +1592,7 @@ const POCreatePage: React.FC = () => {
                         <Select
                           placeholder="- เลือกรายการ -"
                           showSearch
+                          disabled={isOh}
                           filterOption={(input, option) =>
                             String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                           }
@@ -1695,6 +1663,7 @@ const POCreatePage: React.FC = () => {
                   useVat={useVat}
                   useWht={useWht}
                   jobTypeCode={jobTypeCode}
+                  ohOnly={isOh}
                 />
               </div>
               <TaxSidebarPanel
@@ -1892,9 +1861,6 @@ const POCreatePage: React.FC = () => {
               <Space>
                 <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>พิมพ์</Button>
                 <Button icon={<ArrowLeftOutlined />} onClick={() => {
-                  // Leaving create-PO without saving — clear the cached
-                  // reservation so the next fresh open gets a genuinely new number.
-                  if (!isEdit) sessionStorage.removeItem(storageKey('po_reserved_number'))
                   navigate('/po/history')
                 }}>กลับหน้าหลัก</Button>
               </Space>

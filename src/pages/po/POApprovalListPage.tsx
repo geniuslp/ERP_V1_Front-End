@@ -111,7 +111,7 @@ const POApprovalListPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 140,
-      render: (_v: unknown, r: POListItem) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
+      render: (_v: unknown, r: POListItem) => <POStatusBadges status={r.status} statusReceive={r.status_receive} orderType={r.order_type} />,
     },
     {
       title: 'ผู้สร้าง',

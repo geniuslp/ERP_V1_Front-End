@@ -10,7 +10,7 @@ import logo from '../../components/asset/Genius Logo-01.jpg'
 
 const BK = '#000000'
 
-export type PROrderType = 'stock' | 'cost' | ''
+export type PROrderType = 'stock' | 'cost' | 'asset_equipment' | 'office_equipment' | 'asset_tool' | ''
 
 export interface PRItem {
   no: string
@@ -99,6 +99,9 @@ function normalizeData(raw: PRData): PRData {
 const ORDER_TYPE_LABEL: Record<string, string> = {
   stock: 'คลังสินค้า',
   cost: 'โครงการ',
+  asset_equipment: 'Asset Equipment',
+  office_equipment: 'Office Equipment',
+  asset_tool: 'Asset Tool',
 }
 
 const MM_TO_PX = 96 / 25.4

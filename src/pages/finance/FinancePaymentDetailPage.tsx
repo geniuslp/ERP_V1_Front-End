@@ -15,6 +15,7 @@ import type { FinanceDocType, FinancePaymentListItem, FinancePaymentLogEntry } f
 import type { POStatus, PODetail, POLine } from '@/types/po'
 import type { WOStatus } from '@/types/workOrder'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -308,7 +309,7 @@ const FinancePaymentDetailPage: React.FC = () => {
           <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} bordered size="small">
             <Descriptions.Item label="Supplier">{poDetail?.supplier_name ?? '—'}</Descriptions.Item>
             <Descriptions.Item label="ประเภทการสั่งซื้อ">
-              {poDetail?.order_type === 'cost' ? 'โครงการ (Cost)' : poDetail?.order_type === 'stock' ? 'คลังสินค้า (Stock)' : '—'}
+              {poDetail?.order_type ? (ORDER_TYPE_LABEL[poDetail.order_type] ?? poDetail.order_type) : '—'}
             </Descriptions.Item>
             <Descriptions.Item label="ประเภท Job">
               {poDetail?.job_code ? (JOB_TYPES.find((jt) => jt.code === poDetail.job_code)?.label ?? poDetail.job_code) : '—'}

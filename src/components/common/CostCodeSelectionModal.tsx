@@ -33,9 +33,14 @@ interface Props {
   // Document-level PR "ประเภท Job" value (e.g. 'MP', 'G'). Resolved via
   // JOB_TYPES to a job_code to filter CostCode rows by — see constants/jobTypes.ts.
   jobTypeCode?: string
+  // OH order types (asset_equipment/office_equipment/asset_tool): load only
+  // GET /master/cost-code/full?scope=oh. Same row shape as the unscoped list
+  // (`subgroup_id` is the value to send as cost_subgroup_id). Job-type
+  // filtering is skipped — the list is already OH-only.
+  ohOnly?: boolean
 }
 
-const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobTypeCode }) => {
+const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobTypeCode, ohOnly = false }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   const [data, setData] = useState<CostCodeItem[]>([])
@@ -62,11 +67,14 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
       try {
         const res = await axios.get(`${BASE_URL}/master/cost-code/full`, {
           headers: { Authorization: `Bearer ${accessToken}` },
+          params: ohOnly ? { scope: 'oh' } : undefined,
         })
         const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
         setData(
           (Array.isArray(list) ? list : []).map((c: any) => ({
-            subgroupId:   c.subgroup_id,
+            // scope=oh rows come from the same struct as the unscoped list, so
+            // the id key is `subgroup_id` in both cases (`id` kept as fallback).
+            subgroupId:   c.subgroup_id ?? c.id,
             costCode:     c.cost_code,
             subjectCode:  c.subject_code,
             subjectName:  c.subject_name,
@@ -92,7 +100,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
     }
 
     fetchCostCodes()
-  }, [open, accessToken])
+  }, [open, accessToken, ohOnly])
 
   // Resolve the document-level job type (e.g. 'MP') to the subject_codes +
   // job_code it should filter CostCode rows by (e.g. ['M','S'] + 'P'). job_code
@@ -105,8 +113,8 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
   // (e.g. 'G' — General Code), means "show all, unfiltered" — same as today's
   // default behavior.
   const matchedJobType = useMemo(
-    () => JOB_TYPES.find((jt) => jt.code === jobTypeCode),
-    [jobTypeCode],
+    () => (ohOnly ? undefined : JOB_TYPES.find((jt) => jt.code === jobTypeCode)),
+    [jobTypeCode, ohOnly],
   )
   const filterSubjectCodes = matchedJobType?.filterSubjectCodes ?? null
   const filterJobCode = matchedJobType?.filterJobCode ?? null
@@ -155,8 +163,10 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
   }
 
   const columns = [
-    { title: 'Subject', key: 'subject', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.subjectCode} — ${r.subjectName}` },
-    { title: 'Group', key: 'group', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.groupCode} — ${r.groupName}` },
+    ...(ohOnly ? [] : [
+      { title: 'Subject', key: 'subject', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.subjectCode} — ${r.subjectName}` },
+      { title: 'Group', key: 'group', width: 140, render: (_: unknown, r: CostCodeItem) => `${r.groupCode} — ${r.groupName}` },
+    ]),
     { title: 'รหัสกลุ่มย่อย', dataIndex: 'subgroupCode', key: 'subgroupCode', width: 110 },
     { title: 'ชื่อกลุ่มย่อย', dataIndex: 'subgroupName', key: 'subgroupName', ellipsis: true },
     {
@@ -194,7 +204,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
       }
     >
       {/* ── filters ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      {!ohOnly && <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 220px' }}>
           <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Group</div>
           <Select
@@ -210,7 +220,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
             onChange={(v) => setSelectedGroup(v ?? null)}
           />
         </div>
-      </div>
+      </div>}
 
       {/* ── search ── */}
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>ค้นหาอิสระ (รหัสรวม / Subject / Job / Group / Subgroup)</div>

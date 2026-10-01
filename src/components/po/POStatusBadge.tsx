@@ -1,6 +1,7 @@
 import React from 'react'
 import { Tag, Space } from 'antd'
 import type { POStatus, POReceiveStatus } from '@/types/po'
+import { isOhOrderType } from '@/constants/orderTypes'
 
 // Approval-status color/label map — deduplicated from the identical local
 // `statusTag` copies that used to live in POStatusPage.tsx, POHistoryPage.tsx,
@@ -42,12 +43,15 @@ interface POStatusBadgesProps {
   // Optional because status_receive isn't confirmed present on every PO
   // endpoint yet — only render the second badge once the backend includes it.
   statusReceive?: POReceiveStatus
+  // OH order types (asset_equipment/office_equipment/asset_tool) have no
+  // goods receiving — never show the receive badge for them.
+  orderType?: string | null
 }
 
-const POStatusBadges: React.FC<POStatusBadgesProps> = ({ status, statusReceive }) => (
+const POStatusBadges: React.FC<POStatusBadgesProps> = ({ status, statusReceive, orderType }) => (
   <Space size={4}>
     <POApprovalStatusTag status={status} />
-    {statusReceive && <POReceiveStatusTag status={statusReceive} />}
+    {statusReceive && !isOhOrderType(orderType) && <POReceiveStatusTag status={statusReceive} />}
   </Space>
 )
 

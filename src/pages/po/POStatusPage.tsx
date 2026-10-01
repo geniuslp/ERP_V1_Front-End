@@ -270,7 +270,7 @@ const POStatusPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 220,
-      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} orderType={r.order_type} />,
     },
     {
       title: 'ผู้สร้าง',

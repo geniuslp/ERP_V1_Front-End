@@ -655,6 +655,27 @@ that might suggest a different name.
 - `POStatusPage.tsx`'s money column forcing 2 decimals — it doesn't (`POHistoryPage.tsx` and
   `POApprovalDetailPage.tsx` do). Not fixed this session since the page is being retired.
 
+## 🧭 Session learnings (2026-10-01) — new OH order types on PR/PO [Frontend]
+
+- `order_type` now = `stock | cost | asset_equipment | office_equipment | asset_tool`
+  (labels "Asset Equipment" / "Office Equipment" / "Asset Tool"). Single source:
+  `src/constants/orderTypes.ts` (`ORDER_TYPE_LABEL/OPTIONS`, `isOhOrderType`, `OH_JOB_CODE`).
+- The 3 new types: `job_code` auto-set to `G` (General Code; 'OH' is not a valid DB value) + read-only, project optional, cost code required on
+  every line and loaded **only** from `GET /master/cost-code/full?scope=oh` (rows `{subgroup_id, subgroup_code,
+  subgroup_name, cost_code, ...}` — `subgroup_id` is the `cost_subgroup_id`; NOT `id` (earlier note was wrong);
+  same key as the unscoped list). Enabled via `CostCodeSelectionModal`'s `ohOnly` prop (passed by `PRItemsTable` /
+  `POItemsTable`). Existing PR lines stay cost-code-editable for these types.
+- Switching across the OH boundary (OH ↔ stock/cost) with cost codes already on lines →
+  `OrderTypeSelect` confirm dialog, then all cost codes cleared. stock↔cost switching is unchanged.
+- PO from PR: order_type was already locked to the PR's; unchanged.
+- Hidden for the 3 types: `status_receive` badge (`POStatusBadges` takes `orderType`). **No** "send to
+  supplier" button or receive-related link exists in the frontend today (no `/po/:id/send` call), so
+  nothing to hide there — `POCreatePage`'s "ส่งใบสั่งซื้อ" is submit-for-approval, not send. If a
+  send-to-supplier button is added later, gate it with `!isOhOrderType(order_type)`.
+- Lists: `PRHistoryPage`/`POHistoryPage` have an order-type column + filter (`?order_type=`).
+  `PRStatusPage`/`POStatusPage` (retired) got no column/filter. PO create's PR sidebar shows each
+  PR's type tag. IC pages untouched and don't reference the new types.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

@@ -63,7 +63,7 @@ const POMyListPage: React.FC = () => {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
-      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} />,
+      render: (_v: unknown, r) => <POStatusBadges status={r.status} statusReceive={r.status_receive} orderType={r.order_type} />,
     },
     {
       title: 'มูลค่า (บาท)',

@@ -4,7 +4,8 @@ import { PlusOutlined, SearchOutlined, DeleteOutlined, CloseCircleFilled, FileTe
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
-import type { Material } from '@/types'
+import type { Material, PROrderType } from '@/types'
+import { isOhOrderType } from '@/constants/orderTypes'
 import { useAppSelector } from '@/store'
 import { isExemptMatCode } from '@/utils/matCode'
 import { formatItemLabel } from '@/utils/itemLabel'
@@ -70,7 +71,7 @@ interface PRItemsTableProps {
   // order_type 'stock' (no PO-split/stock-reservation dependency on cost
   // code there); mat_code itself stays locked on existing lines regardless
   // of order_type. See PRItemsTable.tsx cost-code column disabled logic.
-  orderType?: 'stock' | 'cost'
+  orderType?: PROrderType
 }
 
 // Exposed to the parent (PRCreatePage) so its own action bar can trigger a
@@ -86,6 +87,9 @@ export interface PRItemsTableHandle {
     cost_code_label: string | null
     remark: string
   }[]
+  // Drops every line's cost code (used when the order type switches between
+  // the OH group and stock/cost — see OrderTypeSelect).
+  clearCostCodes: () => void
 }
 
 const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
@@ -102,7 +106,13 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
       cost_code_label: i.costCodeLabel,
       remark: i.remark,
     })),
+    clearCostCodes: () => setItems((prev) => prev.map((i) => ({ ...i, costSubgroupId: null, costCodeLabel: null }))),
   }), [items])
+
+  // OH order types: cost code picker loads only the OH list, and existing
+  // lines stay editable (their old non-OH cost code is cleared on type switch).
+  const isOh = isOhOrderType(orderType)
+  const costCodeLocked = (r: PRItem) => !!r.isExisting && orderType !== 'stock' && !isOh
 
   useEffect(() => {
     if (!initialItems || initialItems.length === 0) return
@@ -334,13 +344,13 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
             <Button
               size="small"
               style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              disabled={!r.code || (r.isExisting && orderType !== 'stock')}
+              disabled={!r.code || costCodeLocked(r)}
               onClick={() => setCostCodeModalRowKey(r.key)}
               title={r.costCodeLabel ?? undefined}
             >
               {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
             </Button>
-            {r.costCodeLabel && (!r.isExisting || orderType === 'stock') && (
+            {r.costCodeLabel && !costCodeLocked(r) && (
               <Button
                 size="small"
                 type="text"
@@ -606,6 +616,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
           if (costCodeModalRowKey) handleCostCodeSelect(costCodeModalRowKey, item)
         }}
         jobTypeCode={jobTypeCode}
+        ohOnly={isOh}
       />
 
       {/* Print/Back buttons moved to PRCreatePage's action bar (merged into the

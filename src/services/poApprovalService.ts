@@ -28,6 +28,7 @@ export const poApprovalService = {
       po_no?: string
       supplier?: string
       created_by_name?: string
+      order_type?: string
     } = {},
   ) =>
     axios.get<POListResponse>(`${BASE_URL}/po`, {

@@ -491,7 +491,10 @@ const MemoCreateEditPage: React.FC = () => {
         res = await axios.post(`${BASE_URL}/memo`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        message.success(status === 'DRAFT' ? 'บันทึกร่างสำเร็จ' : 'ส่งขออนุมัติสำเร็จ — รอผู้อนุมัติดำเนินการ')
+        const createdMemoNo = res.data?.data?.memo_no ?? res.data?.memo_no
+        message.success(
+          `${status === 'DRAFT' ? 'บันทึกร่างสำเร็จ' : 'ส่งขออนุมัติสำเร็จ — รอผู้อนุมัติดำเนินการ'}${createdMemoNo ? ` (เลขที่ ${createdMemoNo})` : ''}`
+        )
       }
 
       if (stayOnForm) {

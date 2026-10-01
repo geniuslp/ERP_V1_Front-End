@@ -1,3 +1,5 @@
+import type { OrderType } from '@/constants/orderTypes'
+
 export type POStatus =
   | 'DRAFT'
   | 'PENDING_APPROVAL'
@@ -24,6 +26,7 @@ export interface POListItem {
   // flow (GET /po/receivable) as of the 2026-07-27 session. Render
   // defensively via <POStatusBadges> until backend confirms it's everywhere.
   status_receive?: POReceiveStatus
+  order_type?: OrderType
   supplier_id?: number
   supplier_name?: string
   total_amount: number
@@ -179,7 +182,7 @@ export interface PODetail {
   // confirmed present on GET /po/:id as of this session.
   revision_round?: number
   // purchase_order.order_type — same 'stock'/'cost' domain as PR's order_type.
-  order_type?: 'stock' | 'cost'
+  order_type?: OrderType
   // ⚠️ NOT present on GET /po/:id as of this session — neither project_code
   // nor project_name is returned, unlike POListItem.project_code (confirmed
   // on GET /po list). project_name specifically needs a join (project table
