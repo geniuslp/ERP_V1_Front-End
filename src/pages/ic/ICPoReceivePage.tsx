@@ -149,7 +149,7 @@ const ICPoReceivePage: React.FC = () => {
           params: {
             search,
             search_type: mode.toLowerCase(),
-            receive_status: mode === 'PO' && onlyCompleted ? 'completed' : 'pending',
+            receive_status: onlyCompleted ? 'completed' : 'pending',
             page,
             page_size: pageSize,
           },
@@ -186,7 +186,6 @@ const ICPoReceivePage: React.FC = () => {
 
   const handleModeChange = (value: 'PO' | 'PR') => {
     setMode(value)
-    setOnlyCompleted(false)
     setPickedNo(undefined)
     setSearchText('')
     resetSelection()
@@ -367,12 +366,10 @@ const ICPoReceivePage: React.FC = () => {
               disabled={!!pickedNo}
               style={{ width: 220 }}
             />
-            {mode === 'PO' && (
-              <Space align="center">
-                <Switch checked={onlyCompleted} onChange={handleToggleChange} />
-                <Typography.Text style={{ color: '#374151' }}>แสดงเฉพาะรับครบแล้ว</Typography.Text>
-              </Space>
-            )}
+            <Space align="center">
+              <Switch checked={onlyCompleted} onChange={handleToggleChange} />
+              <Typography.Text style={{ color: '#374151' }}>แสดงเฉพาะรับครบแล้ว</Typography.Text>
+            </Space>
           </Space>
           <Space>
             <Button disabled={actionsDisabled} onClick={handleReceive} {...icActionButtonProps('receive', actionsDisabled)}>
