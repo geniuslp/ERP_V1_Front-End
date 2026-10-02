@@ -25,7 +25,7 @@ import { PrinterOutlined, DeleteOutlined, ArrowLeftOutlined, PlusOutlined } from
 import dayjs, { Dayjs } from 'dayjs'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { goBackToICProject, confirmLeaveIfDirty } from '@/pages/ic/utils/icNavigation'
+import { goBackToICProject, confirmLeaveIfDirty, IC_PROJECT_LIST_ROUTE } from '@/pages/ic/utils/icNavigation'
 import { useAppSelector } from '@/store'
 import ICPoReceiveRatingModal from './ICPoReceiveRatingModal'
 import ICPoReceivePrint, { type ICReceivePrintData } from './ICPoReceivePrint'
@@ -209,13 +209,21 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   const [printData, setPrintData] = useState<ICReceivePrintData | null>(null)
 
   const [successInfo, setSuccessInfo] = useState<{ receiveNo?: string } | null>(null)
-  // Set after a successful save; the effect below navigates back once nothing is pending.
-  const [pendingExit, setPendingExit] = useState(false)
+  // True when the print was started from the success modal: leave for the project page once
+  // printing finishes (see handlePrintFromSuccess).
+  const exitAfterPrintRef = React.useRef(false)
 
   // Supplier-rating modal — auto-opens exactly once, right after a fresh
   // receive-document save that has no rated_at yet (never on merely opening
   // an already-saved/rated document from the list).
-  const [ratingModalOpen, setRatingModalOpen] = useState(false)
+  // Strict post-save sequence, one step visible at a time: 'rating' (mandatory vendor rating) ->
+  // 'success' (พิมพ์ / ปิด) -> 'idle'. Lives here (always mounted) so refreshes of the documents
+  // list / selected document after the save can't unmount or reset it.
+  const [phase, setPhase] = useState<'idle' | 'rating' | 'success'>('idle')
+  // Navigation back to the project page runs at most once per modal session.
+  const exitedRef = React.useRef(false)
+  // Print timers are armed only by an actual click on "พิมพ์".
+  const printCleanupRef = React.useRef<(() => void) | null>(null)
   const [ratingDocId, setRatingDocId] = useState<number | null>(null)
 
   const extractErrorMessage = (err: any, fallback: string) =>
@@ -324,7 +332,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       setReadonlyLines(null)
       setPrintData(null)
       setSuccessInfo(null)
-      setRatingModalOpen(false)
+      setPhase('idle')
       setRatingDocId(null)
       form.resetFields()
       fetchContext()
@@ -345,7 +353,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       setLineErrors({})
       setPrintData(null)
       setSuccessInfo(null)
-      setRatingModalOpen(false)
+      setPhase('idle')
       setRatingDocId(null)
       form.resetFields()
     }
@@ -511,16 +519,14 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       fetchDocsList()
 
       setSuccessInfo({ receiveNo: receiveNo ?? updatedDoc?.receive_no ?? undefined })
-      setPendingExit(true)
+      setRatingDocId(docId)
 
       // Auto-trigger the rating modal right here — this is the one place a
       // receive-document transitions from unrated to just-saved. Guarded by
       // rated_at so a (theoretically impossible, but defensive) already-rated
       // response doesn't pop the modal anyway.
-      if (!updatedDoc?.rated_at) {
-        setRatingDocId(docId)
-        setRatingModalOpen(true)
-      }
+      // Step 1 is the mandatory rating; only an already-rated document goes straight to step 2.
+      setPhase(updatedDoc?.rated_at ? 'success' : 'rating')
     } catch (err: any) {
       const status = err?.response?.status
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message
@@ -553,10 +559,21 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
 
   const hasAnyTypedQty = Object.values(typedQty).some((v) => v > 0)
 
+  // The single navigation call for this flow. Guarded so it runs at most once, and never while
+  // the mandatory rating is still pending. Falls back to the plain IC project list (never "/").
   const exitToProject = () => {
+    if (exitedRef.current || phase === 'rating') return
+    exitedRef.current = true
     if (projectCode) goBackToICProject(navigate, projectCode, preparedBy)
-    else onClose()
+    else navigate(IC_PROJECT_LIST_ROUTE, { replace: true })
   }
+
+  useEffect(() => {
+    if (open) exitedRef.current = false
+  }, [open])
+
+  // Clear any armed print timer/listener on unmount.
+  useEffect(() => () => printCleanupRef.current?.(), [])
 
   // Top-right X ends the whole process (the "← กลับไปที่รายการใบรับของ" link only steps back
   // inside the modal). Confirm first when receive quantities were typed but not saved.
@@ -564,16 +581,21 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     confirmLeaveIfDirty(hasAnyTypedQty && !selectedDoc?.receive_no, exitToProject)
   }
 
-  // After a successful save, leave only once the success modal is closed, the rating modal
-  // (auto-opened after save) is done, and no print is in progress (printData is cleared
-  // right after window.print() returns, i.e. when printing finishes or is cancelled).
-  useEffect(() => {
-    if (pendingExit && !successInfo && !ratingModalOpen && !printData) {
-      setPendingExit(false)
-      exitToProject()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingExit, successInfo, ratingModalOpen, printData])
+  // Navigation after a save happens ONLY from the success modal: "ปิด", or when printing
+  // started from it finishes. The rating modal never navigates.
+  const handleSuccessClose = () => {
+    setSuccessInfo(null)
+    setPhase('idle')
+    // phase is still 'success' in this closure, so the 'rating' guard doesn't block.
+    exitToProject()
+  }
+
+  const handlePrintFromSuccess = () => {
+    exitAfterPrintRef.current = true
+    handlePrint()
+    // handlePrint warns and sets no printData when there is nothing to print; don't get stuck.
+    if (!selectedDoc?.receive_no || !readonlyLines || !context) exitAfterPrintRef.current = false
+  }
 
   const handlePrint = () => {
     if (!selectedDoc?.receive_no || !readonlyLines || !context) {
@@ -1044,22 +1066,41 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
         <ICPoReceivePrint
           data={printData}
           onReady={() => {
+            let finished = false
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const cleanup = () => {
+              window.removeEventListener('afterprint', finish)
+              if (timer) clearTimeout(timer)
+              printCleanupRef.current = null
+            }
+            const finish = () => {
+              if (finished) return
+              finished = true
+              cleanup()
+              setPrintData(null)
+              if (exitAfterPrintRef.current) {
+                exitAfterPrintRef.current = false
+                exitToProject()
+              }
+            }
+            printCleanupRef.current = cleanup
+            window.addEventListener('afterprint', finish)
             window.print()
-            setPrintData(null)
+            // Fallback so the user is never stuck if 'afterprint' doesn't fire.
+            timer = setTimeout(finish, 10000)
           }}
         />
       )}
 
       <Modal
         title="บันทึกข้อมูลเรียบร้อยแล้ว"
-        open={!!successInfo}
-        onCancel={() => setSuccessInfo(null)}
+        open={phase === 'success'}
+        onCancel={handleSuccessClose}
         footer={[
-          // No print entry point here on purpose — the outer PO Receive
-          // detail modal (visible behind this one) already has its own
-          // "พิมพ์ใบรับสินค้า" button for the same document; a second one
-          // here was a duplicate.
-          <Button key="close" onClick={() => setSuccessInfo(null)}>
+          <Button key="print" icon={<PrinterOutlined />} onClick={handlePrintFromSuccess}>
+            พิมพ์
+          </Button>,
+          <Button key="close" onClick={handleSuccessClose}>
             ปิด
           </Button>,
         ]}
@@ -1073,11 +1114,11 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       </Modal>
 
       <ICPoReceiveRatingModal
-        open={ratingModalOpen}
+        open={phase === 'rating'}
         poId={poId}
         docId={ratingDocId}
-        onClose={() => setRatingModalOpen(false)}
-        onDone={() => setRatingModalOpen(false)}
+        onClose={() => {}}
+        onDone={() => setPhase('success')}
       />
     </Modal>
   )

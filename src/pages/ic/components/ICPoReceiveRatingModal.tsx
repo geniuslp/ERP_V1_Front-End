@@ -77,10 +77,15 @@ const ICPoReceiveRatingModal: React.FC<ICPoReceiveRatingModalProps> = ({ open, p
     <Modal
       title="ประเมินผู้ขาย"
       open={open}
-      onCancel={onClose}
+      // Mandatory: no X, no "ปิด", not dismissible by Esc or clicking outside. Sits above the
+      // success modal until the rating is saved.
+      closable={false}
+      maskClosable={false}
+      keyboard={false}
+      zIndex={1100}
       onOk={() => form.submit()}
       okText="บันทึกคะแนน"
-      cancelText="ปิด"
+      cancelButtonProps={{ style: { display: 'none' } }}
       confirmLoading={submitting}
       destroyOnHidden
       width={480}
@@ -89,21 +94,21 @@ const ICPoReceiveRatingModal: React.FC<ICPoReceiveRatingModalProps> = ({ open, p
         <Form.Item
           label={<span style={labelStyle}>คุณภาพสินค้า</span>}
           name="score_quality"
-          rules={[{ required: true, message: 'กรุณาให้คะแนนคุณภาพสินค้า' }]}
+          rules={[{ required: true, type: 'number', min: 1, message: 'กรุณาให้คะแนนคุณภาพสินค้า' }]}
         >
           <Rate allowClear={false} />
         </Form.Item>
         <Form.Item
           label={<span style={labelStyle}>ปริมาณ/ความครบถ้วน</span>}
           name="score_quantity"
-          rules={[{ required: true, message: 'กรุณาให้คะแนนปริมาณ/ความครบถ้วน' }]}
+          rules={[{ required: true, type: 'number', min: 1, message: 'กรุณาให้คะแนนปริมาณ/ความครบถ้วน' }]}
         >
           <Rate allowClear={false} />
         </Form.Item>
         <Form.Item
           label={<span style={labelStyle}>ความตรงเวลา</span>}
           name="score_ontime"
-          rules={[{ required: true, message: 'กรุณาให้คะแนนความตรงเวลา' }]}
+          rules={[{ required: true, type: 'number', min: 1, message: 'กรุณาให้คะแนนความตรงเวลา' }]}
         >
           <Rate allowClear={false} />
         </Form.Item>
