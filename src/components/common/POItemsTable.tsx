@@ -20,6 +20,11 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 
 // Same local react-resizable pattern as POStatusPage.tsx / PRHistoryPage.tsx — no
 // shared component, so copied locally for this modal's table.
+// Compact body cell for the PO lines table: tighter padding + 12px text.
+const CompactCell: React.FC<React.TdHTMLAttributes<HTMLTableCellElement>> = (props) => (
+  <td {...props} style={{ ...props.style, padding: '4px 8px', fontSize: 12 }} />
+)
+
 interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
   onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
   width?: number
@@ -476,6 +481,8 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     })
   }
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>({})
+
   const columns = [
     {
       title: 'No.',
@@ -526,23 +533,6 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       render: (v: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{v}</span>
       ),
-    },
-    {
-      title: 'คงเหลือ',
-      key: 'stock_qty',
-      width: 60,
-      align: 'right' as const,
-      render: (_: any, record: any) => {
-        if (!record.mat_code) return <span style={{ color: 'var(--text-muted)' }}>—</span>
-        const qty = stockMap[record.mat_code]
-        if (qty === undefined) {
-          return stockLoading
-            ? <Spin size="small" />
-            : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
-        }
-        const color = qty <= 0 ? '#dc2626' : qty < record.qty ? '#d97706' : '#16a34a'
-        return <span style={{ color, fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
-      },
     },
     {
       title: 'รายการ',
@@ -626,6 +616,23 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         <span style={{ fontSize: 13 }}>{(r.qty * r.unit_price).toLocaleString('th-TH')}</span>
       ),
     },
+    {
+      title: 'คงเหลือ',
+      key: 'stock_qty',
+      width: 80,
+      align: 'right' as const,
+      render: (_: any, record: any) => {
+        if (!record.mat_code) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+        const qty = stockMap[record.mat_code]
+        if (qty === undefined) {
+          return stockLoading
+            ? <Spin size="small" />
+            : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
+        }
+        const color = qty <= 0 ? '#dc2626' : qty < record.qty ? '#d97706' : '#16a34a'
+        return <span style={{ color, fontWeight: 500 }}>{qty.toLocaleString('th-TH')}</span>
+      },
+    },
     ...taxColumns,
     {
       title: '',
@@ -663,6 +670,26 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     },
   ]
 
+  const colId = (c: any): string => String(c.key ?? c.dataIndex ?? '')
+  const taxColIds = new Set(taxColumns.map(colId))
+  const isFixedCol = (c: any) => colId(c) === 'no' || colId(c) === 'action' || taxColIds.has(colId(c))
+  const resizableColumns = columns.map((c: any) => {
+    const id = colId(c)
+    const width = colWidths[id] ?? c.width
+    if (isFixedCol(c)) return c
+    return {
+      ...c,
+      width,
+      onHeaderCell: () => ({
+        width,
+        style: { padding: '6px 8px', fontSize: 12 },
+        onResize: (_: React.SyntheticEvent, d: ResizeCallbackData) =>
+          setColWidths((prev) => ({ ...prev, [id]: Math.max(60, d.size.width) })),
+      }),
+    }
+  })
+  const scrollX = resizableColumns.reduce((s: number, c: any) => s + (typeof c.width === 'number' ? c.width : 100), 0)
+
   const renderDescription = (r: POLineItem) => (
     <div id={`po-item-desc-${r.key}`} style={{ padding: '4px 8px' }}>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>รายละเอียด / Description</div>
@@ -696,11 +723,12 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       <Table
         rowKey="key"
         dataSource={items}
-        columns={columns}
+        columns={resizableColumns}
+        components={{ header: { cell: ResizableTitle }, body: { cell: CompactCell } }}
         pagination={false}
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — เลือก PR หรือค้นหาวัสดุเพื่อเริ่มต้น' }}
-        scroll={{ x: 1830 }}
+        scroll={{ x: scrollX }}
         expandable={{
           expandedRowKeys: expandedKeys,
           showExpandColumn: false,
@@ -801,6 +829,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         onConfirm={handleMaterialConfirm}
         showStockLookup
         hasCostSubgroup
+        compact
       />
 
       <CostCodeSelectionModal

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Spin, Select, Switch, Table, Space, Typography, Input, Button, Empty, message } from 'antd'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
+import { CheckCircleFilled, CheckCircleOutlined } from '@ant-design/icons'
+import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import ICPoReceiveModal from '@/pages/ic/components/ICPoReceiveModal'
@@ -36,6 +38,7 @@ type SearchOption = { value: string; label: string }
 const ICPoReceivePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const preparedBy = useSearchParams()[0].get('prepared_by')
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -266,6 +269,39 @@ const ICPoReceivePage: React.FC = () => {
       key: 'expected_date',
       render: (value: string | null | undefined) => value || '-',
     },
+    {
+      // Single-select (radio semantics) check-mark, last column — replaces antd rowSelection.
+      title: '',
+      key: 'select',
+      width: 76,
+      fixed: 'right' as const,
+      align: 'center' as const,
+      render: (_: unknown, r: ICPoRow) => {
+        const checked = selectedRow?.po_id === r.po_id
+        return (
+          <span
+            role="radio"
+            aria-checked={checked}
+            onClick={() => setSelectedRow(r)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 44,
+              height: 44,
+              cursor: 'pointer',
+              fontSize: 30,
+            }}
+          >
+            {checked ? (
+              <CheckCircleFilled style={{ color: '#16a34a' }} />
+            ) : (
+              <CheckCircleOutlined style={{ color: '#d1d5db' }} />
+            )}
+          </span>
+        )
+      },
+    },
   ]
 
   if (loading) {
@@ -339,10 +375,10 @@ const ICPoReceivePage: React.FC = () => {
             )}
           </Space>
           <Space>
-            <Button disabled={actionsDisabled} onClick={handleReceive}>
+            <Button disabled={actionsDisabled} onClick={handleReceive} {...icActionButtonProps('receive', actionsDisabled)}>
               PO Receive
             </Button>
-            <Button disabled={actionsDisabled} onClick={handleReturn}>
+            <Button disabled={actionsDisabled} onClick={handleReturn} {...icActionButtonProps('return', actionsDisabled)}>
               PO Return
             </Button>
           </Space>
@@ -356,12 +392,7 @@ const ICPoReceivePage: React.FC = () => {
           loading={tableLoading}
           columns={columns}
           dataSource={rows}
-          rowSelection={{
-            type: 'radio',
-            columnWidth: 48,
-            selectedRowKeys: selectedRow ? [selectedRow.po_id] : [],
-            onChange: (_keys, selectedRows) => setSelectedRow(selectedRows[0] ?? null),
-          }}
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
             pageSize,
@@ -377,8 +408,8 @@ const ICPoReceivePage: React.FC = () => {
         )}
       </Card>
 
-      <ICPoReceiveModal open={modalOpen} poId={selectedPoId} onClose={handleModalClose} />
-      <ICPoReturnModal open={returnOpen} poId={selectedPoId} onClose={handleModalClose} />
+      <ICPoReceiveModal open={modalOpen} poId={selectedPoId} onClose={handleModalClose} projectCode={project.project_code} preparedBy={preparedBy} />
+      <ICPoReturnModal open={returnOpen} poId={selectedPoId} onClose={handleModalClose} projectCode={project.project_code} preparedBy={preparedBy} />
     </div>
   )
 }

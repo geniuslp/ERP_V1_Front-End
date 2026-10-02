@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Spin, Select, Table, Space, message } from 'antd'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
@@ -35,6 +35,7 @@ type SearchOption = { value: string; label: string }
 
 const ICPoReturnPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>()
+  const preparedBy = useSearchParams()[0].get('prepared_by')
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
@@ -293,7 +294,7 @@ const ICPoReturnPage: React.FC = () => {
         />
       </Card>
 
-      <ICPoReturnModal open={modalOpen} poId={selectedPoId} onClose={handleModalClose} />
+      <ICPoReturnModal open={modalOpen} poId={selectedPoId} onClose={handleModalClose} projectCode={project.project_code} preparedBy={preparedBy} />
     </div>
   )
 }

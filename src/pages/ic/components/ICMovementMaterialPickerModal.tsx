@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, Table, Input, Select, Row, Col, message } from 'antd'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
+import {
+  showMovementError,
+  LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED,
+  REDIRECT_DELAY_MS,
+} from '@/pages/ic/utils/movementErrors'
 import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -24,9 +30,14 @@ interface SelectOption {
 interface Props {
   open: boolean
   projectCode: string
-  movementId: string
+  /** Absent in the single-save create flow (no document exists yet). */
+  movementId?: string
   jobCode?: string
+  /** Sent as doc_type to the no-movement-id route. */
+  docType?: 'ISSUE' | 'TRANSFER'
   onClose: () => void
+  /** Called when the backend rejects ISSUE for a warehouse-linked project (parent should close too). */
+  onIssueBlocked?: () => void
   onSelect: (material: ICMovementMaterialOption) => void
 }
 
@@ -39,9 +50,12 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
   projectCode,
   movementId,
   jobCode,
+  docType,
   onClose,
   onSelect,
+  onIssueBlocked,
 }) => {
+  const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -53,7 +67,9 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    if (!open || !projectCode || !movementId) return
+    // With a movement id: the per-document route. Without one (single-save create flow): the
+    // no-movement-id route, which needs both doc_type and job_code.
+    if (!open || !projectCode || (!movementId && (!docType || !jobCode))) return
     setSelectedCostCode(undefined)
     setSelectedMatName(undefined)
     setSearch('')
@@ -63,8 +79,10 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
       setLoading(true)
       try {
         const res = await axios.get(
-          `${BASE_URL}/ic/projects/${projectCode}/movements/${movementId}/available-materials`,
-          { headers: authHeader, params: { job_code: jobCode } }
+          movementId
+            ? `${BASE_URL}/ic/projects/${projectCode}/movements/${movementId}/available-materials`
+            : `${BASE_URL}/ic/projects/${projectCode}/movements/available-materials`,
+          { headers: authHeader, params: movementId ? { job_code: jobCode } : { doc_type: docType, job_code: jobCode } }
         )
         const raw = res.data?.data ?? res.data
         const list = Array.isArray(raw) ? raw : []
@@ -84,7 +102,15 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
           )
         }
       } catch (err: any) {
-        if (!cancelled) message.error(err?.response?.data?.message || err?.message || 'โหลดรายการวัสดุไม่สำเร็จ')
+        if (cancelled) return
+        const code = showMovementError(err)
+        if (code === LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED) {
+          onClose()
+          onIssueBlocked?.()
+          setTimeout(() => navigate('/ic/projects'), REDIRECT_DELAY_MS)
+        } else if (!code) {
+          message.error(err?.response?.data?.message || err?.message || 'โหลดรายการวัสดุไม่สำเร็จ')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -94,7 +120,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, projectCode, movementId, jobCode])
+  }, [open, projectCode, movementId, jobCode, docType])
 
   // Subgroup (CostCode) options — unique cost_code values present in this scoped list.
   const costCodeOptions: SelectOption[] = useMemo(() => {

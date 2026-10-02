@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Modal,
   Tabs,
@@ -18,10 +19,13 @@ import {
   Popconfirm,
   Tooltip,
   Typography,
+  Modal as AntModal,
 } from 'antd'
 import { PrinterOutlined, DeleteOutlined, ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
+import { goBackToICProject, confirmLeaveIfDirty } from '@/pages/ic/utils/icNavigation'
 import { useAppSelector } from '@/store'
 import ICPoReceiveRatingModal from './ICPoReceiveRatingModal'
 import ICPoReceivePrint, { type ICReceivePrintData } from './ICPoReceivePrint'
@@ -98,7 +102,6 @@ interface FormValues {
   tax_invoice_date?: Dayjs
   temp_delivery_no?: string
   temp_delivery_date?: Dayjs
-  exchange_rate?: number
   remarks?: string
 }
 
@@ -106,6 +109,9 @@ interface ICPoReceiveModalProps {
   open: boolean
   poId: number | null
   onClose: () => void
+  /** Project to return to (ICProjectListPage) on save / X. Falls back to onClose when absent. */
+  projectCode?: string
+  preparedBy?: string | null
 }
 
 // Editable line — GET .../receive-lines?receive_document_id=, used only
@@ -153,7 +159,8 @@ const formatMoney = (value: number) =>
 const formatQty = (value: number) =>
   value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
-const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose }) => {
+const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose, projectCode, preparedBy }) => {
+  const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -165,12 +172,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   // from the list, or a received (closed) document.
   const [view, setView] = useState<'list' | 'detail'>('list')
   // Which date field the user edited last — drives the estimated due date.
-  // Tab the next Tabs mount should open on (Tabs remounts when selectedDocId changes).
-  const initialTabRef = useRef<'document' | 'items'>('document')
-  // One-shot: consumed by the Tabs mount that follows a save, then reset.
-  useEffect(() => {
-    initialTabRef.current = 'document'
-  })
+  // Controlled so a failed details validation can jump back to the details tab.
+  const [activeTab, setActiveTab] = useState<'document' | 'items' | 'attachments'>('document')
   const [lastDueDateField, setLastDueDateField] = useState<'invoice' | 'temp' | null>(null)
 
   // PO-level context (po_no/supplier/project/job/currency/vat/credit days)
@@ -185,10 +188,9 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<ICPoReceiveDocument | null>(null)
   const [selectedDocLoading, setSelectedDocLoading] = useState(false)
-  // True only while filling the "สร้างใบรับใหม่" form, before POST succeeds
-  // and a real selectedDocId exists yet.
+  // True only while filling the "สร้างใบรับใหม่" form: no document exists until the single
+  // save on the items tab (receive-lines/submit creates it together with its lines).
   const [creatingNew, setCreatingNew] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
 
   const [linesData, setLinesData] = useState<ICReceiveLinesResponse | null>(null)
   const [linesLoading, setLinesLoading] = useState(false)
@@ -207,6 +209,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   const [printData, setPrintData] = useState<ICReceivePrintData | null>(null)
 
   const [successInfo, setSuccessInfo] = useState<{ receiveNo?: string } | null>(null)
+  // Set after a successful save; the effect below navigates back once nothing is pending.
+  const [pendingExit, setPendingExit] = useState(false)
 
   // Supplier-rating modal — auto-opens exactly once, right after a fresh
   // receive-document save that has no rated_at yet (never on merely opening
@@ -231,15 +235,17 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     }
   }
 
-  const fetchDocsList = async () => {
-    if (!poId) return
+  const fetchDocsList = async (): Promise<ICPoReceiveDocumentsListResponse | null> => {
+    if (!poId) return null
     setDocsListLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/ic/pos/${poId}/receive-documents`, { headers: authHeader })
       const payload: ICPoReceiveDocumentsListResponse = res.data?.data ?? res.data
       setDocsList(payload)
+      return payload
     } catch (err: any) {
       message.error(extractErrorMessage(err, 'โหลดรายการใบรับของไม่สำเร็จ'))
+      return null
     } finally {
       setDocsListLoading(false)
     }
@@ -257,7 +263,6 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
         tax_invoice_date: doc.tax_invoice_date ? dayjs(doc.tax_invoice_date) : undefined,
         temp_delivery_no: doc.temp_delivery_no ?? undefined,
         temp_delivery_date: doc.temp_delivery_date ? dayjs(doc.temp_delivery_date) : undefined,
-        exchange_rate: doc.exchange_rate ?? undefined,
         remarks: doc.remarks ?? undefined,
       })
       return doc
@@ -269,12 +274,12 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     }
   }
 
-  const fetchLines = async (docId: number): Promise<ICReceiveLinesResponse | null> => {
+  const fetchLines = async (docId?: number): Promise<ICReceiveLinesResponse | null> => {
     if (!poId) return null
     setLinesLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/ic/pos/${poId}/receive-lines`, {
-        params: { receive_document_id: docId },
+        params: docId ? { receive_document_id: docId } : undefined,
         headers: authHeader,
       })
       const payload: ICReceiveLinesResponse = res.data?.data ?? res.data
@@ -356,6 +361,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     setCreatingNew(false)
     setLinesData(null)
     setReadonlyLines(null)
+    setActiveTab('document')
     setView('detail')
     const detail = await fetchDocDetail(doc.id)
     if (detail?.receive_no) {
@@ -365,14 +371,19 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     }
   }
 
+  // Creates nothing server-side: just opens an empty details + items form. The document is
+  // created atomically with its lines by the single save on the items tab.
   const handleCreateNew = () => {
     setSelectedDocId(null)
     setSelectedDoc(null)
     setCreatingNew(true)
     setLinesData(null)
     setReadonlyLines(null)
+    setLastDueDateField(null)
     form.resetFields()
+    setActiveTab('document')
     setView('detail')
+    fetchLines()
   }
 
   const handleBackToList = () => {
@@ -417,54 +428,6 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     })),
   })
 
-  const handleSubmit = async (values: FormValues) => {
-    if (!poId) return
-    setSubmitting(true)
-    try {
-      const res = await axios.post(
-        `${BASE_URL}/ic/pos/${poId}/receive-document`,
-        {
-          tax_invoice_no: values.tax_invoice_no || undefined,
-          tax_invoice_date: values.tax_invoice_date ? values.tax_invoice_date.format(DATE_FORMAT) : undefined,
-          temp_delivery_no: values.temp_delivery_no || undefined,
-          temp_delivery_date: values.temp_delivery_date ? values.temp_delivery_date.format(DATE_FORMAT) : undefined,
-          exchange_rate: values.exchange_rate ?? undefined,
-          remarks: values.remarks || undefined,
-        },
-        { headers: authHeader },
-      )
-      const created: ICPoReceiveDocument = res.data?.data ?? res.data
-      message.success('บันทึกเอกสารสำเร็จ')
-      initialTabRef.current = 'items' // remount lands on "รายการสินค้า"
-      setSelectedDoc(created)
-      setSelectedDocId(created.id)
-      setCreatingNew(false)
-      await fetchLines(created.id)
-      fetchDocsList()
-    } catch (err: any) {
-      const status = err?.response?.status
-      const serverMsg = err?.response?.data?.error || err?.response?.data?.message
-      if (status === 409) {
-        // Someone else raced us, or our can_create_new read was stale by
-        // the time we submitted — go back to the list so the user sees the
-        // current real state instead of a dead create form.
-        message.error(serverMsg || 'มีใบรับที่ยังไม่บันทึกเลขที่อยู่แล้ว หรือไม่มีจำนวนคงเหลือให้รับ')
-        setCreatingNew(false)
-        setView('list')
-        fetchDocsList()
-      } else if (status === 400) {
-        if (serverMsg) {
-          form.setFields([{ name: 'tax_invoice_date', errors: [serverMsg] }])
-        }
-        message.error(serverMsg || 'ข้อมูลไม่ถูกต้อง')
-      } else {
-        message.error(extractErrorMessage(err, 'บันทึกไม่สำเร็จ'))
-      }
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const handleQtyChange = (lineId: number, value: number | null) => {
     setTypedQty((prev) => ({ ...prev, [lineId]: value ?? 0 }))
     setLineErrors((prev) => {
@@ -485,7 +448,19 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   }, [linesData, matCodeFilter, costCodeFilter])
 
   const handleLinesSubmit = async () => {
-    if (!poId || !selectedDocId || !linesData) return
+    if (!poId || !linesData || (!creatingNew && !selectedDocId)) return
+
+    // Details form rules first (no new rules added); jump back to the details tab on failure.
+    let values: FormValues
+    try {
+      values = await form.validateFields()
+    } catch (e: any) {
+      setActiveTab('document')
+      message.error('กรุณากรอกรายละเอียดเอกสารให้ครบก่อนบันทึก')
+      const firstField = e?.errorFields?.[0]?.name
+      if (firstField) setTimeout(() => form.focusField(firstField), 100)
+      return
+    }
 
     const payloadLines = linesData.lines
       .map((line) => ({ line_id: line.line_id, receive_qty: typedQty[line.line_id] ?? 0, bal_receive: line.bal_receive }))
@@ -508,43 +483,67 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       return
     }
 
+    const lines = payloadLines.map(({ line_id, receive_qty }) => ({ line_id, receive_qty }))
+    // New document: header + lines (created atomically). Existing draft: id + lines (header ignored).
+    const body = creatingNew
+      ? {
+          header: {
+            tax_invoice_no: values.tax_invoice_no || undefined,
+            tax_invoice_date: values.tax_invoice_date ? values.tax_invoice_date.format(DATE_FORMAT) : undefined,
+            temp_delivery_no: values.temp_delivery_no || undefined,
+            temp_delivery_date: values.temp_delivery_date ? values.temp_delivery_date.format(DATE_FORMAT) : undefined,
+            remarks: values.remarks || undefined,
+          },
+          lines,
+        }
+      : { receive_document_id: selectedDocId, lines }
+
     setLinesSubmitting(true)
     try {
-      const res = await axios.post(
-        `${BASE_URL}/ic/pos/${poId}/receive-lines/submit`,
-        {
-          receive_document_id: selectedDocId,
-          lines: payloadLines.map(({ line_id, receive_qty }) => ({ line_id, receive_qty })),
-        },
-        { headers: authHeader },
-      )
+      const res = await axios.post(`${BASE_URL}/ic/pos/${poId}/receive-lines/submit`, body, { headers: authHeader })
       const responsePayload = res.data?.data ?? res.data
       const receiveNo = responsePayload?.receive_no
+      const docId: number = responsePayload?.receive_document_id ?? selectedDocId
 
-      const [updatedDoc] = await Promise.all([
-        fetchDocDetail(selectedDocId),
-        fetchReadonlyLines(selectedDocId),
-      ])
+      setSelectedDocId(docId)
+      setCreatingNew(false)
+      const [updatedDoc] = await Promise.all([fetchDocDetail(docId), fetchReadonlyLines(docId)])
       fetchDocsList()
 
       setSuccessInfo({ receiveNo: receiveNo ?? updatedDoc?.receive_no ?? undefined })
+      setPendingExit(true)
 
       // Auto-trigger the rating modal right here — this is the one place a
       // receive-document transitions from unrated to just-saved. Guarded by
       // rated_at so a (theoretically impossible, but defensive) already-rated
       // response doesn't pop the modal anyway.
       if (!updatedDoc?.rated_at) {
-        setRatingDocId(selectedDocId)
+        setRatingDocId(docId)
         setRatingModalOpen(true)
       }
     } catch (err: any) {
       const status = err?.response?.status
       const serverMsg = err?.response?.data?.error || err?.response?.data?.message
-      if (status === 409) {
+      if (status === 409 && creatingNew && /empty receive document already exists/i.test(String(serverMsg))) {
+        // Don't create duplicates: offer to open the existing empty draft instead.
+        const list = await fetchDocsList()
+        const draft = list?.documents.find((d) => !d.receive_no)
+        AntModal.confirm({
+          title: serverMsg,
+          content: draft ? 'ต้องการเปิดใบรับที่ยังไม่บันทึกเลขที่ใบนั้นหรือไม่?' : undefined,
+          okText: 'เปิดใบรับนั้น',
+          cancelText: 'ปิด',
+          okButtonProps: draft ? undefined : { style: { display: 'none' } },
+          onOk: () => {
+            if (draft) handleSelectDocument(draft)
+          },
+        })
+      } else if (status === 409 && !creatingNew && selectedDocId) {
         message.error(serverMsg || 'เอกสารนี้ถูกบันทึกไปแล้ว')
         await fetchDocDetail(selectedDocId)
         await fetchReadonlyLines(selectedDocId)
       } else {
+        // Other backend errors shown as-is; all entered values are kept for a retry.
         message.error(extractErrorMessage(err, 'บันทึกไม่สำเร็จ'))
       }
     } finally {
@@ -554,6 +553,28 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
 
   const hasAnyTypedQty = Object.values(typedQty).some((v) => v > 0)
 
+  const exitToProject = () => {
+    if (projectCode) goBackToICProject(navigate, projectCode, preparedBy)
+    else onClose()
+  }
+
+  // Top-right X ends the whole process (the "← กลับไปที่รายการใบรับของ" link only steps back
+  // inside the modal). Confirm first when receive quantities were typed but not saved.
+  const handleExit = () => {
+    confirmLeaveIfDirty(hasAnyTypedQty && !selectedDoc?.receive_no, exitToProject)
+  }
+
+  // After a successful save, leave only once the success modal is closed, the rating modal
+  // (auto-opened after save) is done, and no print is in progress (printData is cleared
+  // right after window.print() returns, i.e. when printing finishes or is cancelled).
+  useEffect(() => {
+    if (pendingExit && !successInfo && !ratingModalOpen && !printData) {
+      setPendingExit(false)
+      exitToProject()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExit, successInfo, ratingModalOpen, printData])
+
   const handlePrint = () => {
     if (!selectedDoc?.receive_no || !readonlyLines || !context) {
       message.warning('ยังไม่มีข้อมูลการรับสินค้าให้พิมพ์')
@@ -562,11 +583,10 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     setPrintData(buildPrintData(context, selectedDoc, readonlyLines))
   }
 
-  // Header is read-only whenever we're viewing an already-created document
-  // (draft or received) — only the "สร้างใบรับใหม่" form itself is editable,
-  // matching the backend having no header-update endpoint.
-  const headerReadOnly = !creatingNew
+  // Details are editable until the document is received (new document or an empty draft);
+  // read-only once it has a receive_no.
   const isReceived = !!selectedDoc?.receive_no
+  const headerReadOnly = isReceived
 
   const vatDisplay =
     context?.use_vat && context.vat_amount != null ? `${formatMoney(context.vat_amount)} บาท` : 'ไม่มีภาษี'
@@ -607,7 +627,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           style={{ marginBottom: 16, borderRadius: 8 }}
         />
       )}
-      <Form form={form} layout="vertical" onFinish={handleSubmit} disabled={headerReadOnly}>
+      <Form form={form} layout="vertical" disabled={headerReadOnly}>
         <Row gutter={16}>
           <Col span={8}>
             <Form.Item label="หมายเลข PO">
@@ -682,12 +702,6 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
             </Form.Item>
           </Col>
 
-          <Col span={8}>
-            <Form.Item label="อัตราการแลกเปลี่ยน" name="exchange_rate">
-              <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="กรอกอัตราแลกเปลี่ยน (ถ้ามี)" />
-            </Form.Item>
-          </Col>
-
           <Col span={24}>
             <Form.Item label="หมายเหตุ" name="remarks">
               <TextArea rows={3} placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)" />
@@ -695,13 +709,6 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           </Col>
         </Row>
 
-        {!headerReadOnly && (
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={submitting} block>
-              บันทึกเอกสาร
-            </Button>
-          </Form.Item>
-        )}
       </Form>
     </Spin>
   )
@@ -873,7 +880,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
               <Button icon={<PrinterOutlined />} disabled>
                 พิมพ์ใบรับสินค้า
               </Button>
-              <Button type="primary" loading={linesSubmitting} disabled={!hasAnyTypedQty} onClick={handleLinesSubmit}>
+              <Button type="primary" loading={linesSubmitting} disabled={!hasAnyTypedQty} onClick={handleLinesSubmit} {...icActionButtonProps('receive', !hasAnyTypedQty || linesSubmitting)}>
                 บันทึกเอกสาร
               </Button>
             </Space>
@@ -883,7 +890,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     </Spin>
   )
 
-  const canOpenItemsTab = !!selectedDocId
+  const canOpenItemsTab = !!selectedDocId || creatingNew
 
   const tabItems = [
     {
@@ -978,6 +985,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
             icon={<PlusOutlined />}
             disabled={!docsList?.can_create_new}
             onClick={handleCreateNew}
+            {...icActionButtonProps('receive', !docsList?.can_create_new)}
           >
             สร้างใบรับใหม่
           </Button>
@@ -1011,7 +1019,12 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           selected document changes — switching documents, or moving between
           an existing document and the "create new" form, must never carry
           over a stale active tab or the previous document's lines. */}
-      <Tabs key={selectedDocId ?? 'new'} defaultActiveKey={initialTabRef.current} items={tabItems} />
+      <Tabs
+        key={selectedDocId ?? 'new'}
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as 'document' | 'items' | 'attachments')}
+        items={tabItems}
+      />
     </div>
   )
 
@@ -1019,7 +1032,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     <Modal
       title={view === 'list' ? `ใบรับของ - PO ${context?.po_no ?? ''}` : 'รายละเอียดเอกสาร PO Receive'}
       open={open}
-      onCancel={onClose}
+      onCancel={handleExit}
       footer={null}
       width={1152}
       destroyOnHidden

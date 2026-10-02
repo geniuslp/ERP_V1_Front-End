@@ -4,11 +4,17 @@ import {
   Table, Descriptions, Tabs, Modal, message,
 } from 'antd'
 import {
-  SaveOutlined, EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined, CheckCircleOutlined,
+  ArrowLeftOutlined, SaveOutlined, EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined, CheckCircleOutlined,
 } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
+import {
+  showMovementError,
+  LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED,
+  REDIRECT_DELAY_MS,
+} from '@/pages/ic/utils/movementErrors'
+import { goBackToICProject, confirmLeaveIfDirty } from '@/pages/ic/utils/icNavigation'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import ICMovementAddLineModal, { type PendingMovementLine } from '@/pages/ic/components/ICMovementAddLineModal'
@@ -125,8 +131,6 @@ const ICProjectMovementPage: React.FC = () => {
   const [users, setUsers] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(true)
 
-  const [saving, setSaving] = useState(false)
-
   const [lines, setLines] = useState<MovementLine[]>([])
   // Lines added in this session; only sent to the backend when Submit is clicked.
   const [pendingLines, setPendingLines] = useState<MovementLine[]>([])
@@ -134,6 +138,14 @@ const ICProjectMovementPage: React.FC = () => {
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Create mode (no document yet): job/doc type come from the live form values.
+  const watchedJob: string | undefined = Form.useWatch('job_code', form)
+  const watchedDocType: 'ISSUE' | 'TRANSFER' | undefined = Form.useWatch('doc_type', form)
+  const effectiveJob = docId ? header?.job_code : watchedJob
+  const effectiveDocType = docId ? header?.doc_type : watchedDocType
+  // Last accepted Job/doc type, used to revert when the user declines the "clear lines" confirm.
+  const lastAcceptedRef = React.useRef<{ job_code?: string; doc_type?: string }>({ doc_type: 'ISSUE' })
 
   const isPosted = String((header as any)?.status ?? (header as any)?.doc_status ?? '').trim().toUpperCase() === 'POSTED'
   console.log('[ICProjectMovementPage] DEBUG header.status =', header?.status, '| isPosted =', isPosted)
@@ -313,44 +325,84 @@ const ICProjectMovementPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, projectCode])
 
-  const handleSave = async () => {
+  // Changing Job / document type after lines were added invalidates them (available materials
+  // depend on both): confirm, then clear; on decline revert the field.
+  const handleValuesChange = (changed: Record<string, unknown>) => {
+    if (docId || !('job_code' in changed || 'doc_type' in changed)) return
+    const prev = lastAcceptedRef.current
+    if (pendingLines.length === 0) {
+      lastAcceptedRef.current = { ...prev, ...(changed as object) }
+      return
+    }
+    Modal.confirm({
+      title: 'รายการที่เพิ่มไว้จะถูกล้าง',
+      content: 'การเปลี่ยนประเภท Job หรือประเภทเอกสารจะล้างรายการสินค้าที่เพิ่มไว้ทั้งหมด ต้องการดำเนินการต่อหรือไม่?',
+      okText: 'ดำเนินการต่อ',
+      cancelText: 'ยกเลิก',
+      onOk: () => {
+        setPendingLines([])
+        lastAcceptedRef.current = { ...prev, ...(changed as object) }
+      },
+      onCancel: () => form.setFieldsValue(prev),
+    })
+  }
+
+  const handleItemsTabChange = (k: string) => {
+    if (k === 'items' && !docId && (!watchedJob || !watchedDocType)) {
+      message.warning('กรุณาเลือกประเภท Job และประเภทเอกสารก่อน')
+      setActiveKey('details')
+      return
+    }
+    setActiveKey(k as 'details' | 'items')
+  }
+
+  // Single save for a new document: header + lines in ONE request (nothing persists on failure).
+  const submitNewMovement = async () => {
+    if (!projectCode) return
+    let values: any
     try {
-      const values = await form.validateFields()
-      setSaving(true)
-      const payload = {
-        job_code: values.job_code,
-        doc_type: values.doc_type,
-        requested_by: values.requested_by,
-        doc_date: values.doc_date ? values.doc_date.format('YYYY-MM-DD') : undefined,
-        remark: values.remark || undefined,
-      }
-      const res = await axios.post(`${BASE_URL}/ic/projects/${projectCode}/movements`, payload, {
-        headers: authHeader,
-      })
+      values = await form.validateFields()
+    } catch (e: any) {
+      setActiveKey('details')
+      message.error('กรุณากรอกรายละเอียดเอกสารให้ครบก่อนบันทึก')
+      const first = e?.errorFields?.[0]?.name
+      if (first) setTimeout(() => form.focusField(first), 100)
+      return
+    }
+    if (pendingLines.length === 0) {
+      message.warning('กรุณาเพิ่มรายการอย่างน้อย 1 รายการ')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await axios.post(
+        `${BASE_URL}/ic/projects/${projectCode}/movements/submit`,
+        {
+          header: {
+            doc_type: values.doc_type,
+            job_code: values.job_code,
+            requested_by: values.requested_by,
+            doc_date: values.doc_date ? values.doc_date.format('YYYY-MM-DD') : undefined,
+            remarks: values.remark || undefined,
+          },
+          lines: pendingLines.map((l) => l.pending!.payload),
+        },
+        { headers: authHeader },
+      )
       const data = res.data?.data ?? res.data
-      const docNo = data?.doc_no
-      const newId = data?.id ?? data?.movement_id
-      message.success(docNo ? `บันทึกสำเร็จ เลขที่เอกสาร ${docNo}` : 'บันทึกสำเร็จ')
-      if (newId) {
-        setHeader({
-          doc_no: docNo,
-          project_name: project?.project_name,
-          job_code: values.job_code,
-          doc_type: values.doc_type,
-          status: 'DRAFT',
-        })
-        setDocId(String(newId))
-        setActiveKey('items')
-        // Keep the URL pointing at this document (refresh-safe) without a visible reload.
-        navigate(`/ic/projects/${projectCode}/movement/${newId}`, { replace: true, state: { doc_no: docNo } })
-      } else {
-        navigate('/ic/projects')
-      }
+      message.success(data?.doc_no ? `บันทึกสำเร็จ เลขที่เอกสาร ${data.doc_no}` : 'บันทึกเอกสารสำเร็จ')
+      setPendingLines([])
+      goBackToICProject(navigate, projectCode, preparedBy)
     } catch (err: any) {
-      if (err?.errorFields) return
-      message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
+      // Failure: nothing was saved; keep every entered value so the user can retry.
+      const code = showMovementError(err)
+      if (code === LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED) {
+        setTimeout(() => navigate('/ic/projects'), REDIRECT_DELAY_MS)
+      } else if (!code) {
+        message.error(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'บันทึกเอกสารไม่สำเร็จ')
+      }
     } finally {
-      setSaving(false)
+      setSubmitting(false)
     }
   }
 
@@ -426,8 +478,15 @@ const ICProjectMovementPage: React.FC = () => {
       message.success('บันทึกเอกสารสำเร็จ')
       await fetchLines(docId)
       await fetchHeader(docId)
+      // Submitted (document is now POSTED/locked): return to the project page.
+      goBackToICProject(navigate, projectCode, preparedBy)
     } catch (err: any) {
-      message.error(err?.response?.data?.message || err?.message || 'บันทึกเอกสารไม่สำเร็จ')
+      const code = showMovementError(err)
+      if (code === LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED) {
+        setTimeout(() => navigate('/ic/projects'), REDIRECT_DELAY_MS)
+      } else if (!code) {
+        message.error(err?.response?.data?.message || err?.message || 'บันทึกเอกสารไม่สำเร็จ')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -440,12 +499,12 @@ const ICProjectMovementPage: React.FC = () => {
       content: 'หลังจากนี้จะไม่สามารถเพิ่มรายการเพิ่มเติมได้ และจะหักยอดคงเหลือทันที',
       okText: 'ยืนยัน',
       cancelText: 'ยกเลิก',
-      onOk: submitMovement,
+      onOk: docId ? submitMovement : submitNewMovement,
     })
   }
 
   // Destination columns only apply to TRANSFER documents (doc_type is fixed per document).
-  const destColumns = header?.doc_type === 'ISSUE' ? [] : [
+  const destColumns = effectiveDocType === 'ISSUE' ? [] : [
     {
       title: 'ToProject',
       dataIndex: 'to_project_name',
@@ -527,6 +586,7 @@ const ICProjectMovementPage: React.FC = () => {
       form={form}
       layout="vertical"
       disabled={headerReadOnly || isPosted}
+      onValuesChange={handleValuesChange}
       initialValues={{
         doc_type: 'ISSUE',
         doc_date: dayjs(),
@@ -639,24 +699,11 @@ const ICProjectMovementPage: React.FC = () => {
         </Col>
       </Row>
 
-      <Space>
-        {!headerReadOnly ? (
-          <>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={saving}
-              disabled={!jobOptionsLoading && jobOptions.length === 0}
-              onClick={handleSave}
-            >
-              บันทึก
-            </Button>
-            <Button onClick={() => navigate('/ic/projects')}>ยกเลิก</Button>
-          </>
-        ) : (
+      {headerReadOnly && (
+        <Space>
           <Button onClick={() => navigate(`/ic/projects/${projectCode}/movements`)}>กลับไปรายการ</Button>
-        )}
-      </Space>
+        </Space>
+      )}
     </Form>
   )
 
@@ -665,8 +712,8 @@ const ICProjectMovementPage: React.FC = () => {
       <Descriptions column={3} size="small" style={{ marginBottom: 16 }}>
         <Descriptions.Item label="เลขที่เอกสาร">{header?.doc_no || '-'}</Descriptions.Item>
         <Descriptions.Item label="โครงการ">{header?.project_name || project.project_name || '-'}</Descriptions.Item>
-        <Descriptions.Item label="ประเภท Job">{header?.job_code || '-'}</Descriptions.Item>
-        <Descriptions.Item label="ประเภทเอกสาร">{docTypeLabel(header?.doc_type)}</Descriptions.Item>
+        <Descriptions.Item label="ประเภท Job">{effectiveJob || '-'}</Descriptions.Item>
+        <Descriptions.Item label="ประเภทเอกสาร">{docTypeLabel(effectiveDocType)}</Descriptions.Item>
       </Descriptions>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
@@ -705,6 +752,17 @@ const ICProjectMovementPage: React.FC = () => {
 
   return (
     <div>
+      <div style={{ marginBottom: 12 }}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          style={{ height: 36, borderRadius: 8, fontWeight: 500 }}
+          onClick={() =>
+            confirmLeaveIfDirty(pendingLines.length > 0 || (!docId && form.isFieldsTouched()), () => goBackToICProject(navigate, project.project_code, preparedBy))
+          }
+        >
+          กลับ
+        </Button>
+      </div>
       <PageHeader
         title={header?.doc_no ? `เอกสารตัดเบิก/โอน ${header.doc_no}` : 'สร้างเอกสารตัดเบิก/โอน (โครงการ)'}
         subtitle={`${project.project_code} — ${project.project_name}`}
@@ -719,21 +777,21 @@ const ICProjectMovementPage: React.FC = () => {
       <Card style={cardStyle}>
         <Tabs
           activeKey={activeKey}
-          onChange={(k) => setActiveKey(k as 'details' | 'items')}
+          onChange={handleItemsTabChange}
           items={[
             { key: 'details', label: 'รายละเอียดเอกสาร', children: detailsTab },
-            { key: 'items', label: 'รายการสินค้า', disabled: !docId, children: itemsTab },
+            { key: 'items', label: 'รายการสินค้า', children: itemsTab },
           ]}
         />
       </Card>
 
-      {projectCode && docId && (
+      {projectCode && (docId || (effectiveJob && effectiveDocType)) && (
         <ICMovementAddLineModal
           open={itemModalOpen}
           projectCode={projectCode}
-          movementId={docId}
-          jobCode={header?.job_code}
-          docType={header?.doc_type}
+          movementId={docId ?? undefined}
+          jobCode={effectiveJob}
+          docType={effectiveDocType}
           editing={pendingLines.find((p) => p.key === editingKey)?.pending}
           onClose={() => { setItemModalOpen(false); setEditingKey(null) }}
           onAdd={handleAddLine}

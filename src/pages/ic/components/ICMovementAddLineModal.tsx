@@ -47,7 +47,8 @@ export interface PendingMovementLine {
 interface ICMovementAddLineModalProps {
   open: boolean
   projectCode: string
-  movementId: string
+  /** Absent in the single-save create flow (no document exists yet). */
+  movementId?: string
   jobCode?: string
   /** ISSUE hides the destination fields (line posts to this project + the source's own cost code); TRANSFER shows them. */
   docType?: 'ISSUE' | 'TRANSFER'
@@ -402,7 +403,9 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
         projectCode={projectCode}
         movementId={movementId}
         jobCode={jobCode}
+        docType={docType}
         onClose={() => setPickerOpen(false)}
+        onIssueBlocked={onClose}
         onSelect={handleMaterialSelect}
       />
     </Modal>

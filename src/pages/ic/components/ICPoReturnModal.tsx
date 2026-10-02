@@ -1,6 +1,9 @@
+import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
 import React, { useMemo, useState, useEffect } from 'react'
 import { Modal, Form, Input, InputNumber, Button, Select, Spin, message, Table, Space } from 'antd'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
+import { goBackToICProject, confirmLeaveIfDirty } from '@/pages/ic/utils/icNavigation'
 import { useAppSelector } from '@/store'
 
 const { TextArea } = Input
@@ -31,6 +34,9 @@ interface ICPoReturnModalProps {
   open: boolean
   poId: number | null
   onClose: () => void
+  /** Project to return to (ICProjectListPage) on save / X. Falls back to onClose when absent. */
+  projectCode?: string
+  preparedBy?: string | null
 }
 
 const formatMoney = (value: number) =>
@@ -39,7 +45,8 @@ const formatMoney = (value: number) =>
 const formatQty = (value: number) =>
   value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
-const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }) => {
+const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose, projectCode, preparedBy }) => {
+  const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -99,6 +106,14 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
 
   const hasAnyTypedQty = Object.values(typedQty).some((v) => v > 0)
 
+  // Top-right X ends the whole process: back to the project page (confirm if qty/remarks typed).
+  const handleExit = () => {
+    confirmLeaveIfDirty(hasAnyTypedQty || remarks.trim() !== '', () => {
+      if (projectCode) goBackToICProject(navigate, projectCode, preparedBy)
+      else onClose()
+    })
+  }
+
   const handleSubmit = async () => {
     if (!poId || !data) return
 
@@ -141,7 +156,12 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
       )
       message.success('บันทึกการคืนสินค้าสำเร็จ')
       setRemarks('')
-      await fetchLines()
+      setTypedQty({})
+      // Saved: end the whole process and return to the project page (no unsaved-data confirm).
+      if (projectCode) goBackToICProject(navigate, projectCode, preparedBy)
+      else {
+        await fetchLines()
+      }
     } catch (err: any) {
       const serverMsg = err?.response?.data?.message
       message.error(serverMsg || err?.message || 'บันทึกไม่สำเร็จ')
@@ -267,7 +287,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
     <Modal
       title={`คืนสินค้า${data?.context ? ` — ${data.context.po_no} (${data.context.project_name || '-'})` : ''}`}
       open={open}
-      onCancel={onClose}
+      onCancel={handleExit}
       footer={null}
       width={1152}
       destroyOnClose
@@ -327,7 +347,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose }
 
         <div style={{ marginTop: 16, textAlign: 'right' }}>
           <Space>
-            <Button type="primary" loading={submitting} disabled={!hasAnyTypedQty} onClick={handleSubmit}>
+            <Button type="primary" loading={submitting} disabled={!hasAnyTypedQty} onClick={handleSubmit} {...icActionButtonProps('return', !hasAnyTypedQty || submitting)}>
               บันทึกการคืนสินค้า
             </Button>
           </Space>

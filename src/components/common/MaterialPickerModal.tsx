@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Modal, Drawer, Table, Input, Select, Button, Space, Tag, Row, Col, Checkbox, Pagination, Grid, message } from 'antd'
 import axios from 'axios'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import { useAppSelector } from '@/store'
 import { stockService } from '@/services/stock.service'
 import type { Material, StockLookupResult } from '@/types'
@@ -40,9 +42,45 @@ interface Props {
    * Petty Cash keep the unfiltered list.
    */
   hasCostSubgroup?: boolean
+  /** Opt-in (Create PO page only): compact rows/fonts + drag-to-resize columns. Default off keeps PR/Petty Cash unchanged. */
+  compact?: boolean
 }
 
-const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false, projectCode, hasCostSubgroup = false }) => {
+// Local react-resizable pattern (same as POItemsTable.tsx / PRHistoryPage.tsx) — no shared component.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) return <th {...restProps} />
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
+const CompactCell: React.FC<React.TdHTMLAttributes<HTMLTableCellElement>> = (props) => (
+  <td {...props} style={{ ...props.style, padding: '4px 8px', fontSize: 12 }} />
+)
+
+const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showStockLookup = false, projectCode, hasCostSubgroup = false, compact = false }) => {
+  const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const screens = useBreakpoint()
   const isMobile = screens.md === false
@@ -270,6 +308,24 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
       ),
     },
   ]
+
+  // 'ชื่อวัสดุ' has no fixed width by default; give it one only in compact mode so it can be resized.
+  const compactColumns = columns.map((c: any) => {
+    const id = String(c.dataIndex)
+    const width = colWidths[id] ?? c.width ?? 320
+    return {
+      ...c,
+      width,
+      ellipsis: c.ellipsis,
+      onHeaderCell: () => ({
+        width,
+        style: { padding: '6px 8px', fontSize: 12 },
+        onResize: (_: React.SyntheticEvent, d: ResizeCallbackData) =>
+          setColWidths((prev) => ({ ...prev, [id]: Math.max(60, d.size.width) })),
+      }),
+    }
+  })
+  const compactScrollX = compactColumns.reduce((s: number, c: any) => s + c.width, 48)
 
   const rowSelection = {
     selectedRowKeys: selectedKeys,
@@ -500,10 +556,11 @@ const MaterialPickerModal: React.FC<Props> = ({ open, onClose, onConfirm, showSt
         rowKey="mat_code"
         loading={loading}
         dataSource={data}
-        columns={columns}
+        columns={compact ? compactColumns : columns}
+        components={compact ? { header: { cell: ResizableTitle }, body: { cell: CompactCell } } : undefined}
         rowSelection={rowSelection}
         size="small"
-        scroll={{ x: 680, y: 300 }}
+        scroll={{ x: compact ? compactScrollX : 680, y: 300 }}
         pagination={{
           current: page,
           pageSize: 10,

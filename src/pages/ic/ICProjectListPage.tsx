@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Space, Select, Empty, Modal, message } from 'antd'
 import { InboxOutlined, SwapOutlined, ContainerOutlined } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
@@ -72,6 +72,7 @@ const OptionCard: React.FC<{
 
 const ICProjectListPage: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
@@ -186,6 +187,36 @@ const ICProjectListPage: React.FC = () => {
       render: (value: string | null | undefined) => value || '-',
     },
   ]
+
+  // Return target (see utils/icNavigation.ts): ?project=<code>[&open=1][&prepared_by=<id>].
+  // Pre-selects the project once the options are loaded, then reopens the tile modal after the
+  // table has loaded that project. `open` is stripped from the URL so a refresh doesn't reopen it.
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null)
+
+  useEffect(() => {
+    const code = searchParams.get('project')
+    if (!code || projectOptions.length === 0) return
+    if (!projectOptions.some((o) => o.value === code)) return // unknown code: ignore silently
+    setProjectCode(code)
+    const pb = searchParams.get('prepared_by')
+    if (pb) setPreparedBy(pb)
+    if (searchParams.get('open') === '1') {
+      setPendingOpen(code)
+      const next = new URLSearchParams(searchParams)
+      next.delete('open')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, projectOptions])
+
+  useEffect(() => {
+    if (!pendingOpen || loading) return
+    const row = data.find((r) => r.project_code === pendingOpen)
+    if (row) {
+      setSelected(row)
+      setPendingOpen(null)
+    }
+  }, [pendingOpen, data, loading])
 
   const goTo = (path: string) => {
     setSelected(null)
