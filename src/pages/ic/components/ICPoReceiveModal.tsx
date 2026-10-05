@@ -1,8 +1,8 @@
+import PanelTabs from '@/components/common/PanelTabs'
 import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Modal,
-  Tabs,
   Form,
   Input,
   DatePicker,
@@ -23,11 +23,16 @@ import {
 } from 'antd'
 import { PrinterOutlined, DeleteOutlined, ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { goBackToICProject, confirmLeaveIfDirty, IC_PROJECT_LIST_ROUTE } from '@/pages/ic/utils/icNavigation'
 import { useAppSelector } from '@/store'
 import ICPoReceiveRatingModal from './ICPoReceiveRatingModal'
+import ICDocTypeTag from './ICDocTypeTag'
+import ICPoDocumentList from './ICPoDocumentList'
+import ICReturnDetailView from './ICReturnDetailView'
 import ICPoReceivePrint, { type ICReceivePrintData } from './ICPoReceivePrint'
 
 const { TextArea } = Input
@@ -35,6 +40,21 @@ const { Text } = Typography
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const DATE_FORMAT = 'YYYY-MM-DD'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+// Today's calendar day in Asia/Bangkok (not the browser's / UTC's), as a local-midnight dayjs
+// so day-level comparisons against DatePicker values are timezone-safe.
+const todayBangkok = (): Dayjs => dayjs(dayjs().tz('Asia/Bangkok').format(DATE_FORMAT))
+const isFutureDay = (d?: Dayjs | null): boolean => !!d && d.isAfter(todayBangkok(), 'day')
+const FUTURE_INVOICE_DATE_MESSAGE = 'วันที่ใบกำกับภาษีต้องไม่เกินวันที่ปัจจุบัน'
+const FUTURE_TEMP_DELIVERY_DATE_MESSAGE = 'วันที่ใบส่งของชั่วคราวต้องไม่เกินวันที่ปัจจุบัน'
+// Shared by both date fields: rejects a future date; an empty value stays valid (optional fields).
+const noFutureDateRule = (message: string) => ({
+  validator: (_: unknown, value: Dayjs | null | undefined) =>
+    isFutureDay(value) ? Promise.reject(new Error(message)) : Promise.resolve(),
+})
 
 interface ICPoReceiveContext {
   po_no: string
@@ -89,6 +109,7 @@ interface ICPoReceiveDocListItem {
   created_at: string
   line_count: number
   deletable: boolean
+  doc_type?: string | null
 }
 
 interface ICPoReceiveDocumentsListResponse {
@@ -170,7 +191,8 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   // 'detail' = the existing 3-tab modal, scoped to one document
   // (selectedDocId) — either a just-created draft, an existing draft picked
   // from the list, or a received (closed) document.
-  const [view, setView] = useState<'list' | 'detail'>('list')
+  const [view, setView] = useState<'list' | 'detail' | 'returnDetail'>('list')
+  const [returnDetailId, setReturnDetailId] = useState<number | null>(null)
   // Which date field the user edited last — drives the estimated due date.
   // Controlled so a failed details validation can jump back to the details tab.
   const [activeTab, setActiveTab] = useState<'document' | 'items' | 'attachments'>('document')
@@ -423,8 +445,11 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   ): ICReceivePrintData => ({
     poNo: printContext.po_no,
     projectName: printContext.project_name || '',
+    taxInvoiceNo: printDocument.tax_invoice_no,
+    taxInvoiceDate: printDocument.tax_invoice_date ? dayjs(printDocument.tax_invoice_date).format(DATE_FORMAT) : undefined,
     tempDeliveryNo: printDocument.temp_delivery_no,
     tempDeliveryDate: printDocument.temp_delivery_date ? dayjs(printDocument.temp_delivery_date).format(DATE_FORMAT) : undefined,
+    remarks: printDocument.remarks,
     receiveNo: printDocument.receive_no ?? '',
     receivedDate: dayjs(printDocument.created_at).format(DATE_FORMAT),
     jobCode: printContext.job_code,
@@ -620,11 +645,14 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
   // date) + credit days; falls back to the other field, then to today, when empty.
   const invoiceDateWatch: Dayjs | undefined = Form.useWatch('tax_invoice_date', form)
   const tempDateWatch: Dayjs | undefined = Form.useWatch('temp_delivery_date', form)
+  // A future invoice / temp-delivery date is invalid, so it must never feed the due-date calculation.
+  const validInvoiceDate = isFutureDay(invoiceDateWatch) ? undefined : invoiceDateWatch
+  const validTempDate = isFutureDay(tempDateWatch) ? undefined : tempDateWatch
   const dueBase: Dayjs | undefined =
     lastDueDateField === 'temp'
-      ? tempDateWatch ?? invoiceDateWatch
+      ? validTempDate ?? validInvoiceDate
       : lastDueDateField === 'invoice'
-        ? invoiceDateWatch ?? tempDateWatch
+        ? validInvoiceDate ?? validTempDate
         : undefined
 
   const dueDateDisplay = selectedDoc
@@ -679,10 +707,15 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
             </Form.Item>
           </Col>
           <Col lg={6} sm={12} xs={24}>
-            <Form.Item label="วันที่ใบกำกับภาษี" name="tax_invoice_date">
+            <Form.Item
+              label="วันที่ใบกำกับภาษี"
+              name="tax_invoice_date"
+              rules={[noFutureDateRule(FUTURE_INVOICE_DATE_MESSAGE)]}
+            >
               <DatePicker
                 style={{ width: '100%' }}
                 format={DATE_FORMAT}
+                disabledDate={(current) => isFutureDay(current)}
                 onChange={() => setLastDueDateField('invoice')}
               />
             </Form.Item>
@@ -705,10 +738,15 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
             </Form.Item>
           </Col>
           <Col lg={6} sm={12} xs={24}>
-            <Form.Item label="วันที่ใบส่งของชั่วคราว" name="temp_delivery_date">
+            <Form.Item
+              label="วันที่ใบส่งของชั่วคราว"
+              name="temp_delivery_date"
+              rules={[noFutureDateRule(FUTURE_TEMP_DELIVERY_DATE_MESSAGE)]}
+            >
               <DatePicker
                 style={{ width: '100%' }}
                 format={DATE_FORMAT}
+                disabledDate={(current) => isFutureDay(current)}
                 onChange={() => setLastDueDateField('temp')}
               />
             </Form.Item>
@@ -934,97 +972,22 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     },
   ]
 
-  const listColumns = [
-    {
-      title: 'เลขที่ใบรับ',
-      key: 'receive_no',
-      render: (_: unknown, r: ICPoReceiveDocListItem) =>
-        r.receive_no ? <span>{r.receive_no}</span> : <span style={{ color: '#9ca3af' }}>ยังไม่มีเลขที่</span>,
-    },
-    { title: 'เลขที่ใบกำกับภาษี', dataIndex: 'tax_invoice_no', key: 'tax_invoice_no' },
-    {
-      title: 'วันที่ใบกำกับภาษี',
-      dataIndex: 'tax_invoice_date',
-      key: 'tax_invoice_date',
-      render: (v: string | null | undefined) => (v ? dayjs(v).format(DATE_FORMAT) : '-'),
-    },
-    {
-      title: 'วันครบกำหนด',
-      dataIndex: 'due_date',
-      key: 'due_date',
-      render: (v: string | null | undefined) => (v ? dayjs(v).format(DATE_FORMAT) : '-'),
-    },
-    {
-      title: 'วันที่สร้าง',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (v: string) => dayjs(v).format('DD/MM/YYYY HH:mm'),
-    },
-    {
-      title: 'จำนวนรายการ',
-      dataIndex: 'line_count',
-      key: 'line_count',
-      align: 'right' as const,
-    },
-    {
-      title: '',
-      key: 'action',
-      width: 60,
-      align: 'center' as const,
-      render: (_: unknown, r: ICPoReceiveDocListItem) =>
-        r.deletable ? (
-          <Popconfirm
-            title="ลบใบรับนี้?"
-            okText="ลบ"
-            cancelText="ยกเลิก"
-            onConfirm={(e) => {
-              e?.stopPropagation()
-              handleDeleteDocument(r.id)
-            }}
-            onCancel={(e) => e?.stopPropagation()}
-          >
-            <Button
-              danger
-              type="text"
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Popconfirm>
-        ) : null,
-    },
-  ]
-
   const listView = (
-    <Spin spinning={docsListLoading}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Text type="secondary">
-          {docsList ? `คงเหลือที่ต้องรับทั้งหมด: ${formatQty(docsList.remaining_qty_total)}` : ''}
-        </Text>
-        <Tooltip title={docsList && !docsList.can_create_new ? 'มีใบรับที่ยังไม่บันทึกเลขที่อยู่แล้ว หรือไม่มีจำนวนคงเหลือให้รับ' : undefined}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!docsList?.can_create_new}
-            onClick={handleCreateNew}
-            {...icActionButtonProps('receive', !docsList?.can_create_new)}
-          >
-            สร้างใบรับใหม่
-          </Button>
-        </Tooltip>
-      </div>
-      <Table
-        rowKey="id"
-        columns={listColumns}
-        dataSource={docsList?.documents ?? []}
-        pagination={false}
-        locale={{ emptyText: 'ยังไม่มีใบรับของสำหรับ PO นี้' }}
-        onRow={(record) => ({
-          onClick: () => handleSelectDocument(record),
-          style: { cursor: 'pointer' },
-        })}
-      />
-    </Spin>
+    <ICPoDocumentList
+      poId={poId}
+      mode="receive"
+      refreshToken={docsList}
+      loadingExtra={docsListLoading}
+      remainingText={docsList ? `คงเหลือที่ต้องรับทั้งหมด: ${formatQty(docsList.remaining_qty_total)}` : ''}
+      canCreate={!!docsList?.can_create_new}
+      createTooltip="มีใบรับที่ยังไม่บันทึกเลขที่อยู่แล้ว หรือไม่มีจำนวนคงเหลือให้รับ"
+      onCreate={handleCreateNew}
+      fallbackPoNo={context?.po_no}
+      fallbackProject={context?.project_name}
+      onOpenReceive={(row) => handleSelectDocument({ id: row.id } as ICPoReceiveDocListItem)}
+      onOpenReturn={(row) => { setReturnDetailId(row.id); setView('returnDetail') }}
+      onDeleteReceive={(row) => handleDeleteDocument(row.id)}
+    />
   )
 
   const detailView = (
@@ -1041,7 +1004,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           selected document changes — switching documents, or moving between
           an existing document and the "create new" form, must never carry
           over a stale active tab or the previous document's lines. */}
-      <Tabs
+      <PanelTabs
         key={selectedDocId ?? 'new'}
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'document' | 'items' | 'attachments')}
@@ -1052,15 +1015,31 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
 
   return (
     <Modal
-      title={view === 'list' ? `ใบรับของ - PO ${context?.po_no ?? ''}` : 'รายละเอียดเอกสาร PO Receive'}
+      title={
+        <Space size={8}>
+          <span>
+            {view === 'list'
+              ? `ใบรับของ - PO ${context?.po_no ?? ''}`
+              : view === 'returnDetail'
+                ? 'รายละเอียดเอกสาร PO Return'
+                : 'รายละเอียดเอกสาร PO Receive'}
+          </span>
+          <ICDocTypeTag docType={view === 'returnDetail' ? 'RETURN' : 'RECEIVE'} />
+        </Space>
+      }
       open={open}
       onCancel={handleExit}
       footer={null}
-      width={1152}
+      width={1613}
+      style={{ maxWidth: 'calc(100vw - 48px)' }}
       destroyOnHidden
       styles={{ body: { paddingTop: 8 } }}
     >
-      {view === 'list' ? listView : detailView}
+      {view === 'list' && listView}
+      {view === 'detail' && detailView}
+      {view === 'returnDetail' && returnDetailId != null && (
+        <ICReturnDetailView returnId={returnDetailId} onBack={() => setView('list')} />
+      )}
 
       {printData && (
         <ICPoReceivePrint
@@ -1107,7 +1086,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       >
         {successInfo?.receiveNo && (
           <div>
-            <div>เลขที่เอกสาร:</div>
+            <div>เลขที่เอกสาร: <ICDocTypeTag docType="RECEIVE" style={{ marginLeft: 6 }} /></div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a', marginTop: 4 }}>{successInfo.receiveNo}</div>
           </div>
         )}

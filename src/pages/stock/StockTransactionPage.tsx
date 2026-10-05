@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
+import ICDocTypeTag from '@/pages/ic/components/ICDocTypeTag'
 import PageHeader from '@/components/common/PageHeader'
 import QRScanInput from '@/components/stock/QRScanInput'
 import { useAppSelector } from '@/store'
@@ -54,6 +55,7 @@ const mapTransaction = (t: any): StockTransaction => ({
   qtyBefore:     t.qty_before ?? null,
   qtyAfter:      t.qty_after ?? null,
   refDocNo:      t.ref_doc_no ?? null,
+  refDocType:    t.ref_doc_type ?? null,
   remarks:       t.remarks ?? null,
   createdByName: t.created_by_name ?? '',
   txnDate:       t.txn_date ?? t.created_at ?? '',
@@ -190,7 +192,15 @@ const StockTransactionPage: React.FC = () => {
       title: 'Doc No',
       dataIndex: 'refDocNo',
       key: 'refDocNo',
-      render: (val: string | null) => val || '-',
+      render: (val: string | null, r: StockTransaction) => {
+        if (!val) return '-'
+        return (
+          <Space size={6}>
+            <span>{val}</span>
+            <ICDocTypeTag refDocType={r.refDocType} />
+          </Space>
+        )
+      },
     },
     {
       title: 'Material',

@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import { storageKey } from '@/config/env'
 import axios from 'axios'
-import { Form, Input, Button, Checkbox, message, Typography } from 'antd'
+import { Form, Input, Button, Checkbox, message, Typography, Alert } from 'antd'
 import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch } from '@/store'
 import { loginStart, loginSuccess, loginFailure } from '@/store/slices/authSlice'
 import type { User } from '@/types'
+import { SESSION_EXPIRED_KEY } from '@/services/api'
 import BrandLogo from '@/components/common/BrandLogo'
 
 const { Title, Text } = Typography
@@ -14,19 +15,35 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 
 const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
+  const [sessionExpired] = useState(() => {
+    try {
+      const v = sessionStorage.getItem(SESSION_EXPIRED_KEY) === '1'
+      sessionStorage.removeItem(SESSION_EXPIRED_KEY)
+      return v
+    } catch { return false }
+  })
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
 
   const handleLogin = async (values: { username: string; password: string }) => {
     setLoading(true)
     dispatch(loginStart())
+    let access_token: string, refresh_token: string
     try {
       const res = await axios.post(
         `${BASE_URL}/auth/login`,
         { username: values.username, password: values.password },
         { withCredentials: false }
       )
-      const { access_token, refresh_token } = res.data.data
+      ;({ access_token, refresh_token } = res.data.data)
+    } catch {
+      // Only a failed POST /auth/login means wrong credentials.
+      dispatch(loginFailure())
+      message.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+      setLoading(false)
+      return
+    }
+    try {
       // ✅ ยิง /auth/me เพื่อเอาข้อมูล user
       const meRes = await axios.get(`${BASE_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${access_token}` }
@@ -59,7 +76,7 @@ const LoginPage: React.FC = () => {
       navigate('/')
     } catch {
       dispatch(loginFailure())
-      message.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+      message.error('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
     } finally {
       setLoading(false)
     }
@@ -98,6 +115,14 @@ const LoginPage: React.FC = () => {
           <Text style={{ color: '#60a5fa', fontSize: 13 }}>Enterprise Resource Planning</Text>
         </div>
 
+        {sessionExpired && (
+          <Alert
+            type="info"
+            showIcon
+            message="เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง"
+            style={{ marginBottom: 16, borderRadius: 8 }}
+          />
+        )}
         <Form layout="vertical" onFinish={handleLogin} initialValues={{ remember: true }}>
           <Form.Item name="username" rules={[{ required: true, message: 'กรุณากรอกชื่อผู้ใช้' }]}>
             <Input

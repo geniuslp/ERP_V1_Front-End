@@ -53,6 +53,7 @@ export interface StockTransaction {
   // (e.g. "PR202608-0007", a grn_no, req_no, or borrow_no) — null when ref_doc_type
   // has no joinable table yet (see stock_transaction.go on the backend).
   refDocNo?: string | null
+  refDocType?: string | null
   remarks?: string | null
   createdByName: string
   txnDate: string

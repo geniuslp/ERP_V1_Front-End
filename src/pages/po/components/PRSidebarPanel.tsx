@@ -33,19 +33,17 @@ interface PRSidebarPanelProps {
 // detail view now embeds directly, per the merge requirement) — column defs,
 // status logic, and price-history popover reused as-is, adapted to local
 // component scope. ──────────────────────────────────────────────────────
-type RowState = 'available' | 'partial' | 'taken'
+// GET /po/pr-lines/:id only returns lines with remaining > 0, so every listed row is either
+// untouched ('available') or partly ordered already ('partial') — there is no 'taken' state.
+type RowState = 'available' | 'partial'
 
-const getRowState = (line: PRLineWithPOStatus): RowState => {
-  if (line.qty_remaining <= 0) return 'taken'
-  if (line.qty_ordered > 0) return 'partial'
-  return 'available'
-}
+const getRowState = (line: PRLineWithPOStatus): RowState =>
+  line.qty_ordered > 0 ? 'partial' : 'available'
 
-// Semantic tones per DESIGN.md: warning `#d97706` (partial), page bg `#f0f5ff` neutral for taken.
+// Semantic tone per DESIGN.md: warning `#d97706` family for partial.
 const rowBg: Record<RowState, string | undefined> = {
   available: undefined,
   partial: '#fffbeb',
-  taken: '#f0f5ff',
 }
 
 const HISTORY_DISPLAY_LIMIT = 8
@@ -56,9 +54,6 @@ const formatCurrency = (v: number) =>
 const formatShortDate = (d?: string | null) => (d ? dayjs(d).format('DD MMM YYYY') : '-')
 
 const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s)
-
-const formatPoNos = (referencedPos: PRLineWithPOStatus['referenced_pos']) =>
-  referencedPos?.map((p) => p.po_no).join(', ') || '-'
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: 11,
@@ -121,9 +116,13 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
     setSelectedPrices({})
     setOpenHistoryId(null)
     try {
-      const [prRes, linesRes] = await Promise.all([
-        axios.get(`${BASE_URL}/pr/${pr.id}`, { headers: { Authorization: `Bearer ${accessToken}` } }),
-        axios.get(`${BASE_URL}/pr/${pr.id}/lines-with-po-status`, { headers: { Authorization: `Bearer ${accessToken}` } }),
+      const headers = { Authorization: `Bearer ${accessToken}` }
+      const [prRes, linesRes, orderableRes] = await Promise.all([
+        axios.get(`${BASE_URL}/pr/${pr.id}`, { headers }),
+        // Display data (unit, cost code, price history, referenced POs) — returns ALL lines.
+        axios.get(`${BASE_URL}/pr/${pr.id}/lines-with-po-status`, { headers }),
+        // Source of truth for WHICH lines are listed and their `remaining`.
+        axios.get(`${BASE_URL}/po/pr-lines/${pr.id}`, { headers }),
       ])
       const rawPr = prRes.data?.data ?? prRes.data
       const rawLinesData = linesRes.data?.data ?? linesRes.data
@@ -136,9 +135,19 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
         pr_date: rawPr?.pr_date ?? pr.pr_date,
       })
       const rawLineList = Array.isArray(rawLinesData?.lines) ? rawLinesData.lines : []
-      // Same normalization PRItemSelectionModal used: API keys each line as
-      // `pr_line_id`; ensure a stable unique `id` for rowKey/selection.
-      setLines(rawLineList.map((l: any) => ({ ...l, id: l.id ?? l.pr_line_id ?? l.line_no })))
+      const rawOrderable = orderableRes.data?.data ?? orderableRes.data
+      const remainingById = new Map<number, number>(
+        (Array.isArray(rawOrderable) ? rawOrderable : []).map((o: any) => [Number(o.id), Number(o.remaining)]),
+      )
+      // Join on line id: only lines the backend returned from /po/pr-lines are shown, and
+      // qty_remaining is overwritten with its `remaining` (qty_to_order - qty_ordered), which is
+      // also the PO line's default qty and max.
+      setLines(
+        rawLineList
+          .map((l: any) => ({ ...l, id: l.id ?? l.pr_line_id ?? l.line_no }))
+          .filter((l: any) => remainingById.has(Number(l.id)))
+          .map((l: any) => ({ ...l, qty_remaining: remainingById.get(Number(l.id)) as number })),
+      )
     } catch (err: any) {
       const errMsg =
         err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรายละเอียด PR ไม่สำเร็จ'
@@ -178,7 +187,6 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
 
   const availableCount = lines.filter((l) => getRowState(l) === 'available').length
   const partialCount = lines.filter((l) => getRowState(l) === 'partial').length
-  const takenCount = lines.filter((l) => getRowState(l) === 'taken').length
 
   const renderPriceHistoryContent = (r: PRLineWithPOStatus) => {
     const history = r.price_history ?? []
@@ -243,7 +251,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       align: 'center' as const,
       render: (_: unknown, r: PRLineWithPOStatus) => {
         const alreadyInPo = existingPrLineIds.includes(r.id)
-        const disabled = r.qty_remaining <= 0 || alreadyInPo
+        const disabled = alreadyInPo
         const checkbox = (
           <Checkbox
             checked={selectedIds.has(r.id)}
@@ -252,9 +260,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
           />
         )
         if (!disabled) return checkbox
-        const tooltipMsg = alreadyInPo
-          ? 'รายการนี้ถูกเลือกไว้ใน PO นี้แล้ว'
-          : `สั่งครบแล้ว — สั่งไปแล้วโดย ${formatPoNos(r.referenced_pos)}`
+        const tooltipMsg = 'รายการนี้ถูกเลือกไว้ใน PO นี้แล้ว'
         return (
           <Tooltip title={tooltipMsg}>
             <span style={{ cursor: 'not-allowed' }}>{checkbox}</span>
@@ -305,15 +311,13 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       align: 'center' as const,
     },
     {
-      title: 'คงเหลือที่สั่งได้',
+      title: 'คงเหลือสั่งได้',
       dataIndex: 'qty_remaining',
       width: 140,
       align: 'center' as const,
       render: (v: number, r: PRLineWithPOStatus) => (
         <div>
-          <div style={{ color: v > 0 ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
-            คงเหลือที่สั่งได้: {v}
-          </div>
+          <div style={{ color: '#16a34a', fontWeight: 600 }}>{v}</div>
           {getRowState(r) === 'partial' && (
             <div style={{ fontSize: 11, color: '#d97706' }}>
               สั่งไปแล้ว {r.qty_ordered}/{r.qty_requested}
@@ -412,9 +416,6 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
             ) : (
               <span style={{ fontSize: 13 }}>-</span>
             )}
-            {state === 'taken' && (
-              <Tag color="red" style={{ margin: 0 }}>สั่งครบแล้ว</Tag>
-            )}
             {state === 'partial' && (
               <Tag color="orange" style={{ margin: 0 }}>สั่งบางส่วน</Tag>
             )}
@@ -472,7 +473,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                   <Spin />
                 </div>
               ) : filteredOptions.length === 0 ? (
-                <Empty description="ไม่พบ PR ที่พร้อมใช้งาน" />
+                <Empty description={prOptions.length === 0 ? 'ไม่มี PR ที่ยังดึงได้' : 'ไม่พบ PR ที่ค้นหา'} />
               ) : (
                 filteredOptions.map((pr) => (
                   <div
@@ -540,7 +541,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
               </Descriptions>
 
               <div style={{ marginBottom: 8, fontSize: 13, color: '#374151' }}>
-                ทั้งหมด {lines.length} รายการ — สั่งได้ {availableCount} / สั่งบางส่วน {partialCount} / สั่งครบแล้ว {takenCount}
+                รายการคงเหลือให้ดึง {lines.length} รายการ — ยังไม่เคยสั่ง {availableCount} / สั่งบางส่วน {partialCount}
               </div>
 
               <Table
@@ -552,7 +553,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                 size="small"
                 scroll={{ x: 1200, y: 480 }}
                 onRow={(record) => ({ style: { backgroundColor: rowBg[getRowState(record)] } })}
-                locale={{ emptyText: 'ไม่มีรายการในใบขอซื้อนี้' }}
+                locale={{ emptyText: <Empty description="ไม่มีรายการคงเหลือให้ดึง" /> }}
               />
             </div>
 

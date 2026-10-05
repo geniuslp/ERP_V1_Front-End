@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { ORDER_TYPE_LABEL as SHARED_ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 
@@ -10,7 +11,7 @@ import logo from '../../components/asset/Genius Logo-01.jpg'
 
 const BK = '#000000'
 
-export type PROrderType = 'stock' | 'cost' | 'asset_equipment' | 'office_equipment' | 'asset_tool' | ''
+export type PROrderType = 'stock' | 'cost' | 'asset_machine' | 'asset_office_equipment' | 'asset_tools' | ''
 
 export interface PRItem {
   no: string
@@ -96,12 +97,11 @@ function normalizeData(raw: PRData): PRData {
   }
 }
 
-const ORDER_TYPE_LABEL: Record<string, string> = {
+// Print uses short Thai labels for stock/cost; OH types share the app-wide labels.
+const PRINT_ORDER_TYPE_LABEL: Record<string, string> = {
+  ...SHARED_ORDER_TYPE_LABEL,
   stock: 'คลังสินค้า',
   cost: 'โครงการ',
-  asset_equipment: 'Asset Equipment',
-  office_equipment: 'Office Equipment',
-  asset_tool: 'Asset Tool',
 }
 
 const MM_TO_PX = 96 / 25.4
@@ -220,7 +220,7 @@ const PRInfoBox = ({ data }: { data: PRData }) => (
   <div className="pr-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
     <div><b>โครงการ :</b>&nbsp;{data.projectDept}</div>
     <div><b>วันที่ :</b>&nbsp;{data.prDate}</div>
-    <div><b>ประเภทการซื้อ :</b>&nbsp;{ORDER_TYPE_LABEL[data.orderType] ?? ''}</div>
+    <div><b>ประเภทการซื้อ :</b>&nbsp;{data.orderType ? (PRINT_ORDER_TYPE_LABEL[data.orderType] ?? data.orderType) : ''}</div>
     <div><b>กำหนดส่งของ :</b>&nbsp;{data.deliveryDate}</div>
     <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryTo}</div>
     <div style={{ display: 'flex', gap: 4 }}>

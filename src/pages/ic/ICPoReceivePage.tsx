@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Spin, Select, Switch, Table, Space, Typography, Input, Button, Empty, message } from 'antd'
+import { Card, Spin, Select, Switch, Table, Space, Typography, Input, Button, Empty, Tooltip, message } from 'antd'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { CheckCircleFilled, CheckCircleOutlined } from '@ant-design/icons'
+import './ICPoReceivePage.css'
 import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
@@ -164,6 +165,8 @@ const ICPoReceivePage: React.FC = () => {
         const scoped = list.filter((r) => String(r[field] ?? '').toLowerCase().includes(needle))
         if (!cancelled) {
           setRows(scoped)
+          // Reload: drop the selection if that PO is no longer in the list.
+          setSelectedRow((prev) => (prev && scoped.some((r) => r.po_id === prev.po_id) ? prev : null))
           setTotal(scoped.length === list.length ? payload?.total ?? scoped.length : scoped.length)
         }
       } catch (err: any) {
@@ -201,8 +204,13 @@ const ICPoReceivePage: React.FC = () => {
     resetSelection()
   }
 
+  // Two-state toggle per row; selectedRow is the single source of truth.
+  const toggleRow = (r: ICPoRow) =>
+    setSelectedRow((prev) => (prev?.po_id === r.po_id ? null : r))
+
   const handleToggleChange = (checked: boolean) => {
     setOnlyCompleted(checked)
+    setSelectedRow(null)
     setPage(1)
   }
 
@@ -279,9 +287,16 @@ const ICPoReceivePage: React.FC = () => {
         const checked = selectedRow?.po_id === r.po_id
         return (
           <span
-            role="radio"
+            role="checkbox"
             aria-checked={checked}
-            onClick={() => setSelectedRow(r)}
+            tabIndex={0}
+            onClick={() => toggleRow(r)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                toggleRow(r)
+              }
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -293,9 +308,15 @@ const ICPoReceivePage: React.FC = () => {
             }}
           >
             {checked ? (
-              <CheckCircleFilled style={{ color: '#16a34a' }} />
+              <Tooltip title="คลิกอีกครั้งเพื่อยกเลิก">
+                <CheckCircleFilled className="ic-select-icon ic-select-icon--checked" />
+              </Tooltip>
             ) : (
-              <CheckCircleOutlined style={{ color: '#d1d5db' }} />
+              <Tooltip title="เลือก PO นี้">
+                <CheckCircleOutlined
+                  className={`ic-select-icon${selectedRow ? '' : ' ic-select-icon--idle-pulse'}`}
+                />
+              </Tooltip>
             )}
           </span>
         )
@@ -396,6 +417,7 @@ const ICPoReceivePage: React.FC = () => {
             total,
             showTotal: (t) => `ทั้งหมด ${t} รายการ`,
             onChange: (p, ps) => {
+              setSelectedRow(null)
               setPage(p)
               setPageSize(ps)
             },

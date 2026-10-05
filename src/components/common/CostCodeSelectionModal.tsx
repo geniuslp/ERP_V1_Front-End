@@ -33,7 +33,7 @@ interface Props {
   // Document-level PR "ประเภท Job" value (e.g. 'MP', 'G'). Resolved via
   // JOB_TYPES to a job_code to filter CostCode rows by — see constants/jobTypes.ts.
   jobTypeCode?: string
-  // OH order types (asset_equipment/office_equipment/asset_tool): load only
+  // OH order types (asset_machine/asset_office_equipment/asset_tools): load only
   // GET /master/cost-code/full?scope=oh. Same row shape as the unscoped list
   // (`subgroup_id` is the value to send as cost_subgroup_id). Job-type
   // filtering is skipped — the list is already OH-only.

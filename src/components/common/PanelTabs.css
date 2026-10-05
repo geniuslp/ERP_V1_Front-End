@@ -1,0 +1,49 @@
+/* Shared prominent card-style tabs (used inside modals / panels). */
+.panel-tabs.ant-tabs > .ant-tabs-nav {
+  margin: 0;
+}
+.panel-tabs.ant-tabs > .ant-tabs-nav::before {
+  border-bottom: 1px solid #dbeafe;
+}
+.panel-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-top: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 20px;
+  margin-right: 4px;
+  transition: all 0.2s;
+}
+.panel-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab .ant-tabs-tab-btn {
+  color: #64748b;
+  font-weight: 500;
+}
+.panel-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab:hover .ant-tabs-tab-btn {
+  color: #2563eb;
+}
+.panel-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  border-top: 3px solid #2563eb;
+  /* cover the nav's bottom line so the active tab joins the panel */
+  border-bottom-color: #eff6ff;
+}
+.panel-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.panel-tabs.ant-tabs > .ant-tabs-content-holder {
+  border: 1px solid #dbeafe;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+/* Tab bar used purely as a selector (no panel children): hide the empty panel box. */
+.panel-tabs.panel-tabs-nav-only.ant-tabs > .ant-tabs-content-holder {
+  display: none;
+}
+.panel-tabs.panel-tabs-nav-only.ant-tabs > .ant-tabs-nav::before {
+  display: block;
+}

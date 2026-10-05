@@ -52,7 +52,7 @@ export interface MenuConfig {
 // ─── PR ────────────────────────────────────────────────────────
 export type PRStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled'
 
-export type PROrderType = 'stock' | 'cost' | 'asset_equipment' | 'office_equipment' | 'asset_tool'
+export type PROrderType = 'stock' | 'cost' | 'asset_machine' | 'asset_office_equipment' | 'asset_tools'
 
 export type PRType = 'PO_WO' | 'PO_ONLY' | 'WO_ONLY'
 

@@ -10,7 +10,7 @@ interface OrderTypeSelectProps {
   allowClear?: boolean
   placeholder?: string
   // True when at least one line already carries a cost code. Switching
-  // between the OH group (asset_equipment/office_equipment/asset_tool) and
+  // between the OH group (asset_machine/asset_office_equipment/asset_tools) and
   // stock/cost makes those cost codes incompatible, so the change is gated
   // behind a confirm dialog and `onClearCostCodes` runs only after OK.
   hasCostCodes: boolean

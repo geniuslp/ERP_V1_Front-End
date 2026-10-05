@@ -1,5 +1,6 @@
+import PanelTabs from '@/components/common/PanelTabs'
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
-import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography, Tabs } from 'antd'
+import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography } from 'antd'
 import { PlusOutlined, EditOutlined, StopOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
@@ -355,7 +356,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         ) : (
           <>
             {subjectCodes.length > 1 && (
-              <Tabs
+              <PanelTabs className="panel-tabs-nav-only"
                 activeKey={activeSubjectCode ?? undefined}
                 onChange={(key) => setActiveSubjectCode(key)}
                 items={subjectTabItems}

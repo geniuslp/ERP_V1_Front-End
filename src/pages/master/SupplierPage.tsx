@@ -1,5 +1,6 @@
+import PanelTabs from '@/components/common/PanelTabs'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Tabs, Upload, Typography, Switch, Row, Col } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Upload, Typography, Switch, Row, Col } from 'antd'
 import type { UploadProps } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -1077,7 +1078,7 @@ const SupplierPage: React.FC = () => {
         {editing ? (
           supplierForm
         ) : (
-          <Tabs
+          <PanelTabs
             activeKey={activeTab}
             onChange={setActiveTab}
             items={[

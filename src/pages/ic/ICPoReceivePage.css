@@ -1,0 +1,41 @@
+/* Scoped to the PO Receive page's selection check-mark column (class names are namespaced). */
+.ic-select-icon {
+  border-radius: 50%;
+  color: #4ade80;
+  filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.55));
+  transition: transform 150ms ease, color 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+
+.ic-select-icon:hover {
+  color: #16a34a;
+  transform: scale(1.15);
+  filter: none;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18), 0 0 14px rgba(22, 163, 74, 0.55);
+}
+
+.ic-select-icon--checked,
+.ic-select-icon--checked:hover {
+  color: #16a34a;
+  transform: none;
+  filter: none;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.22), 0 0 12px rgba(22, 163, 74, 0.5);
+}
+
+/* Slow invite-to-click pulse, only while no row is selected and motion is allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  .ic-select-icon--idle-pulse:not(:hover) {
+    animation: ic-select-icon-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes ic-select-icon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.35));
+  }
+  50% {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 9px rgba(34, 197, 94, 0.75));
+  }
+}

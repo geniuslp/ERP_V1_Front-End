@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Spin, Result, Space, message } from 'antd'
-import { PlusOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Tag, Spin, Result, Space, Modal, message } from 'antd'
+import { PlusOutlined, EyeOutlined, BarChartOutlined, ExportOutlined, SwapOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
+import OptionCard from '@/components/common/OptionCard'
 import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -49,6 +50,7 @@ const ICProjectMovementListPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<ICProjectInfo | null>(null)
 
+  const [chooserOpen, setChooserOpen] = useState(false)
   const [rows, setRows] = useState<MovementRow[]>([])
   const [rowsLoading, setRowsLoading] = useState(false)
 
@@ -108,6 +110,15 @@ const ICProjectMovementListPage: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCode])
+
+  // Chooser pick -> create page with doc_type preset (merged into the existing query string,
+  // which carries prepared_by).
+  const onSelectDocType = (docType: 'ISSUE' | 'TRANSFER') => {
+    const params = new URLSearchParams(locationSearch)
+    params.set('doc_type', docType)
+    setChooserOpen(false)
+    navigate(`/ic/projects/${projectCode}/movement/create?${params.toString()}`)
+  }
 
   const goToDetail = (id: number) => navigate(`/ic/projects/${projectCode}/movement/${id}`)
 
@@ -214,7 +225,7 @@ const ICProjectMovementListPage: React.FC = () => {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => navigate(`/ic/projects/${projectCode}/movement/create${locationSearch}`)}
+              onClick={() => setChooserOpen(true)}
             >
               สร้างใบใหม่
             </Button>
@@ -236,6 +247,34 @@ const ICProjectMovementListPage: React.FC = () => {
           locale={{ emptyText: 'ยังไม่มีเอกสาร — กด "สร้างใบใหม่" เพื่อเริ่มสร้างเอกสารตัดเบิก/โอน' }}
         />
       </Card>
+
+      <Modal
+        open={chooserOpen}
+        onCancel={() => setChooserOpen(false)}
+        footer={null}
+        centered
+        width={760}
+        title="เลือกประเภทเอกสาร"
+      >
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', paddingTop: 8 }}>
+          <OptionCard
+            icon={<ExportOutlined style={{ fontSize: 40 }} />}
+            label="Issue"
+            caption="ตัดเบิก"
+            base="#2563eb"
+            hover="#1d4ed8"
+            onClick={() => onSelectDocType('ISSUE')}
+          />
+          <OptionCard
+            icon={<SwapOutlined style={{ fontSize: 40 }} />}
+            label="Transfer"
+            caption="โอนย้าย"
+            base="#0ea5e9"
+            hover="#0284c7"
+            onClick={() => onSelectDocType('TRANSFER')}
+          />
+        </div>
+      </Modal>
     </div>
   )
 }

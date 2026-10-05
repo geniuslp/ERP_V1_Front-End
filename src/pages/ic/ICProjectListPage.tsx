@@ -4,6 +4,7 @@ import { InboxOutlined, SwapOutlined, ContainerOutlined } from '@ant-design/icon
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
+import OptionCard from '@/components/common/OptionCard'
 import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -30,44 +31,6 @@ interface ICProject {
   project_code: string
   project_name: string
   customer_name?: string | null
-}
-
-const OptionCard: React.FC<{
-  icon: React.ReactNode
-  label: string
-  base: string
-  hover: string
-  onClick: () => void
-}> = ({ icon, label, base, hover, onClick }) => {
-  const [isHover, setHover] = useState(false)
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        flex: '1 1 220px',
-        minHeight: 160,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 12,
-        borderRadius: 12,
-        cursor: 'pointer',
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: 600,
-        background: isHover ? hover : base,
-        boxShadow: isHover ? '0 8px 30px rgba(15,45,94,0.18)' : '0 2px 12px rgba(15,45,94,0.08)',
-        transform: isHover ? 'translateY(-2px)' : 'none',
-        transition: 'all 0.2s',
-      }}
-    >
-      {icon}
-      <div>{label}</div>
-    </div>
-  )
 }
 
 const ICProjectListPage: React.FC = () => {

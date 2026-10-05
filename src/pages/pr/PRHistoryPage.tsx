@@ -29,9 +29,14 @@ const ROW_TINT_CATEGORY: Record<string, string> = {
   PARTIALLY_FILLED: ROW_TINT_CLASS.orange,
   STOCK_CHECK:       ROW_TINT_CLASS.gray,
 }
-const getRowClassName = (status?: string, poConversionStatus?: string): string => {
-  if ((status === 'COMPLETED' || status === 'FULFILLED') && poConversionStatus === 'FULLY_CONVERTED') {
-    return ROW_TINT_CLASS.green
+// hasRemaining (GET /pr's has_remaining) is true while any line still has qty left to
+// buy; a PR fully reserved from stock has nothing left, so it counts as done (green)
+// even though it never converted to a PO. Falls back to po_conversion_status only if
+// the API doesn't send the field.
+const getRowClassName = (status?: string, poConversionStatus?: string, hasRemaining?: boolean): string => {
+  if (status === 'COMPLETED' || status === 'FULFILLED') {
+    const done = hasRemaining != null ? !hasRemaining : poConversionStatus === 'FULLY_CONVERTED'
+    if (done) return ROW_TINT_CLASS.green
   }
   return ROW_TINT_CATEGORY[status ?? ''] ?? ''
 }
@@ -117,6 +122,8 @@ interface PRItem {
   // the green tint so COMPLETED/FULFILLED only tints green once every line has
   // actually been converted to PO.
   poConversionStatus: string
+  // GET /pr's has_remaining — undefined when the API omits it.
+  hasRemaining?: boolean
   // GET /pr's has_active_po_link — same field/meaning as PRStatusPage.tsx's
   // PRItem.hasActivePoLink; mirrors the backend's PUT /pr/:id guard so the
   // edit button never appears when the save would just be rejected.
@@ -225,6 +232,7 @@ const PRHistoryPage: React.FC = () => {
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
         poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
+        hasRemaining: r.has_remaining ?? undefined,
         hasActivePoLink: r.has_active_po_link ?? false,
         orderType:    r.order_type     ?? null,
       })))
@@ -462,7 +470,7 @@ const PRHistoryPage: React.FC = () => {
           dataSource={items}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
-          rowClassName={(record) => getRowClassName(record.status, record.poConversionStatus)}
+          rowClassName={(record) => getRowClassName(record.status, record.poConversionStatus, record.hasRemaining)}
           size="small"
           scroll={{ x: 1610 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}

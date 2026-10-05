@@ -120,7 +120,7 @@ const POCreatePage: React.FC = () => {
   // order_type = 'cost') — re-renders reactively as the user changes the
   // Select, same pattern as PR's own order_type-driven fields.
   const orderType: OrderType | undefined = Form.useWatch('order_type', form)
-  // OH order types (asset_equipment/office_equipment/asset_tool): job_code is
+  // OH order types (asset_machine/asset_office_equipment/asset_tools): job_code is
   // fixed to 'G' (read-only), cost codes come from the OH list only.
   const isOh = isOhOrderType(orderType)
   // The 4 dedicated "warehouse projects" the backend derives PO warehouse_code
@@ -350,9 +350,16 @@ const POCreatePage: React.FC = () => {
     }
   }
 
+  // Initial load (trigger chip label) + re-fetch each time the PR drawer opens, so a PR just
+  // pulled into another PO, or whose PO was cancelled, is current.
   useEffect(() => {
     fetchPRs()
   }, [])
+
+  useEffect(() => {
+    if (prSidebarOpen) fetchPRs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prSidebarOpen])
 
 
   // The backend now generates po_no on save (GET /po/reserve-number is

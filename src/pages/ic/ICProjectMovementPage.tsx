@@ -1,7 +1,8 @@
+import PanelTabs from '@/components/common/PanelTabs'
 import React, { useEffect, useState } from 'react'
 import {
   Card, Form, Select, DatePicker, Input, Button, Space, Spin, Result, Row, Col, Grid,
-  Table, Descriptions, Tabs, Modal, message,
+  Table, Descriptions, Modal, message,
 } from 'antd'
 import {
   ArrowLeftOutlined, SaveOutlined, EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined, CheckCircleOutlined,
@@ -99,6 +100,8 @@ const ICProjectMovementPage: React.FC = () => {
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const preparedBy = searchParams.get('prepared_by')
+  // Preset from the list page's type chooser (?doc_type=ISSUE|TRANSFER); defaults to ISSUE.
+  const presetDocType: 'ISSUE' | 'TRANSFER' = searchParams.get('doc_type') === 'TRANSFER' ? 'TRANSFER' : 'ISSUE'
   const [form] = Form.useForm()
 
   // All rows share one 2fr/3fr grid inside a 60%-wide wrapper (single column on mobile), so
@@ -145,7 +148,7 @@ const ICProjectMovementPage: React.FC = () => {
   const effectiveJob = docId ? header?.job_code : watchedJob
   const effectiveDocType = docId ? header?.doc_type : watchedDocType
   // Last accepted Job/doc type, used to revert when the user declines the "clear lines" confirm.
-  const lastAcceptedRef = React.useRef<{ job_code?: string; doc_type?: string }>({ doc_type: 'ISSUE' })
+  const lastAcceptedRef = React.useRef<{ job_code?: string; doc_type?: string }>({ doc_type: presetDocType })
 
   const isPosted = String((header as any)?.status ?? (header as any)?.doc_status ?? '').trim().toUpperCase() === 'POSTED'
   console.log('[ICProjectMovementPage] DEBUG header.status =', header?.status, '| isPosted =', isPosted)
@@ -588,7 +591,7 @@ const ICProjectMovementPage: React.FC = () => {
       disabled={headerReadOnly || isPosted}
       onValuesChange={handleValuesChange}
       initialValues={{
-        doc_type: 'ISSUE',
+        doc_type: presetDocType,
         doc_date: dayjs(),
       }}
     >
@@ -637,10 +640,12 @@ const ICProjectMovementPage: React.FC = () => {
               label="ประเภทเอกสาร"
               rules={[{ required: true, message: 'กรุณาเลือกประเภทเอกสาร' }]}
             >
+              {/* Locked: type is chosen in the list page chooser and never editable here. */}
               <Select
+                disabled
                 options={[
-                  { label: 'ตัดเบิก', value: 'ISSUE' },
-                  { label: 'โอนข้ามโครงการ', value: 'TRANSFER' },
+                  { label: 'ตัดเบิก (Issue)', value: 'ISSUE' },
+                  { label: 'โอนข้ามโครงการ (Transfer)', value: 'TRANSFER' },
                 ]}
               />
             </Form.Item>
@@ -651,8 +656,8 @@ const ICProjectMovementPage: React.FC = () => {
           <div>
             <Form.Item
               name="requested_by"
-              label="ผู้ขอเบิก"
-              rules={[{ required: true, message: 'กรุณาเลือกผู้ขอเบิก' }]}
+              label="ผู้ขอเบิก / ผู้ทำรายการ"
+              rules={[{ required: true, message: 'กรุณาระบุผู้ขอเบิก / ผู้ทำรายการ' }]}
             >
               <Select
                 placeholder="- เลือกรายการ -"
@@ -775,7 +780,7 @@ const ICProjectMovementPage: React.FC = () => {
       />
 
       <Card style={cardStyle}>
-        <Tabs
+        <PanelTabs
           activeKey={activeKey}
           onChange={handleItemsTabChange}
           items={[

@@ -43,7 +43,7 @@ interface POStatusBadgesProps {
   // Optional because status_receive isn't confirmed present on every PO
   // endpoint yet — only render the second badge once the backend includes it.
   statusReceive?: POReceiveStatus
-  // OH order types (asset_equipment/office_equipment/asset_tool) have no
+  // OH order types (asset_machine/asset_office_equipment/asset_tools) have no
   // goods receiving — never show the receive badge for them.
   orderType?: string | null
 }

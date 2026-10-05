@@ -16,8 +16,11 @@ const api: AxiosInstance = axios.create({
 // 401 there can't recurse back into the response interceptor below.
 const bareClient: AxiosInstance = axios.create({ baseURL: BASE_URL, timeout: 15000 })
 
-const redirectToLogin = () => {
+const redirectToLogin = (expired = false) => {
   store.dispatch(logout())
+  if (expired) {
+    try { sessionStorage.setItem('erp_session_expired', '1') } catch { /* ignore */ }
+  }
   // Full-page redirect bypasses the router, so build the path under the current base.
   const loginPath = appPath('login')
   if (window.location.pathname !== loginPath) {
@@ -28,7 +31,7 @@ const redirectToLogin = () => {
 const attachAuthHeader = (config: InternalAxiosRequestConfig) => {
   const state = store.getState()
   const token = state.auth.tokens?.accessToken
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
   return config
 }
 
@@ -54,12 +57,33 @@ const sanitizeDbError = (error: unknown) => {
   }
 }
 
-let isRefreshing = false
-let failedQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = []
+// Flag read once by LoginPage to show a neutral "session expired" notice.
+// sessionStorage survives the full-page redirect below.
+export const SESSION_EXPIRED_KEY = 'erp_session_expired'
 
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)))
-  failedQueue = []
+const isAuthEndpoint = (url?: string) => !!url && /\/auth\/(login|refresh)(\?|$)/.test(url)
+
+// One in-flight refresh shared by every concurrent 401 — each waiter just awaits
+// the same promise, then retries its own request with the new access token.
+let refreshPromise: Promise<string> | null = null
+
+const refreshAccessToken = (): Promise<string> => {
+  if (refreshPromise) return refreshPromise
+  const refreshToken = store.getState().auth.tokens?.refreshToken
+  if (!refreshToken) return Promise.reject(new Error('no refresh token'))
+  refreshPromise = bareClient
+    .post('/auth/refresh', { refresh_token: refreshToken, refreshToken })
+    .then((res) => {
+      // Tolerate both { data: { access_token } } (login shape) and flat camelCase.
+      const d = res.data?.data ?? res.data ?? {}
+      const accessToken: string | undefined = d.access_token ?? d.accessToken
+      const newRT: string = d.refresh_token ?? d.refreshToken ?? refreshToken
+      if (!accessToken) throw new Error('invalid refresh response')
+      store.dispatch(setTokens({ accessToken, refreshToken: newRT }))
+      return accessToken
+    })
+    .finally(() => { refreshPromise = null })
+  return refreshPromise
 }
 
 const attachInterceptors = (instance: AxiosInstance | AxiosStatic) => {
@@ -70,32 +94,17 @@ const attachInterceptors = (instance: AxiosInstance | AxiosStatic) => {
     async (error) => {
       sanitizeDbError(error)
       const original = error.config
-      if (error.response?.status === 401 && !original._retry && !original.url?.includes('/auth/login')) {
-        if (isRefreshing) {
-          return new Promise((resolve, reject) => failedQueue.push({ resolve, reject }))
-            .then((token) => { original.headers.Authorization = `Bearer ${token}`; return api(original) })
-        }
+      // Never refresh/retry for /auth/login or /auth/refresh (wrong password is a
+      // plain error for the login form; a failed refresh is handled below).
+      if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint(original.url)) {
         original._retry = true
-        isRefreshing = true
-        const refreshToken = store.getState().auth.tokens?.refreshToken
-        if (!refreshToken) {
-          isRefreshing = false
-          redirectToLogin()
-          return Promise.reject(error)
-        }
         try {
-          const res = await bareClient.post('/auth/refresh', { refreshToken })
-          const { accessToken, refreshToken: newRT } = res.data
-          store.dispatch(setTokens({ accessToken, refreshToken: newRT }))
-          processQueue(null, accessToken)
-          original.headers.Authorization = `Bearer ${accessToken}`
+          const token = await refreshAccessToken()
+          original.headers.Authorization = `Bearer ${token}`
           return api(original)
         } catch (e) {
-          processQueue(e, null)
-          redirectToLogin()
+          redirectToLogin(true)
           return Promise.reject(e)
-        } finally {
-          isRefreshing = false
         }
       }
       return Promise.reject(error)
