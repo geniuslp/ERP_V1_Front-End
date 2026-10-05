@@ -46,7 +46,6 @@ const MEMO_COLUMN_DEFAULT_WIDTH = 100
 const PROJECT_COLUMN_DEFAULT_WIDTH = 320
 const JOB_COLUMN_DEFAULT_WIDTH = 80
 const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
-const STATUS_COLUMN_DEFAULT_WIDTH = 130
 const REMARKS_COLUMN_DEFAULT_WIDTH = 220
 const CREATED_AT_COLUMN_DEFAULT_WIDTH = 120
 const ACTION_COLUMN_DEFAULT_WIDTH = 150
@@ -90,18 +89,6 @@ const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
       <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
     </Resizable>
   )
-}
-
-// Matches the real DB CHECK constraint on purchase_request.status — kept in sync with
-// the inline statusConfig in PRStatusPage.tsx (PR approval was removed; there is no
-// PENDING_APPROVAL / APPROVED / REJECTED status anymore).
-const statusConfig: Record<string, { color: string; label: string }> = {
-  DRAFT:            { color: 'default', label: 'ร่าง' },
-  COMPLETED:        { color: 'green',   label: 'เสร็จสมบูรณ์' },
-  STOCK_CHECK:      { color: 'blue',    label: 'ตรวจสต็อก' },
-  PARTIALLY_FILLED: { color: 'gold',    label: 'สั่งซื้อบางส่วน' },
-  FULFILLED:        { color: 'green',   label: 'เสร็จสิ้น' },
-  CANCELLED:        { color: 'default', label: 'ยกเลิก' },
 }
 
 interface PRItem {
@@ -150,7 +137,6 @@ const PRHistoryPage: React.FC = () => {
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
   const [jobColWidth, setJobColWidth] = useState(JOB_COLUMN_DEFAULT_WIDTH)
   const [requestedByColWidth, setRequestedByColWidth] = useState(REQUESTED_BY_COLUMN_DEFAULT_WIDTH)
-  const [statusColWidth, setStatusColWidth] = useState(STATUS_COLUMN_DEFAULT_WIDTH)
   const [remarksColWidth, setRemarksColWidth] = useState(REMARKS_COLUMN_DEFAULT_WIDTH)
   const [createdAtColWidth, setCreatedAtColWidth] = useState(CREATED_AT_COLUMN_DEFAULT_WIDTH)
   const handlePrNoColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
@@ -167,9 +153,6 @@ const PRHistoryPage: React.FC = () => {
   }
   const handleRequestedByColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setRequestedByColWidth(data.size.width)
-  }
-  const handleStatusColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
-    setStatusColWidth(data.size.width)
   }
   const handleRemarksColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setRemarksColWidth(data.size.width)
@@ -360,20 +343,6 @@ const PRHistoryPage: React.FC = () => {
       render: (v: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
-      title: 'สถานะ',
-      dataIndex: 'status',
-      key: 'status',
-      width: statusColWidth,
-      onHeaderCell: () => ({
-        width: statusColWidth,
-        onResize: handleStatusColResize,
-      }),
-      render: (v: string) => {
-        const cfg = statusConfig[v] ?? { color: 'default', label: v }
-        return <Tag color={cfg.color}>{cfg.label}</Tag>
-      },
-    },
-    {
       title: 'หมายเหตุ',
       dataIndex: 'remarks',
       key: 'remarks',
@@ -472,7 +441,7 @@ const PRHistoryPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           rowClassName={(record) => getRowClassName(record.status, record.poConversionStatus, record.hasRemaining)}
           size="small"
-          scroll={{ x: 1610 }}
+          scroll={{ x: 1480 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

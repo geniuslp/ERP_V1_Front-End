@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { storageKey } from '@/config/env'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Avatar, message } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons'
@@ -6,10 +6,13 @@ import PageHeader from '@/components/common/PageHeader'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
-import type { PermRole, Department } from '@/types/permission.types'
+import type { Department } from '@/types/permission.types'
 import SignatureUpload from '@/components/user/SignatureUpload'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
+// GET /master/roles row — id key is `role_id`; dept_code is null for company-wide roles
+// (Director / Executive Director / Board / Managing Director), which must stay selectable.
+interface RoleOption { role_id: number; role_code: string; role_name: string; dept_code: string | null }
 interface UserRole { role_id: number; role_code: string; role_name: string }
 interface UserRecord {
   key: string; id: string; username: string; fullName: string; email: string
@@ -31,8 +34,9 @@ const UsersPage: React.FC = () => {
   const [passwordForm] = Form.useForm()
 
   const [departments, setDepartments] = useState<Department[]>([])
-  const [allRoles, setAllRoles] = useState<PermRole[]>([])
-  const [roleOptions, setRoleOptions] = useState<PermRole[]>([])
+  const [allRoles, setAllRoles] = useState<RoleOption[]>([])
+  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([])
+  const roleReqSeq = useRef(0)
   // Create-mode only — the locally-picked signature file, uploaded after the new
   // user's id exists (see handleOk's create branch). Not used in edit mode, where
   // SignatureUpload talks to the API directly.
@@ -73,19 +77,47 @@ const UsersPage: React.FC = () => {
   useEffect(() => {
     if (!accessToken) return
     permissionMatrixService.getDepartments(accessToken).then(setDepartments).catch(() => {})
-    permissionMatrixService.getRoles(accessToken).then(setAllRoles).catch(() => {})
+    fetchRoles().then(setAllRoles).catch(() => {})
   }, [accessToken])
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setRoleOptions([]); setSignatureFile(null); setOpen(true) }
+  // Roles for a department come from the backend (it already includes null-dept_code roles);
+  // no client-side dept_code filtering here.
+  const fetchRoles = async (deptCode?: string): Promise<RoleOption[]> => {
+    const res = await axios.get(`${BASE_URL}/master/roles`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { dept_code: deptCode || undefined },
+    })
+    const raw = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+    return Array.isArray(raw) ? raw : []
+  }
+
+  const openCreate = async () => {
+    setEditing(null)
+    form.resetFields()
+    setSignatureFile(null)
+    setOpen(true)
+    // No department chosen yet: show every active role (GET /master/roles without dept_code)
+    // so company-wide roles (dept_code null) are selectable right away.
+    if (allRoles.length > 0) {
+      setRoleOptions(allRoles)
+      return
+    }
+    try {
+      const roles = await fetchRoles()
+      setAllRoles(roles)
+      setRoleOptions(roles)
+    } catch {
+      message.error('โหลดรายการบทบาทไม่สำเร็จ')
+    }
+  }
   const openEdit = async (r: UserRecord) => {
     setEditing(r)
     const deptCode = r.deptCode ?? departments.find((d) => d.dept_name === r.department)?.dept_code ?? undefined
 
-    // Ensure role options are loaded before we try to resolve/select roles below.
     let roles = allRoles
     if (roles.length === 0 && accessToken) {
       try {
-        roles = await permissionMatrixService.getRoles(accessToken as string)
+        roles = await fetchRoles()
         setAllRoles(roles)
       } catch {
         roles = []
@@ -108,11 +140,17 @@ const UsersPage: React.FC = () => {
       // fall back to roleIds already present on the row from the list fetch
     }
 
-    // Role options are normally scoped to the selected department, but a user's
-    // existing roles may span departments — keep those visible so setFieldsValue
-    // doesn't silently drop values that don't resolve to an option.
-    const rolesForDept = deptCode ? roles.filter((role) => role.dept_code === deptCode) : roles
-    const missingAssigned = roles.filter((role) => roleIds.includes(role.id) && !rolesForDept.some((rd) => rd.id === role.id))
+    // Options for the user's department from the backend; a user's existing roles may still
+    // fall outside that list — keep those visible so setFieldsValue doesn't drop them.
+    let rolesForDept: RoleOption[] = roles
+    if (deptCode) {
+      try {
+        rolesForDept = await fetchRoles(deptCode)
+      } catch {
+        rolesForDept = []
+      }
+    }
+    const missingAssigned = roles.filter((role) => roleIds.includes(role.role_id) && !rolesForDept.some((rd) => rd.role_id === role.role_id))
     setRoleOptions([...rolesForDept, ...missingAssigned])
 
     form.setFieldsValue({
@@ -125,23 +163,19 @@ const UsersPage: React.FC = () => {
     setOpen(true)
   }
   const handleDeptChange = async (deptCode: string) => {
-    // Guard the same race openEdit guards against: if allRoles hasn't finished
-    // its initial fetch yet, don't filter against an empty list — that would
-    // wrongly wipe out valid role options/selections.
-    let roles = allRoles
-    if (roles.length === 0 && accessToken) {
-      try {
-        roles = await permissionMatrixService.getRoles(accessToken as string)
-        setAllRoles(roles)
-      } catch {
-        roles = []
-      }
+    const seq = ++roleReqSeq.current
+    let rolesForDept: RoleOption[]
+    try {
+      rolesForDept = await fetchRoles(deptCode)
+    } catch {
+      message.error('โหลดรายการบทบาทไม่สำเร็จ')
+      return
     }
-    const rolesForDept = roles.filter((role) => role.dept_code === deptCode)
+    if (seq !== roleReqSeq.current) return // a newer department pick superseded this one
     setRoleOptions(rolesForDept)
+    // keep the current selection only if it's still in the new list
     const currentRoleIds: number[] = form.getFieldValue('roleIds') ?? []
-    const filtered = currentRoleIds.filter((id) => rolesForDept.some((role) => role.id === id))
-    form.setFieldValue('roleIds', filtered)
+    form.setFieldValue('roleIds', currentRoleIds.filter((id) => rolesForDept.some((role) => role.role_id === id)))
   }
   const handleDelete = async (key: string) => {
     const target = data.find((d) => d.key === key)
@@ -335,8 +369,8 @@ const UsersPage: React.FC = () => {
 
           const dept = departments.find((d) => d.dept_code === values.deptCode)
           const selectedRoles = allRoles
-            .filter((r) => (values.roleIds ?? []).includes(r.id))
-            .map((r) => ({ role_id: r.id, role_code: r.role_code, role_name: r.role_name }))
+            .filter((r) => (values.roleIds ?? []).includes(r.role_id))
+            .map((r) => ({ role_id: r.role_id, role_code: r.role_code, role_name: r.role_name }))
           const newUser: UserRecord = {
             key: String(created?.id ?? Date.now()),
             id: String(created?.id ?? Date.now()),
@@ -420,7 +454,7 @@ const UsersPage: React.FC = () => {
           <Form.Item label="บทบาท" name="roleIds" rules={[{ required: true, type: 'array', min: 1 }]}>
             <Select
               mode="multiple"
-              options={roleOptions.map((r) => ({ value: r.id, label: r.role_name }))}
+              options={roleOptions.map((r) => ({ value: r.role_id, label: r.role_name }))}
               placeholder="เลือกบทบาท"
             />
           </Form.Item>

@@ -7,6 +7,7 @@ export interface FinancePaymentListItem {
   doc_no: string
   doc_type: FinanceDocType
   project_code: string
+  project_name?: string | null
   net_amount: number
   status: string
   paid_amount: number
