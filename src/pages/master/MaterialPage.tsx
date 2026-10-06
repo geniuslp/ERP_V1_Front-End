@@ -98,6 +98,15 @@ const SectionPill: React.FC<{ color: string; bg: string; label: string; onClick?
     )
   }
 
+// Shared 2-row field layout — used by InsertRow (add-new entry) and the list
+// page's filter bar so both sections line up. Row 1: 3 equal fields; Row 2:
+// Spec ≈50% + Brand/Unit ≈25% each. Rows wrap on narrow widths.
+const ENTRY_GAP = 10
+const ENTRY_ROW_STYLE: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: ENTRY_GAP, alignItems: 'flex-start' }
+const ENTRY_FIELD_EQUAL: React.CSSProperties = { flex: '1 1 200px', minWidth: 0 }
+const ENTRY_FIELD_SPEC: React.CSSProperties = { flex: '2 1 320px', minWidth: 0 }
+const ENTRY_FIELD_NARROW: React.CSSProperties = { flex: '1 1 160px', minWidth: 0 }
+
 const FL: React.FC<{ text: string; required?: boolean }> = ({ text, required }) => (
   <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>
     {text}{required && <span style={{ color: '#f87171', marginLeft: 2 }}>*</span>}
@@ -205,8 +214,12 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
       )}
     </div>
 
+    <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: ENTRY_GAP }}>
+    {/* ROW 1: Group | Subgroup | Material */}
+    <div style={ENTRY_ROW_STYLE}>
+
     {/* GROUP */}
-    <div style={{ flex: '0 0 170px', marginRight: 10 }}>
+    <div style={ENTRY_FIELD_EQUAL}>
       <SectionPill color="#2563eb" bg="#dbeafe" label="Group" />
       <FL text="กลุ่ม" required />
       <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่ม"
@@ -220,15 +233,13 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
         })} />
     </div>
 
-    <VSep />
-
     {/* SUBGROUP — locked <Select> (cascaded off row.groupId) until the
         "ดูข้อมูล" pill copies a value in (row.subGroupIsText), at which point
         this row's Sub Group switches to two free-text <Input>s, same
         Select↔Input toggle pattern as Spec/Brand below. Reload button
         switches back to <Select> mode, clearing downstream fields too (same
         as picking a new Sub Group from the dropdown already does). */}
-    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+    <div style={ENTRY_FIELD_EQUAL}>
       <SectionPill color="#0284c7" bg="#e0f2fe" label="Sub Group" />
       {!row.subGroupIsText ? (
         <>
@@ -274,11 +285,9 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
       )}
     </div>
 
-    <VSep />
-
     {/* MATERIAL — same Select↔Input toggle as Sub Group above, cascaded off
         row.subGroupId when in <Select> mode. */}
-    <div style={{ flex: '1 1 0', minWidth: 200, marginLeft: 10, marginRight: 10 }}>
+    <div style={ENTRY_FIELD_EQUAL}>
       <SectionPill color="#4f46e5" bg="#e0e7ff" label="Material" />
       {!row.matNameIsText ? (
         <>
@@ -322,14 +331,17 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
       )}
     </div>
 
-    <VSep />
+    </div>
+
+    {/* ROW 2: Spec (widest, ~50%) | Brand | Unit | remove */}
+    <div style={ENTRY_ROW_STYLE}>
 
     {/* SPEC — locked <Select> (same pattern as Group/Sub Group/Material) until
         the "ดูข้อมูล" pill copies a value in (row.specIsText), at which point
         this row's Spec switches to two free-text <Input>s. The small reload
         button switches it back to <Select> mode (clearing the value) if the
         user wants to pick fresh from the list instead. */}
-    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+    <div style={ENTRY_FIELD_SPEC}>
       <SectionPill color="#7c3aed" bg="#ede9fe" label="Spec" />
       {!row.specIsText ? (
         <>
@@ -348,30 +360,28 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
             }} />
         </>
       ) : (
-        <Row gutter={6}>
-          <Col span={9}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-start' }}>
+          <div style={{ flex: '0 0 120px' }}>
             <FL text="รหัสสเปค" />
             <Input size="small" placeholder="กรอกรหัสสเปค" value={row.specCode}
               onChange={(e) => onChange(row.rowKey, { specCode: e.target.value })} />
-          </Col>
-          <Col span={13}>
+          </div>
+          <div style={{ flex: '1 1 160px', minWidth: 0 }}>
             <FL text="รายละเอียดสเปค" />
             <Input size="small" placeholder="รายละเอียดสเปค (ถ้ามี)" value={row.specDescription}
               onChange={(e) => onChange(row.rowKey, { specDescription: e.target.value })} />
-          </Col>
-          <Col span={2} style={{ paddingTop: 18 }}>
+          </div>
+          <div style={{ flex: '0 0 auto', paddingTop: 18 }}>
             <Button type="text" size="small" icon={<ReloadOutlined style={{ fontSize: 12 }} />}
               title="เปลี่ยนกลับเป็นเลือกจากรายการ"
               onClick={() => onChange(row.rowKey, { specIsText: false, specCode: '', specDescription: '' })} />
-          </Col>
-        </Row>
+          </div>
+        </div>
       )}
     </div>
 
-    <VSep />
-
     {/* BRAND — same Select↔Input toggle pattern as Spec above */}
-    <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+    <div style={ENTRY_FIELD_NARROW}>
       <SectionPill color="#b45309" bg="#fef3c7" label="Brand" />
       {!row.brandIsText ? (
         <>
@@ -410,10 +420,8 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
       )}
     </div>
 
-    <VSep />
-
     {/* UNIT */}
-    <div style={{ flex: '0 0 170px', marginLeft: 10, marginRight: 10 }}>
+    <div style={ENTRY_FIELD_NARROW}>
       <SectionPill color="#059669" bg="#d1fae5" label="Unit" />
       <Row gutter={6}>
         <Col span={10}>
@@ -430,11 +438,13 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
     </div>
 
     {/* delete */}
-    <div style={{ flex: '0 0 28px', paddingTop: 30, marginLeft: 6 }}>
+    <div style={{ flex: '0 0 28px', paddingTop: 30, marginLeft: 'auto' }}>
       {canRemove && (
         <Button type="text" size="small" danger icon={<CloseOutlined style={{ fontSize: 12 }} />}
           onClick={() => onRemove(row.rowKey)} style={{ padding: '0 4px' }} />
       )}
+    </div>
+    </div>
     </div>
   </div>
   </div>
@@ -477,15 +487,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
   const [unitId, setUnitId] = useState<number | undefined>()
 
   const [unitOptions, setUnitOptions] = useState<IdOption[]>([])
-  useEffect(() => {
-    if (!accessToken) return
-    axios.get(`${BASE_URL}/master/units`, { headers: { Authorization: `Bearer ${accessToken}` } })
-      .then((res) => setUnitOptions((res.data?.data ?? []).map(
-        (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
-      )))
-      .catch(() => setUnitOptions([]))
-  }, [accessToken])
-
+  const [unitLoading, setUnitLoading] = useState(false)
   const groupNumericId = groupOptions.find((o) => o.value === groupId)?.id
   const { options: subGroupOptions, loading: subGroupLoading } =
     useCascadeOptions(groupNumericId ? String(groupNumericId) : '', '/master/subgroups', 'group_id', mapSubGroup, accessToken)
@@ -495,6 +497,37 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
     useCascadeOptions(matNameId, '/master/specs', 'mat_name_id', mapSpec, accessToken)
   const { options: brandOptions, loading: brandLoading } =
     useCascadeOptions(specId, '/master/brands', 'spec_id', mapBrand, accessToken)
+
+  // Unit: not part of the chain; options are the units used by active materials
+  // matching whichever of Group/Sub Group/Material/Spec/Brand are selected (same
+  // endpoint/params as the list page's filter bar). Reloads on any change and
+  // clears a selected Unit that is no longer available.
+  useEffect(() => {
+    if (!accessToken) return
+    let cancelled = false
+    setUnitLoading(true)
+    axios.get(`${BASE_URL}/master/units/used`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: {
+        group_id: groupNumericId || undefined,
+        subgroup_id: subGroupId || undefined,
+        mat_name_id: matNameId || undefined,
+        spec_id: specId || undefined,
+        brand_id: brandId || undefined,
+      },
+    })
+      .then((res) => {
+        if (cancelled) return
+        const opts = (res.data?.data ?? []).map(
+          (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
+        )
+        setUnitOptions(opts)
+        setUnitId((cur) => (cur !== undefined && !opts.some((o: IdOption) => o.id === cur) ? undefined : cur))
+      })
+      .catch(() => { if (!cancelled) setUnitOptions([]) })
+      .finally(() => { if (!cancelled) setUnitLoading(false) })
+    return () => { cancelled = true }
+  }, [accessToken, groupNumericId, subGroupId, matNameId, specId, brandId])
 
   const sortedGroupOptions = sortedByLabel(groupOptions)
   const sortedSubGroupOptions = sortedByLabel(subGroupOptions)
@@ -696,7 +729,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
           <SectionPill color="#b45309" bg="#fef3c7" label="Unit" onClick={copyUnit} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="หน่วย" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกหน่วย"
-            showSearch allowClear
+            showSearch allowClear loading={unitLoading}
             filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
             options={sortedUnitOptions.map((o) => ({ value: o.id, label: o.label }))}
             value={unitId} onChange={(v) => setUnitId(v ?? undefined)} />
@@ -709,6 +742,22 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
       </div>
     </div>
   )
+}
+
+// "{code} - {name}" for the list table's hierarchy columns (plain hyphen, not
+// an em dash). Falls back to whichever part exists, or "—" when both are empty.
+const formatCodeName = (code?: string | null, name?: string | null): string => {
+  const c = (code ?? '').trim()
+  const n = (name ?? '').trim()
+  return c && n ? `${c} - ${n}` : c || n || '—'
+}
+
+// Group/Sub Group cell shows one code-only tag: "{group_code}-{subgroup_code}"
+// (no spaces); whichever code exists if the other is missing, "—" if neither.
+const formatGroupSubgroupCode = (groupCode?: string | null, subgroupCode?: string | null): string => {
+  const g = (groupCode ?? '').trim()
+  const sg = (subgroupCode ?? '').trim()
+  return g && sg ? `${g}-${sg}` : g || sg || '—'
 }
 
 // ── file import helpers ──────────────────────────────────────────
@@ -831,6 +880,9 @@ const MaterialPage: React.FC = () => {
   const [filterSubgroupOptions, setFilterSubgroupOptions] = useState<IdOption[]>([])
   const [filterSubgroupLoading, setFilterSubgroupLoading] = useState(false)
   const [filterMatNameOptions, setFilterMatNameOptions] = useState<IdOption[]>([])
+  const [filterMatNameLoading, setFilterMatNameLoading] = useState(false)
+  const [filterSpecLoading, setFilterSpecLoading] = useState(false)
+  const [filterBrandLoading, setFilterBrandLoading] = useState(false)
   const [filterSpecOptions, setFilterSpecOptions] = useState<IdOption[]>([])
   const [filterBrandOptions, setFilterBrandOptions] = useState<IdOption[]>([])
   const [filterUnitOptions, setFilterUnitOptions] = useState<IdOption[]>([])
@@ -856,41 +908,59 @@ const MaterialPage: React.FC = () => {
       .catch(() => {})
   }, [accessToken])
 
-  // Subgroup filter cascades off the selected Group filter — refetch (all
-  // subgroups when no group is selected, or just that group's when one is)
-  // and clear any stale subgroup selection whenever the group changes.
+  // Filter dependency chain: Group → Subgroup → Mat Name → Spec → Brand. Each
+  // level's options are fetched only once its parent is selected (and are empty
+  // otherwise); the change handlers below clear descendants. Unit is independent.
+  const loadFilterOptions = (
+    parentId: number | undefined, path: string, param: string,
+    map: (raw: any) => IdOption, setOptions: (o: IdOption[]) => void,
+    setLoading?: (b: boolean) => void,
+  ) => {
+    if (!accessToken || !parentId) { setOptions([]); return }
+    setLoading?.(true)
+    axios.get(`${BASE_URL}${path}`, { headers: authHeader, params: { [param]: parentId } })
+      .then((res) => setOptions((res.data?.data ?? []).map(map)))
+      .catch(() => setOptions([]))
+      .finally(() => setLoading?.(false))
+  }
   useEffect(() => {
-    if (!accessToken) return
-    setFilterSubgroupLoading(true)
-    axios.get(`${BASE_URL}/master/subgroups`, {
-      headers: authHeader,
-      params: filterGroupId ? { group_id: filterGroupId } : undefined,
-    })
-      .then((res) => setFilterSubgroupOptions((res.data?.data ?? []).map(mapSubGroup)))
-      .catch(() => setFilterSubgroupOptions([]))
-      .finally(() => setFilterSubgroupLoading(false))
+    loadFilterOptions(filterGroupId, '/master/subgroups', 'group_id', mapSubGroup, setFilterSubgroupOptions, setFilterSubgroupLoading)
   }, [accessToken, filterGroupId])
+  useEffect(() => {
+    loadFilterOptions(filterSubgroupId, '/master/mat-names', 'subgroup_id', mapMatName, setFilterMatNameOptions, setFilterMatNameLoading)
+  }, [accessToken, filterSubgroupId])
+  useEffect(() => {
+    loadFilterOptions(filterMatNameId, '/master/specs', 'mat_name_id', mapSpec, setFilterSpecOptions, setFilterSpecLoading)
+  }, [accessToken, filterMatNameId])
+  useEffect(() => {
+    loadFilterOptions(filterSpecId, '/master/brands', 'spec_id', mapBrand, setFilterBrandOptions, setFilterBrandLoading)
+  }, [accessToken, filterSpecId])
 
-  // Mat Name / Spec / Brand / Unit filters are independent full lists — load
-  // once (each endpoint already returns everything when called with no
-  // cascade param, confirmed in master.go).
+  // Unit filter: optional, not part of the dependency chain, but narrowed by
+  // whichever of group/subgroup/mat-name/spec/brand are currently selected
+  // (unselected ones are omitted). Reloads whenever any of them changes, and
+  // clears a selected Unit that is no longer among the reloaded options.
   useEffect(() => {
     if (!accessToken) return
-    axios.get(`${BASE_URL}/master/mat-names`, { headers: authHeader })
-      .then((res) => setFilterMatNameOptions((res.data?.data ?? []).map(mapMatName)))
-      .catch(() => setFilterMatNameOptions([]))
-    axios.get(`${BASE_URL}/master/specs`, { headers: authHeader })
-      .then((res) => setFilterSpecOptions((res.data?.data ?? []).map(mapSpec)))
-      .catch(() => setFilterSpecOptions([]))
-    axios.get(`${BASE_URL}/master/brands`, { headers: authHeader })
-      .then((res) => setFilterBrandOptions((res.data?.data ?? []).map(mapBrand)))
-      .catch(() => setFilterBrandOptions([]))
-    axios.get(`${BASE_URL}/master/units`, { headers: authHeader })
-      .then((res) => setFilterUnitOptions((res.data?.data ?? []).map(
-        (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
-      )))
-      .catch(() => setFilterUnitOptions([]))
-  }, [accessToken])
+    let cancelled = false
+    axios.get(`${BASE_URL}/master/units/used`, {
+      headers: authHeader,
+      params: {
+        group_id: filterGroupId, subgroup_id: filterSubgroupId,
+        mat_name_id: filterMatNameId, spec_id: filterSpecId, brand_id: filterBrandId,
+      },
+    })
+      .then((res) => {
+        if (cancelled) return
+        const opts = (res.data?.data ?? []).map(
+          (u: any): IdOption => ({ id: u.id, code: u.unit_code, name: u.unit_name, label: `${u.unit_code} — ${u.unit_name}` }),
+        )
+        setFilterUnitOptions(opts)
+        setFilterUnitId((cur) => (cur !== undefined && !opts.some((o: IdOption) => o.id === cur) ? undefined : cur))
+      })
+      .catch(() => { if (!cancelled) setFilterUnitOptions([]) })
+    return () => { cancelled = true }
+  }, [accessToken, filterGroupId, filterSubgroupId, filterMatNameId, filterSpecId, filterBrandId])
 
   // load material stats once
   useEffect(() => {
@@ -928,6 +998,7 @@ const MaterialPage: React.FC = () => {
         materialCode:    m.mat_code,
         materialName:    m.mat_name_th      ?? '',
         matCodeName:     m.mat_code_name    ?? '',
+        matNameCode:     m.mat_name_code    ?? '',
         specCode:        m.spec_code        ?? '',
         specDescription: m.spec_description ?? '',
         brandCode:       m.brand_code       ?? '',
@@ -967,15 +1038,33 @@ const MaterialPage: React.FC = () => {
   const handleFilterGroupChange = (v?: number) => {
     setFilterGroupId(v)
     setFilterSubgroupId(undefined)
+    setFilterMatNameId(undefined)
+    setFilterSpecId(undefined)
+    setFilterBrandId(undefined)
     setPage(1)
   }
   const makeFilterChangeHandler = (setter: (v?: number) => void) => (v?: number) => {
     setter(v)
     setPage(1)
   }
-  const handleFilterSubgroupChange = makeFilterChangeHandler(setFilterSubgroupId)
-  const handleFilterMatNameChange = makeFilterChangeHandler(setFilterMatNameId)
-  const handleFilterSpecChange = makeFilterChangeHandler(setFilterSpecId)
+  const handleFilterSubgroupChange = (v?: number) => {
+    setFilterSubgroupId(v)
+    setFilterMatNameId(undefined)
+    setFilterSpecId(undefined)
+    setFilterBrandId(undefined)
+    setPage(1)
+  }
+  const handleFilterMatNameChange = (v?: number) => {
+    setFilterMatNameId(v)
+    setFilterSpecId(undefined)
+    setFilterBrandId(undefined)
+    setPage(1)
+  }
+  const handleFilterSpecChange = (v?: number) => {
+    setFilterSpecId(v)
+    setFilterBrandId(undefined)
+    setPage(1)
+  }
   const handleFilterBrandChange = makeFilterChangeHandler(setFilterBrandId)
   const handleFilterUnitChange = makeFilterChangeHandler(setFilterUnitId)
 
@@ -992,7 +1081,6 @@ const MaterialPage: React.FC = () => {
   }
 
   const groupOptions = groups.map((g) => ({ value: g.group_code, label: `${g.group_code} — ${g.group_name}`, id: g.id, name: g.group_name }))
-  const groupById = (id: string) => groups.find((g) => g.group_code === id)
 
   const [uploadFileName, setUploadFileName] = useState<string>('')
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([])
@@ -1027,48 +1115,37 @@ const MaterialPage: React.FC = () => {
       render: (v: string) => <Text code style={{ fontSize: 13 }}>{v}</Text>,
     },
     {
-      title: 'Group / Sub Group', key: 'grp', width: 200,
-      render: (_: unknown, r: MaterialRecord) => {
-        const g = groupById(r.groupId)
-        return (
-          <Space direction="vertical" size={3}>
-            {g && <Tag color="blue" style={{ margin: 0, fontSize: 13 }}>{g.group_code}</Tag>}
-            <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>{r.subGroupCode}</Tag>
-          </Space>
-        )
-      },
-    },
-    {
-      title: 'Material Name', key: 'mat', width: 240,
+      title: 'Group / Sub Group', key: 'grp', width: 150,
       render: (_: unknown, r: MaterialRecord) => (
-        <div style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>{r.matCodeName || r.materialName}</div>
+        <Tag color="geekblue" style={{ margin: 0, fontSize: 13, whiteSpace: 'normal', height: 'auto' }}>
+          {formatGroupSubgroupCode(r.groupId, r.subGroupCode)}
+        </Tag>
       ),
     },
     {
-      title: 'Spec', key: 'spec', width: 320, align: 'left' as const,
-      render: (_: unknown, r: MaterialRecord) => (r.specCode || r.specDescription) ? (
-        <div>
-          {r.specCode && <Text code style={{ fontSize: 13 }}>{r.specCode}</Text>}
-          {r.specDescription && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>{r.specDescription}</div>}
-        </div>
-      ) : <Text type="secondary">—</Text>,
-    },
-    {
-      title: 'Brand', key: 'brand', width: 190,
-      render: (_: unknown, r: MaterialRecord) => r.brandName ? (
-        <div>
-          {r.brandCode && <Text code style={{ fontSize: 13 }}>{r.brandCode}</Text>}
-          <div style={{ fontSize: 13, marginTop: 3 }}>{r.brandName}</div>
-        </div>
-      ) : <Text type="secondary">—</Text>,
-    },
-    {
-      title: 'Unit', key: 'unit', width: 130,
+      title: 'Material Name', key: 'mat', width: 280,
       render: (_: unknown, r: MaterialRecord) => (
-        <div>
-          {r.unitCode && <Text code style={{ fontSize: 13 }}>{r.unitCode}</Text>}
-          <div style={{ fontSize: 13, marginTop: 3 }}>{r.unitName}</div>
+        <div style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>
+          {formatCodeName((r as any).matNameCode, r.materialName)}
         </div>
+      ),
+    },
+    {
+      title: 'Spec', key: 'spec', width: 340, align: 'left' as const,
+      render: (_: unknown, r: MaterialRecord) => (r.specCode || r.specDescription)
+        ? <div style={{ fontSize: 13 }}>{formatCodeName(r.specCode, r.specDescription)}</div>
+        : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Brand', key: 'brand', width: 210,
+      render: (_: unknown, r: MaterialRecord) => (r.brandCode || r.brandName)
+        ? <div style={{ fontSize: 13 }}>{formatCodeName(r.brandCode, r.brandName)}</div>
+        : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Unit', key: 'unit', width: 170,
+      render: (_: unknown, r: MaterialRecord) => (
+        <div style={{ fontSize: 13 }}>{formatCodeName(r.unitCode, r.unitName)}</div>
       ),
     },
     {
@@ -1134,7 +1211,7 @@ const MaterialPage: React.FC = () => {
   // left Spec/Brand unselected (those fields aren't required on this form, but the
   // backend's mat_code still needs *something* in that position).
   const buildMatCode = (r: PendingRow) =>
-    r.groupId + r.subGroupCode + r.materialCode + (r.specCode || '000') + (r.brandCode || '000') + r.unitCode
+    [r.groupId, r.subGroupCode, r.materialCode, r.specCode.trim() || '000', r.brandCode.trim() || '000', r.unitCode].map((x) => x.trim()).join('')
 
   // Pre-submit duplicate check — calls the same GET /master/materials/{code} the
   // material detail/edit page already uses to look up one material by mat_code.
@@ -1173,27 +1250,35 @@ const MaterialPage: React.FC = () => {
         return
       }
 
-      await axios.post(`${BASE_URL}/master/materials`,
+      // POST /master/materials takes ONE material object (CreateMaterial), so a
+      // multi-row submit goes to the array-accepting POST /master/materials/bulk
+      // (single transaction). Every field is a trimmed string — the backend
+      // resolves/creates group/subgroup/name/spec/brand/unit by code, so no ids are
+      // sent — and spec/brand fall back to the same '000' / '-' placeholders as
+      // before because the backend rejects empty values for them.
+      const t = (v?: string) => (v ?? '').trim()
+      await axios.post(`${BASE_URL}/master/materials/bulk`,
         rowsToSubmit.map((r) => ({
-          group_code:       r.groupId,
-          subgroup_code:    r.subGroupCode,
-          subgroup_name:    r.subGroupName,
-          mat_name_code:    r.materialCode,
-          mat_name_th:      r.materialName,
-          spec_code:        r.specCode        || '000',
-          spec_description: r.specDescription || '-',
-          brand_code:       r.brandCode       || '000',
-          brand_name:       r.brandName       || '-',
-          unit_code:        r.unitCode,
-          unit_name:        r.unitName,
+          group_code:       t(r.groupId),
+          subgroup_code:    t(r.subGroupCode),
+          subgroup_name:    t(r.subGroupName),
+          mat_name_code:    t(r.materialCode),
+          mat_name_th:      t(r.materialName),
+          spec_code:        t(r.specCode)        || '000',
+          spec_description: t(r.specDescription) || '-',
+          brand_code:       t(r.brandCode)       || '000',
+          brand_name:       t(r.brandName)       || '-',
+          unit_code:        t(r.unitCode),
+          unit_name:        t(r.unitName),
         })),
         { headers: authHeader }
       )
       setPendingRows([newRow(true)])
       message.success(`บันทึก ${rowsToSubmit.length} รายการเรียบร้อย`)
       setPage(1)
-    } catch {
-      message.error('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    } catch (err: any) {
+      const data = err?.response?.data
+      message.error(data?.message || data?.error || 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
     } finally {
       setSubmitting(false)
     }
@@ -1330,6 +1415,7 @@ const MaterialPage: React.FC = () => {
                 <Select
                   allowClear placeholder="กลุ่มย่อย (Subgroup)" style={{ width: '100%' }}
                   loading={filterSubgroupLoading}
+                  disabled={!filterGroupId}
                   options={filterSubgroupOptions.map((o) => ({ value: o.id, label: o.label }))}
                   value={filterSubgroupId} onChange={handleFilterSubgroupChange}
                   showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
@@ -1338,6 +1424,8 @@ const MaterialPage: React.FC = () => {
               <Col xs={24} sm={12} md={8} lg={4}>
                 <Select
                   allowClear placeholder="ชื่อวัสดุ (Mat Name)" style={{ width: '100%' }}
+                  loading={filterMatNameLoading}
+                  disabled={!filterSubgroupId}
                   options={filterMatNameOptions.map((o) => ({ value: o.id, label: o.label }))}
                   value={filterMatNameId} onChange={handleFilterMatNameChange}
                   showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
@@ -1346,6 +1434,8 @@ const MaterialPage: React.FC = () => {
               <Col xs={24} sm={12} md={8} lg={4}>
                 <Select
                   allowClear placeholder="สเปค (Spec)" style={{ width: '100%' }}
+                  loading={filterSpecLoading}
+                  disabled={!filterMatNameId}
                   options={filterSpecOptions.map((o) => ({ value: o.id, label: o.label }))}
                   value={filterSpecId} onChange={handleFilterSpecChange}
                   showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
@@ -1354,6 +1444,8 @@ const MaterialPage: React.FC = () => {
               <Col xs={24} sm={12} md={8} lg={4}>
                 <Select
                   allowClear placeholder="ยี่ห้อ (Brand)" style={{ width: '100%' }}
+                  loading={filterBrandLoading}
+                  disabled={!filterSpecId}
                   options={filterBrandOptions.map((o) => ({ value: o.id, label: o.label }))}
                   value={filterBrandId} onChange={handleFilterBrandChange}
                   showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}

@@ -112,7 +112,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
     const fetchHistory = async () => {
       setLoading(true)
       try {
-        const res = await axios.get(`${BASE_URL}/master/materials/${matCode}/price-history`, {
+        const res = await axios.get(`${BASE_URL}/master/materials/${encodeURIComponent(matCode)}/price-history`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           params: {
             page,
