@@ -7,6 +7,7 @@ import { useAppSelector } from '@/store'
 import ICDocTypeTag from './ICDocTypeTag'
 import ICPoReturnPrint, { buildReturnPrintData, type ICReturnPrintData } from './ICPoReturnPrint'
 import { runBrowserPrint } from './ICPrintLayout'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -84,7 +85,7 @@ const ICReturnDetailView: React.FC<Props> = ({ returnId, onBack }) => {
         locale={{ emptyText: 'ไม่พบรายการสินค้า' }}
         columns={[
           { title: 'ลำดับ', key: 'no', width: 60, render: (_: unknown, __: any, i: number) => i + 1 },
-          { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', width: 120, render: (v: string) => v || '-' },
+          { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', width: 120, render: (v: string) => formatCostCodeDisplay(v) || '-' },
           { title: 'MatCode', dataIndex: 'mat_code', key: 'mat_code', width: 120 },
           {
             title: 'รายการ',

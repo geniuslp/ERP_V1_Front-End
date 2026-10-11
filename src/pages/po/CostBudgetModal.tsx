@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
 import api from '@/services/api'
 import type { ProjectStatus } from '@/types/project'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 export interface CostBudgetDetailLine {
   subgroup_id: number
@@ -188,7 +189,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
           onOpenChange={(open) => open && loadPurchases(r.subgroup_id)}
           content={renderPopover(r.subgroup_id)}
         >
-          <span style={{ color: '#2563eb', cursor: 'help' }}>{v}</span>
+          <span style={{ color: '#2563eb', cursor: 'help' }}>{formatCostCodeDisplay(v)}</span>
         </Popover>
       ),
     },

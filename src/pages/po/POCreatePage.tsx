@@ -20,6 +20,11 @@ import { getAvailablePRs } from '@/services/poService'
 import POItemsTable from '@/components/common/POItemsTable'
 import PRSidebarPanel from '@/pages/po/components/PRSidebarPanel'
 import { resolveFileUrl } from '@/utils/fileUrl'
+import {
+  COST_CODE_REQUIRED_MESSAGE,
+  findLinesMissingCostCode,
+  scrollToFirstMissingCostCode,
+} from '@/utils/validateCostCode'
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import type { PRListItem, PRLineWithPOStatus } from '@/types/pr'
 import type { POLineItem } from '@/types/po'
@@ -213,6 +218,8 @@ const POCreatePage: React.FC = () => {
   const [prSidebarOpen, setPrSidebarOpen] = useState(false)
   const [remark, setRemark] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Red-highlights lines with no cost code after a blocked submit.
+  const [highlightMissingCost, setHighlightMissingCost] = useState(false)
   // Synchronous double-submit guard — `submitting` (state) only flips after
   // form.validateFields() resolves, which is async, so a fast double-click or
   // an Enter-key + click combo can fire handleSubmit twice before the button
@@ -332,7 +339,8 @@ const POCreatePage: React.FC = () => {
           requested_by: pr.requested_by_name ?? '',
           approver_name: null,
           location_code: '',
-          project_code: null,
+          project_code: pr.project_code ?? null,
+          project_name: pr.project_name ?? null,
           remarks: null,
           pr_date: pr.created_at,
           // Not returned by /po/available-prs (a lightweight dropdown-only
@@ -844,7 +852,7 @@ const POCreatePage: React.FC = () => {
 
   const total = items.reduce((sum, i) => sum + i.qty * i.unit_price, 0)
 
-  const validateItems = () => {
+  const validateItems = (status?: 'DRAFT' | 'PENDING_APPROVAL') => {
     if (items.length === 0) {
       message.warning('กรุณาเพิ่มรายการอย่างน้อย 1 รายการ')
       return false
@@ -854,10 +862,19 @@ const POCreatePage: React.FC = () => {
       message.warning('กรุณากรอกรหัสวัสดุ จำนวน และราคาต่อหน่วยให้ถูกต้อง (มากกว่า 0) ทุกรายการ')
       return false
     }
-    if (isOh && items.some((i) => i.cost_subgroup_id == null)) {
-      message.warning('กรุณาเลือก Cost Code ให้ครบทุกรายการ')
-      return false
+    // Cost code is required for every submit (incl. edit-approved, which
+    // passes status undefined); only an explicit draft save skips it.
+    // An approved/re-approval edit is always a submit, even via "บันทึกร่าง".
+    const isApprovedEdit = REASON_REQUIRED_STATUSES.includes(poStatus.toUpperCase()) && Boolean(editApprovedReason)
+    if (status !== 'DRAFT' || isApprovedEdit) {
+      if (findLinesMissingCostCode(items).length > 0) {
+        setHighlightMissingCost(true)
+        message.error(COST_CODE_REQUIRED_MESSAGE)
+        scrollToFirstMissingCostCode()
+        return false
+      }
     }
+    setHighlightMissingCost(false)
     const overRemaining = items.find((i) => i.pr_qty_remaining != null && i.qty > i.pr_qty_remaining)
     if (overRemaining) {
       message.error(
@@ -886,7 +903,7 @@ const POCreatePage: React.FC = () => {
       submittingRef.current = false
       return
     }
-    if (!validateItems()) {
+    if (!validateItems(status)) {
       submittingRef.current = false
       return
     }
@@ -1317,60 +1334,6 @@ const POCreatePage: React.FC = () => {
 
                     {/* โครงการ */}
                     <Col xs={24}>
-                      {/* Tooltip must wrap the whole Form.Item, not sit between
-                          Form.Item and Select — Form.Item clones its single direct
-                          child to inject `value`/`onChange`, so if Tooltip were
-                          that direct child, the injected value would land on
-                          Tooltip (which ignores it) and Select would never
-                          display the selected project. */}
-                      <Tooltip
-                        placement="right"
-                        title={
-                          selectedProjectCode && projectDetails[selectedProjectCode] ? (
-                            <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                              <div>
-                                <span style={{ color: '#aaa' }}>โครงการ: </span>
-                                <span style={{ fontWeight: 600 }}>
-                                  {projectDetails[selectedProjectCode].projectName}
-                                </span>
-                              </div>
-                              <div>
-                                <span style={{ color: '#aaa' }}>รหัสโครงการ: </span>
-                                <span style={{ fontWeight: 600 }}>{selectedProjectCode}</span>
-                              </div>
-                              {projectDetails[selectedProjectCode].budgetAmount !== undefined && (
-                                <div>
-                                  <span style={{ color: '#aaa' }}>งบประมาณ: </span>
-                                  <span style={{ fontWeight: 600 }}>
-                                    {formatNumber(projectDetails[selectedProjectCode].budgetAmount!)} บาท
-                                  </span>
-                                </div>
-                              )}
-                              {projectDetails[selectedProjectCode].spentAmount !== undefined && (
-                                <div>
-                                  <span style={{ color: '#aaa' }}>ยอดใช้จ่ายไปแล้ว: </span>
-                                  <span style={{ fontWeight: 600 }}>
-                                    {formatNumber(projectDetails[selectedProjectCode].spentAmount!)} บาท
-                                  </span>
-                                </div>
-                              )}
-                              {projectDetails[selectedProjectCode].remainingAmount !== undefined && (
-                                <div>
-                                  <span style={{ color: '#aaa' }}>คงเหลือ: </span>
-                                  <span
-                                    style={{
-                                      fontWeight: 600,
-                                      color: projectDetails[selectedProjectCode].remainingAmount! < 0 ? '#dc2626' : undefined,
-                                    }}
-                                  >
-                                    {formatNumber(projectDetails[selectedProjectCode].remainingAmount!)} บาท
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          ) : null
-                        }
-                      >
                         <Form.Item
                           label={<span style={labelStyle}>โครงการ</span>}
                           name="project_code"
@@ -1407,7 +1370,6 @@ const POCreatePage: React.FC = () => {
                             ระบบจะกำหนดคลังสินค้าให้อัตโนมัติตามโครงการที่เลือก
                           </div>
                         )}
-                      </Tooltip>
                     </Col>
 
                     {/* ผู้ขอซื้อ */}
@@ -1671,6 +1633,7 @@ const POCreatePage: React.FC = () => {
                   useWht={useWht}
                   jobTypeCode={jobTypeCode}
                   ohOnly={isOh}
+                  highlightMissingCost={highlightMissingCost}
                 />
               </div>
               <TaxSidebarPanel

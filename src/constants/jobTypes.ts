@@ -43,9 +43,9 @@ export const JOB_TYPES: JobTypeOption[] = [
   { code: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'H' },
   { code: 'FS', label: 'FS - Stock FAC-S', filterSubjectCodes: ['F'], filterJobCode: 'S' },
   // TBD — waiting on backend query result for the correct subject_code.
-  { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCodes: null, filterJobCode: null },
-  { code: 'FB', label: 'FB - Stock FAC-BO', filterSubjectCodes: null, filterJobCode: null },
+  { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCodes: ['F'], filterJobCode: 'P' },
+  { code: 'FB', label: 'FB - Stock FAC-BO', filterSubjectCodes: ['F'], filterJobCode: 'B' },
   { code: 'DE', label: 'DE - Dead Stock', filterSubjectCodes: null, filterJobCode: null },
   { code: 'RE', label: 'RE - Return Project', filterSubjectCodes: null, filterJobCode: null },
-  { code: 'G', label: 'G - General Code', filterSubjectCodes: null, filterJobCode: null },
+  { code: 'G', label: 'G - General Code', filterSubjectCodes: ['OH'], filterJobCode: 'G' },
 ]

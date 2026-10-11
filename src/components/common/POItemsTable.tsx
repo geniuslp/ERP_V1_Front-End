@@ -15,6 +15,8 @@ import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
 import { calcDisc } from '@/utils/poCalc'
 import { formatItemLabel } from '@/utils/itemLabel'
+import { formatCostCodeDisplay } from '@/utils/costCode'
+import { missingCostRowProps } from '@/utils/validateCostCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -68,6 +70,8 @@ interface PriceHistoryRow {
   mat_name: string
   spec_name: string | null
   supplier_name: string | null
+  project_code?: string | null
+  project_name?: string | null
   po_date: string
   unit_price: number
   po_no: string
@@ -90,14 +94,16 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
     { label: '1 ปี', value: [dayjs().subtract(1, 'year'), dayjs()] },
   ]
 
-  const [matCodeColWidth, setMatCodeColWidth] = useState(144)
-  const [nameColWidth, setNameColWidth] = useState(288)
-  const [supplierColWidth, setSupplierColWidth] = useState(216)
-  const [dateColWidth, setDateColWidth] = useState(144)
-  const [priceColWidth, setPriceColWidth] = useState(144)
+  const [matCodeColWidth, setMatCodeColWidth] = useState(150)
+  const [nameColWidth, setNameColWidth] = useState(300)
+  const [supplierColWidth, setSupplierColWidth] = useState(226)
+  const [projectColWidth, setProjectColWidth] = useState(240)
+  const [dateColWidth, setDateColWidth] = useState(150)
+  const [priceColWidth, setPriceColWidth] = useState(150)
   const handleMatCodeColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setMatCodeColWidth(data.size.width)
   const handleNameColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setNameColWidth(data.size.width)
   const handleSupplierColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setSupplierColWidth(data.size.width)
+  const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setProjectColWidth(data.size.width)
   const handleDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setDateColWidth(data.size.width)
   const handlePriceColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setPriceColWidth(data.size.width)
 
@@ -146,7 +152,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
       open={!!matCode}
       onCancel={onClose}
       footer={<Button onClick={onClose}>ปิด</Button>}
-      width={1056}
+      width={1280}
       style={{ maxWidth: '95vw' }}
       destroyOnClose
     >
@@ -166,6 +172,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
         dataSource={rows}
         size="small"
         components={{ header: { cell: ResizableTitle } }}
+        scroll={{ x: 'max-content' }}
         columns={[
           {
             title: 'รหัสวัสดุ',
@@ -190,6 +197,24 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
             width: supplierColWidth,
             onHeaderCell: () => ({ width: supplierColWidth, onResize: handleSupplierColResize }),
             render: (v: string | null) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+          },
+          {
+            // "{project_code} {project_name}", single space, no dash (on-screen project display rule).
+            title: 'โครงการ',
+            key: 'project',
+            width: projectColWidth,
+            onHeaderCell: () => ({ width: projectColWidth, onResize: handleProjectColResize }),
+            render: (_: unknown, r: PriceHistoryRow) => {
+              const text = [r.project_code, r.project_name].filter(Boolean).join(' ')
+              return (
+                <div
+                  title={text || undefined}
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: text ? undefined : '#9ca3af' }}
+                >
+                  {text || '-'}
+                </div>
+              )
+            },
           },
           {
             title: 'วันที่',
@@ -237,6 +262,9 @@ interface POItemsTableProps {
   jobTypeCode?: string
   // OH order types: Cost Code picker loads only GET /master/cost-code/full?scope=oh.
   ohOnly?: boolean
+  // Set by the parent after a failed submit: rows with no cost code are tinted
+  // red. Never set for draft saves.
+  highlightMissingCost?: boolean
 }
 
 const POItemsTable: React.FC<POItemsTableProps> = ({
@@ -247,6 +275,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   useWht = false,
   jobTypeCode,
   ohOnly = false,
+  highlightMissingCost = false,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
@@ -502,15 +531,16 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         // itself should show only the code; the full label stays as the
         // hover tooltip, and CostCodeSelectionModal (a searchable table, not
         // a Select) still lets users search by description independently.
-        const codeOnly = r.cost_code_label?.split(' — ')[0]
+        const codeOnly = r.cost_code_label ? formatCostCodeDisplay(r.cost_code_label.split(' — ')[0]) : undefined
         return (
           <Space size={4} style={{ width: '100%' }}>
             <Button
               size="small"
+              danger={highlightMissingCost && r.cost_subgroup_id == null}
               style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               disabled={!r.mat_code}
               onClick={() => setCostCodeModalRowKey(r.key)}
-              title={r.cost_code_label ?? undefined}
+              title={r.cost_code_label ? formatCostCodeDisplay(r.cost_code_label) : undefined}
             >
               {r.mat_code ? (codeOnly ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
             </Button>
@@ -729,6 +759,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — เลือก PR หรือค้นหาวัสดุเพื่อเริ่มต้น' }}
         scroll={{ x: scrollX }}
+        onRow={(r) => missingCostRowProps(highlightMissingCost, r.cost_subgroup_id == null)}
         expandable={{
           expandedRowKeys: expandedKeys,
           showExpandColumn: false,

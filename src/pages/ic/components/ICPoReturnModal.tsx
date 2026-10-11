@@ -13,6 +13,7 @@ import ICDocTypeTag from './ICDocTypeTag'
 import ICPoDocumentList from './ICPoDocumentList'
 import ICReturnDetailView from './ICReturnDetailView'
 import ICPoReturnPrint, { buildReturnPrintData, type ICReturnPrintData } from './ICPoReturnPrint'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -277,7 +278,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose, 
         dataIndex: 'cost_code',
         key: 'cost_code',
         width: 100,
-        render: (value: string | null | undefined) => value || '-',
+        render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
       },
       {
         title: 'MatCode',

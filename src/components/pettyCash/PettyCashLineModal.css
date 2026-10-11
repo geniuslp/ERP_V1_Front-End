@@ -1,0 +1,38 @@
+/* Scroll area of PettyCashLineModal: scrolls normally (wheel / touch / keyboard) but hides the bar.
+   Scoped to this class only — scrollbars elsewhere in the app are untouched. */
+.pc-line-modal-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge / IE */
+  scrollbar-gutter: auto;
+  outline: none;
+}
+.pc-line-modal-body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+/* a little tighter vertical rhythm so the modal usually fits without scrolling */
+.pc-line-modal-body .ant-form-item {
+  margin-bottom: 12px;
+}
+
+/* soft scroll hints (white fade, no shadows) */
+.pc-line-modal-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.15s;
+}
+.pc-line-modal-fade-top {
+  top: 0;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0), #fff);
+}
+.pc-line-modal-fade-bottom {
+  bottom: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff);
+}

@@ -236,52 +236,11 @@ const ICPoReceivePage: React.FC = () => {
 
   const columns = [
     {
-      title: 'ลำดับ',
-      key: 'index',
-      width: 70,
-      render: (_: unknown, __: ICPoRow, index: number) => (page - 1) * pageSize + index + 1,
-    },
-    {
-      title: 'โครงการ',
-      dataIndex: 'project_name',
-      key: 'project_name',
-    },
-    {
-      title: 'เลขที่ PO',
-      dataIndex: 'po_no',
-      key: 'po_no',
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
-      title: 'วันที่สร้าง PO',
-      dataIndex: 'po_date',
-      key: 'po_date',
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
-      title: 'เลขที่ PR',
-      dataIndex: 'pr_no',
-      key: 'pr_no',
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
-      title: 'บริษัท/ร้านค้า',
-      dataIndex: 'supplier_name',
-      key: 'supplier_name',
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
-      title: 'วันที่ส่งของ',
-      dataIndex: 'expected_date',
-      key: 'expected_date',
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
-      // Single-select (radio semantics) check-mark, last column — replaces antd rowSelection.
+      // Single-select (radio semantics) check-mark, first column — replaces antd rowSelection.
       title: '',
       key: 'select',
-      width: 76,
-      fixed: 'right' as const,
+      width: 56,
+      fixed: 'left' as const,
       align: 'center' as const,
       render: (_: unknown, r: ICPoRow) => {
         const checked = selectedRow?.po_id === r.po_id
@@ -321,6 +280,47 @@ const ICPoReceivePage: React.FC = () => {
           </span>
         )
       },
+    },
+    {
+      title: 'ลำดับ',
+      key: 'index',
+      width: 70,
+      render: (_: unknown, __: ICPoRow, index: number) => (page - 1) * pageSize + index + 1,
+    },
+    {
+      title: 'โครงการ',
+      dataIndex: 'project_name',
+      key: 'project_name',
+    },
+    {
+      title: 'เลขที่ PO',
+      dataIndex: 'po_no',
+      key: 'po_no',
+      render: (value: string | null | undefined) => value || '-',
+    },
+    {
+      title: 'วันที่สร้าง PO',
+      dataIndex: 'po_date',
+      key: 'po_date',
+      render: (value: string | null | undefined) => value || '-',
+    },
+    {
+      title: 'เลขที่ PR',
+      dataIndex: 'pr_no',
+      key: 'pr_no',
+      render: (value: string | null | undefined) => value || '-',
+    },
+    {
+      title: 'บริษัท/ร้านค้า',
+      dataIndex: 'supplier_name',
+      key: 'supplier_name',
+      render: (value: string | null | undefined) => value || '-',
+    },
+    {
+      title: 'วันที่ส่งของ',
+      dataIndex: 'expected_date',
+      key: 'expected_date',
+      render: (value: string | null | undefined) => value || '-',
     },
   ]
 

@@ -23,7 +23,14 @@ import OrderTypeSelect from '@/components/common/OrderTypeSelect'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { Department } from '@/types/permission.types'
 import { isExemptMatCode } from '@/utils/matCode'
+import {
+  COST_CODE_REQUIRED_MESSAGE,
+  findLinesMissingCostCode,
+  scrollToFirstMissingCostCode,
+} from '@/utils/validateCostCode'
 import { resolveFileUrl } from '@/utils/fileUrl'
+import { poLinkedTooltip } from '@/constants/prEdit'
+import { LinkedPoList, mapLinkedPos, linkedPoNoText, type LinkedPo } from '@/components/pr/LinkedPoLinks'
 
 const MENU_CODE = 'MENU_PR_CREATE'
 
@@ -67,6 +74,9 @@ interface InitialLineItem {
   cost_code_label?: string | null
   deduct_stock?: boolean
   remarks?: string | null
+  memo_line_id?: number | null
+  memo_line_no?: number | null
+  memo_line_description?: string | null
 }
 
 /* ── responsive styles injected once ─────────────────────────────── */
@@ -166,8 +176,19 @@ const PRCreatePage: React.FC = () => {
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [initialLineItems, setInitialLineItems] = useState<InitialLineItem[] | undefined>(undefined)
   const [submitting, setSubmitting] = useState(false)
+  // Red-highlights lines with no cost code after a blocked submit.
+  const [highlightMissingCost, setHighlightMissingCost] = useState(false)
+  // Edit mode only: Thai reason this PR can't be saved/submitted (active PO
+  // link or CANCELLED), set from GET /pr/:id. Enforced on direct-URL visits
+  // too; the backend 409 remains the source of truth.
+  const [editBlockedMessage, setEditBlockedMessage] = useState<string | null>(null)
+  const [linkedPos, setLinkedPos] = useState<LinkedPo[]>([])
   const [memoOpen, setMemoOpen] = useState(false)
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null)
+  // Edit mode: the saved PR's own memo (its memo_id can't be changed after create)
+  const [linkedMemoId, setLinkedMemoId] = useState<number | null>(null)
+  // Bumped on a 409 (Memo line already taken) so the open Memo panel refetches.
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0)
   const [loadingExisting, setLoadingExisting] = useState(isEdit)
   const [overOrderedLines, setOverOrderedLines] = useState<string[]>([])
   // Remarks near the line items table — lifted up from PRItemsTable so it can
@@ -341,6 +362,15 @@ const PRCreatePage: React.FC = () => {
         if (ignore) return
         const raw = res.data?.data ?? res.data
         setPrNumber(raw.pr_no ?? '')
+        const pos = mapLinkedPos(raw.linked_pos ?? raw.pr?.linked_pos)
+        setLinkedPos(pos)
+        setEditBlockedMessage(
+          raw.status === 'CANCELLED'
+            ? 'ใบขอซื้อที่ยกเลิกแล้วไม่สามารถแก้ไขได้'
+            : (raw.has_active_po_link ?? raw.pr?.has_active_po_link) || pos.length > 0
+              ? poLinkedTooltip(linkedPoNoText(pos))
+              : null,
+        )
         form.setFieldsValue({
           pr_date: raw.pr_date ? dayjs(raw.pr_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
           location_text: raw.location_text,
@@ -353,6 +383,7 @@ const PRCreatePage: React.FC = () => {
           dept_code: raw.dept_code || undefined,
         })
         setRemark(raw.remarks ?? '')
+        setLinkedMemoId(raw.memo_id != null ? Number(raw.memo_id) : null)
         setInitialLineItems(
           (raw.lines ?? []).map((l: any) => ({
             mat_code: l.mat_code,
@@ -367,6 +398,9 @@ const PRCreatePage: React.FC = () => {
               : null,
             deduct_stock: l.deduct_stock ?? true,
             remarks: l.remarks ?? undefined,
+            memo_line_id: l.memo_line_id ?? null,
+            memo_line_no: l.memo_line_no ?? null,
+            memo_line_description: l.memo_line_description ?? null,
           }))
         )
         // attachments is { pr: [...], memo: [...] } — pr = files uploaded
@@ -454,8 +488,38 @@ const PRCreatePage: React.FC = () => {
     }
   }
 
+  // Changing/clearing the linked Memo invalidates Memo-derived lines (they point
+  // at the old Memo's lines). Ask first, then drop only those; manual lines stay.
+  const applyMemoSelection = (memo: Memo) => {
+    form.setFieldValue('memo_id', memo.id)
+    form.setFieldValue('memo_no_ref', memo.memoNo)
+    form.setFieldValue('project_code', (memo as any).projectCode ?? (memo as any).project_code)
+    if (memo.deliveryLocation) {
+      form.setFieldValue('location_text', memo.deliveryLocation)
+    }
+    // Never auto-filled from the Memo — just disabled+cleared while a
+    // Memo is linked (see the "แผนก" Field above).
+    form.setFieldValue('dept_code', undefined)
+    setSelectedMemo(memo)
+  }
+
+  const confirmDropMemoLines = (proceed: () => void) => {
+    if (!itemsTableRef.current?.hasMemoLines()) { proceed(); return }
+    Modal.confirm({
+      title: 'เปลี่ยน Memo Reference',
+      content: 'รายการที่เลือกมาจาก Memo เดิมจะถูกลบออกจาก PR (รายการที่เพิ่มเองจะไม่ถูกลบ) ต้องการดำเนินการต่อหรือไม่',
+      okText: 'ยืนยัน',
+      cancelText: 'ยกเลิก',
+      onOk: () => { itemsTableRef.current?.removeMemoLines(); proceed() },
+    })
+  }
+
   const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
     if (submitting) return
+    if (isEdit && editBlockedMessage) {
+      message.error(editBlockedMessage)
+      return
+    }
     setSubmitting(true)
     try {
       const { location_text, required_date, project_code, order_type, pr_type, job_code, requested_by, dept_code } =
@@ -480,9 +544,23 @@ const PRCreatePage: React.FC = () => {
         return
       }
 
-      // OH order types: cost code (from the OH list) is required on every line.
-      if (isOhOrderType(order_type) && lineItems.some((item) => item.cost_subgroup_id == null)) {
-        message.error('กรุณาเลือก Cost Code ให้ครบทุกรายการ')
+      // Cost code is required on every line for any submit. Edit mode always
+      // submits (PUT then POST /submit) even though it passes 'DRAFT', so it
+      // must be checked here, before the PUT. Plain draft saves skip this.
+      if (isEdit || status === 'COMPLETED') {
+        if (findLinesMissingCostCode(lineItems).length > 0) {
+          setHighlightMissingCost(true)
+          message.error(COST_CODE_REQUIRED_MESSAGE)
+          scrollToFirstMissingCostCode()
+          setSubmitting(false)
+          return
+        }
+      }
+      setHighlightMissingCost(false)
+
+      // Memo-derived lines must have their material picked before saving.
+      if (lineItems.some((item) => item.memo_line_id != null && !item.mat_code)) {
+        message.error('กรุณาเลือกวัสดุให้ครบทุกรายการที่มาจาก Memo')
         setSubmitting(false)
         return
       }
@@ -535,6 +613,8 @@ const PRCreatePage: React.FC = () => {
           cost_subgroup_id: item.cost_subgroup_id,
           deduct_stock: item.deductStock,
           remarks: item.remarks || undefined,
+          // Only Memo-derived lines carry memo_line_id; omitted otherwise.
+          ...(item.memo_line_id != null ? { memo_line_id: item.memo_line_id } : {}),
         })),
         attachments: [...existingAttachments, ...uploadedFiles],
       }
@@ -566,6 +646,7 @@ const PRCreatePage: React.FC = () => {
         })
         if (status === 'DRAFT') {
           message.success('บันทึกร่าง PR สำเร็จ')
+          setPanelRefreshKey((k) => k + 1)
           // No navigation — stay on this page so the user can keep editing.
         } else {
           const summary = await fetchReservationSummary(prId)
@@ -585,6 +666,7 @@ const PRCreatePage: React.FC = () => {
         const noText = createdNo ? ` (เลขที่ ${createdNo})` : ''
         if (status === 'DRAFT') {
           message.success(`บันทึกร่าง PR สำเร็จ${noText}`)
+          setPanelRefreshKey((k) => k + 1)
           // No navigation — stay on this page so the user can keep editing.
         } else {
           const summary = await fetchReservationSummary(raw?.id)
@@ -593,6 +675,8 @@ const PRCreatePage: React.FC = () => {
         }
       }
     } catch (err: any) {
+      // 409 on a Memo line already taken: refresh the panel data; the form stays intact.
+      if (err?.response?.status === 409) setPanelRefreshKey((k) => k + 1)
       const shortages = err?.response?.data?.shortages
       if (Array.isArray(shortages) && shortages.length > 0) {
         const lines = shortages.map((s: any) =>
@@ -729,6 +813,23 @@ const PRCreatePage: React.FC = () => {
           icon={<WarningOutlined />}
           message="รายการนี้สั่งซื้อไปแล้วเกินจำนวนที่ขอใหม่ กรุณาแก้ไข PO ที่เกี่ยวข้องด้วย"
           description={`รหัสวัสดุที่ได้รับผลกระทบ: ${overOrderedLines.join(', ')}`}
+        />
+      )}
+
+      {isEdit && editBlockedMessage && (
+        <Alert
+          type="warning"
+          showIcon
+          message={
+            linkedPos.length > 0 ? (
+              <span>
+                ไม่สามารถแก้ไขได้ มี PO ผูกอยู่: <LinkedPoList pos={linkedPos} />
+              </span>
+            ) : (
+              editBlockedMessage
+            )
+          }
+          style={{ marginBottom: 16, borderRadius: 12 }}
         />
       )}
 
@@ -981,9 +1082,11 @@ const PRCreatePage: React.FC = () => {
                       disabled={!selectedMemo}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSelectedMemo(null)
-                        form.setFieldValue('memo_id', undefined)
-                        form.setFieldValue('memo_no_ref', undefined)
+                        confirmDropMemoLines(() => {
+                          setSelectedMemo(null)
+                          form.setFieldValue('memo_id', undefined)
+                          form.setFieldValue('memo_no_ref', undefined)
+                        })
                       }}
                     />
                   </Tooltip>
@@ -1204,6 +1307,7 @@ const PRCreatePage: React.FC = () => {
           onRemarkChange={setRemark}
           jobTypeCode={jobTypeCode}
           orderType={orderType}
+          highlightMissingCost={highlightMissingCost}
         />
 
         {/* ── Action bar — merged row: พิมพ์/กลับหน้าหลัก on the left,
@@ -1241,7 +1345,7 @@ const PRCreatePage: React.FC = () => {
                   type="primary"
                   icon={<SaveOutlined />}
                   loading={submitting}
-                  disabled={submitting}
+                  disabled={submitting || !!editBlockedMessage}
                   onClick={() => handleSubmit('DRAFT')}
                 >
                   บันทึกการแก้ไข
@@ -1283,17 +1387,25 @@ const PRCreatePage: React.FC = () => {
         open={memoOpen}
         onClose={() => setMemoOpen(false)}
         selectedMemoId={selectedMemo?.id}
-        onSelect={(memo) => {
-          form.setFieldValue('memo_id', memo.id)
-          form.setFieldValue('memo_no_ref', memo.memoNo)
-          form.setFieldValue('project_code', (memo as any).projectCode ?? (memo as any).project_code)
-          if (memo.deliveryLocation) {
-            form.setFieldValue('location_text', memo.deliveryLocation)
+        // Once the PR is saved its memo_id is fixed (backend rule): open straight into it.
+        lockedMemoId={prId != null ? (selectedMemo?.id ? Number(selectedMemo.id) : linkedMemoId) : null}
+        // A saved PR's own lines must not be reported as "taken" (taken = another saved PR).
+        excludePrId={prId}
+        formMemoLineIds={lineItems.filter((l) => l.memo_line_id != null).map((l) => Number(l.memo_line_id))}
+        refreshKey={panelRefreshKey}
+        onApply={(memo, memoLines, removeIds) => {
+          // Memo-derived lines the user unticked (confirms first if a material/qty was set).
+          if (removeIds.length > 0) itemsTableRef.current?.removeMemoLinesByIds(removeIds)
+          if (memoLines.length === 0) return
+          const addLines = () => itemsTableRef.current?.addMemoLines(memoLines)
+          // A saved PR cannot change its memo_id (backend rule) — just add lines.
+          if (isEdit || prId != null) { addLines(); return }
+          // Switching to a different Memo drops Memo-derived lines (after confirm).
+          if (!selectedMemo || String(selectedMemo.id) !== String(memo.id)) {
+            confirmDropMemoLines(() => { applyMemoSelection(memo); addLines() })
+          } else {
+            addLines()
           }
-          // Never auto-filled from the Memo — just disabled+cleared while a
-          // Memo is linked (see the "แผนก" Field above).
-          form.setFieldValue('dept_code', undefined)
-          setSelectedMemo(memo)
         }}
       />
 

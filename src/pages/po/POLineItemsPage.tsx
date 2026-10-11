@@ -7,13 +7,34 @@ import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import type { POLineItemGroup, POLineItemLine, MaterialSearchResult } from '@/types/po'
+import type { POLineItemGroup, POLineItemLine, MaterialSearchResult, POLineReceivingStatus } from '@/types/po'
 import { poApprovalService } from '@/services/poApprovalService'
 import { POApprovalStatusTag } from '@/components/po/POStatusBadge'
 
 const { RangePicker } = DatePicker
 const { Text } = Typography
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+const RECEIVING_STATUS_TAG: Record<POLineReceivingStatus, { color: string; label: string }> = {
+  NOT_RECEIVED: { color: 'default', label: 'ยังไม่รับ' },
+  PARTIAL: { color: 'orange', label: 'รับบางส่วน' },
+  COMPLETE: { color: 'green', label: 'รับครบ' },
+}
+
+const RECEIVING_STATUS_OPTIONS = [
+  { value: 'NOT_RECEIVED', label: 'ยังไม่รับ' },
+  { value: 'PARTIAL', label: 'รับบางส่วน' },
+  { value: 'COMPLETE', label: 'รับครบ' },
+]
+
+const ReceivingTag: React.FC<{ status?: POLineReceivingStatus | null; small?: boolean }> = ({ status, small }) => {
+  if (!status || !RECEIVING_STATUS_TAG[status]) return null
+  const t = RECEIVING_STATUS_TAG[status]
+  return <Tag color={t.color} style={small ? { margin: 0, fontSize: 12 } : { margin: 0 }}>{t.label}</Tag>
+}
+
+const codeName = (code?: string | null, name?: string | null) =>
+  code ? (name ? `${code} - ${name}` : code) : '-'
 
 interface RequesterOption {
   value: number
@@ -55,6 +76,7 @@ const POLineItemsPage: React.FC = () => {
   const [matCodeInput, setMatCodeInput] = useState<string | undefined>(undefined)
   const [jobCodeInput, setJobCodeInput] = useState<string | undefined>(undefined)
   const [projectCodeInput, setProjectCodeInput] = useState<string | undefined>(undefined)
+  const [receivingStatusInput, setReceivingStatusInput] = useState<string | undefined>(undefined)
   const [requestedByInput, setRequestedByInput] = useState<number | undefined>(undefined)
   const [filters, setFilters] = useState<{
     date_from?: string
@@ -64,6 +86,7 @@ const POLineItemsPage: React.FC = () => {
     requested_by?: number
     job_code?: string
     project_code?: string
+    receiving_status?: string
   }>({})
 
   useEffect(() => {
@@ -186,6 +209,7 @@ const POLineItemsPage: React.FC = () => {
         requested_by: f.requested_by,
         job_code: f.job_code,
         project_code: f.project_code,
+        receiving_status: f.receiving_status,
       })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])
@@ -211,6 +235,7 @@ const POLineItemsPage: React.FC = () => {
       requested_by: requestedByInput,
       job_code: jobCodeInput,
       project_code: projectCodeInput,
+      receiving_status: receivingStatusInput,
     })
   }
 
@@ -221,6 +246,7 @@ const POLineItemsPage: React.FC = () => {
     setMatOptions([])
     setJobCodeInput(undefined)
     setProjectCodeInput(undefined)
+    setReceivingStatusInput(undefined)
     setRequestedByInput(undefined)
     setPage(1)
     setFilters({})
@@ -277,6 +303,12 @@ const POLineItemsPage: React.FC = () => {
       key: 'status',
       render: (_v: unknown, r) => <POApprovalStatusTag status={r.status} />,
     },
+    {
+      title: 'สถานะรับของ',
+      dataIndex: 'receiving_status',
+      key: 'receiving_status',
+      render: (_v: unknown, r) => <ReceivingTag status={r.receiving_status} />,
+    },
   ]
 
   const lineColumns: ColumnsType<POLineItemLine> = [
@@ -288,11 +320,41 @@ const POLineItemsPage: React.FC = () => {
       render: (v?: string) => v || '-',
     },
     {
+      title: 'Head',
+      key: 'head',
+      render: (_: unknown, l) => codeName(l.head_cost_code, l.head_cost_name),
+    },
+    {
+      title: 'Cost Code',
+      key: 'cost_code',
+      render: (_: unknown, l) => codeName(l.cost_code, l.cost_name),
+    },
+    {
       title: 'จำนวนสั่ง',
       dataIndex: 'qty_ordered',
       key: 'qty_ordered',
       align: 'right',
       render: (v: number) => v?.toLocaleString('th-TH'),
+    },
+    {
+      title: 'รับแล้ว',
+      dataIndex: 'qty_received',
+      key: 'qty_received',
+      align: 'right',
+      render: (v?: number) => v?.toLocaleString('th-TH') ?? '-',
+    },
+    {
+      title: 'ค้างรับ',
+      dataIndex: 'qty_outstanding',
+      key: 'qty_outstanding',
+      align: 'right',
+      render: (v?: number) => v?.toLocaleString('th-TH') ?? '-',
+    },
+    {
+      title: 'สถานะรับ',
+      dataIndex: 'line_receiving_status',
+      key: 'line_receiving_status',
+      render: (v?: POLineReceivingStatus | null) => <ReceivingTag status={v} small />,
     },
     {
       title: 'ราคาต่อหน่วย',
@@ -387,6 +449,16 @@ const POLineItemsPage: React.FC = () => {
               allowClear
               showSearch
               optionFilterProp="label"
+              style={{ width: '100%' }}
+            />
+          </Col>
+          <Col xs={24} md={4}>
+            <Select
+              placeholder="สถานะรับของ"
+              value={receivingStatusInput}
+              onChange={(v) => setReceivingStatusInput(v)}
+              options={RECEIVING_STATUS_OPTIONS}
+              allowClear
               style={{ width: '100%' }}
             />
           </Col>

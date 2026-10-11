@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select } from 'antd'
-import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { EyeOutlined, EditOutlined, DeleteOutlined, WarningOutlined } from '@ant-design/icons'
+import { poLinkedTooltip } from '@/constants/prEdit'
+import { mapLinkedPos, linkedPoNoText, type LinkedPo } from '@/components/pr/LinkedPoLinks'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -115,6 +117,8 @@ interface PRItem {
   // PRItem.hasActivePoLink; mirrors the backend's PUT /pr/:id guard so the
   // edit button never appears when the save would just be rejected.
   hasActivePoLink: boolean
+  // GET /pr's linked_pos; [] when the API omits it (older backend).
+  linkedPos?: LinkedPo[]
   orderType: string | null
 }
 
@@ -217,6 +221,7 @@ const PRHistoryPage: React.FC = () => {
         poConversionStatus: r.po_conversion_status ?? 'NOT_CONVERTED',
         hasRemaining: r.has_remaining ?? undefined,
         hasActivePoLink: r.has_active_po_link ?? false,
+        linkedPos: mapLinkedPos(r.linked_pos),
         orderType:    r.order_type     ?? null,
       })))
       setTotal(Array.isArray(d) ? raw.length : (d?.total ?? raw.length))
@@ -383,15 +388,21 @@ const PRHistoryPage: React.FC = () => {
               onClick={() => navigate(`/pr/${record.id}`)}
             />
           </Tooltip>
-          {record.status === 'DRAFT' && !record.hasActivePoLink && (
-            <Tooltip title="แก้ไข">
-              <PermissionButton
-                menuCode={MENU_CODE}
-                action="edit"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/pr/${record.id}/edit`)}
-              />
+          {/* CANCELLED PRs are never editable (backend 409s), so no button. */}
+          {record.status !== 'CANCELLED' && (
+            <Tooltip title={record.hasActivePoLink ? poLinkedTooltip(linkedPoNoText(record.linkedPos ?? [])) : 'แก้ไข'}>
+              {/* span wrapper: antd Tooltip doesn't fire on a disabled button */}
+              <span style={{ display: 'inline-block' }}>
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action="edit"
+                  size="small"
+                  disabled={record.hasActivePoLink}
+                  icon={record.hasActivePoLink ? <WarningOutlined style={{ color: '#d97706' }} /> : <EditOutlined />}
+                  style={record.hasActivePoLink ? { borderColor: '#d97706' } : undefined}
+                  onClick={() => navigate(`/pr/${record.id}/edit`)}
+                />
+              </span>
             </Tooltip>
           )}
           {record.status === 'DRAFT' && !record.hasActivePoLink && (

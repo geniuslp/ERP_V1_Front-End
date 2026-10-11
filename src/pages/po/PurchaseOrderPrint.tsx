@@ -170,7 +170,7 @@ const thb = (n:number) => n.toLocaleString('th-TH',{minimumFractionDigits:2,maxi
 const THAI_NUM = ['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า']
 const THAI_POS = ['','สิบ','ร้อย','พัน','หมื่น','แสน']
 
-function thaiBahtText(amount:number):string {
+export function thaiBahtText(amount:number):string {
   amount = Math.round(Math.abs(amount)*100)/100
   const [intStr, decStr] = amount.toFixed(2).split('.')
   const intClean = intStr.replace(/^0+(?=\d)/, '')
@@ -444,7 +444,7 @@ const POFooter = ({data}:{data:POData}) => {
                   from s.contact_phone) — repointed to receiver_phone so it
                   matches Contract Delivery's phone instead of an unrelated
                   number. */}
-              <div><b>Contract Delivery :</b>&nbsp;{[data.receiverName, data.receiverPhone].filter(Boolean).join(' - ') || '-'}&nbsp;&nbsp;<b>TEL :</b>&nbsp;{data.receiverPhone || '-'}</div>
+              <div><b>Contract Delivery :</b>&nbsp;{data.receiverName?.trim() || '-'}&nbsp;&nbsp;<b>TEL :</b>&nbsp;{data.receiverPhone?.trim() || '-'}</div>
             </div>
           </div>
           <div style={{width:'69.50mm',display:'flex',flexDirection:'column',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>

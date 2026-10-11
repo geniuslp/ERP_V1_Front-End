@@ -8,6 +8,7 @@ import {
   REDIRECT_DELAY_MS,
 } from '@/pages/ic/utils/movementErrors'
 import { useAppSelector } from '@/store'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -39,6 +40,11 @@ interface Props {
   /** Called when the backend rejects ISSUE for a warehouse-linked project (parent should close too). */
   onIssueBlocked?: () => void
   onSelect: (material: ICMovementMaterialOption) => void
+  /**
+   * Opt-in (IC issue / ตัดเบิก only): 1.4x wider (860 -> 1204, capped to the viewport) and a 30% taller
+   * table body (320 -> 416, capped so the modal stays on screen). Extra width goes to the name column.
+   */
+  size?: 'large'
 }
 
 // Scoped to this project's ic_project_cost_item (qty_on_hand > 0) for the movement's
@@ -54,6 +60,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
   onClose,
   onSelect,
   onIssueBlocked,
+  size,
 }) => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -130,7 +137,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
     })
     return Array.from(seen.entries()).map(([code, name]) => ({
       value: code,
-      label: name ? `${code} — ${name}` : code,
+      label: name ? `${formatCostCodeDisplay(code)} — ${name}` : formatCostCodeDisplay(code),
     }))
   }, [materials])
 
@@ -164,7 +171,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
 
   const columns = [
     { title: 'รหัสวัสดุ', dataIndex: 'mat_code', width: 120 },
-    { title: 'CostCode', dataIndex: 'cost_code', width: 120 },
+    { title: 'CostCode', dataIndex: 'cost_code', width: 120, render: (v?: string) => formatCostCodeDisplay(v) },
     {
       title: 'ชื่อวัสดุ',
       dataIndex: 'mat_name',
@@ -192,7 +199,8 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
       title={<span style={{ color: '#1e3a8a', fontWeight: 700 }}>เลือกรายการวัสดุ</span>}
       open={open}
       onCancel={onClose}
-      width={860}
+      width={size === 'large' ? 1204 : 860}
+      style={size === 'large' ? { maxWidth: 'calc(100vw - 48px)' } : undefined}
       destroyOnClose
       footer={null}
     >
@@ -247,7 +255,7 @@ const ICMovementMaterialPickerModal: React.FC<Props> = ({
         dataSource={filteredMaterials}
         columns={columns}
         size="small"
-        scroll={{ y: 320 }}
+        scroll={{ y: size === 'large' ? 'min(416px, calc(100vh - 421px))' : 320 }}
         pagination={filteredMaterials.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
         onRow={(record) => ({
           onClick: () => handleRowClick(record),

@@ -258,3 +258,74 @@ body {
     margin: 0 16px;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────
+   Master Material — "เพิ่มรายการใหม่" lookup row (.mm-lookup) and entry row
+   (.mm-entry). Grid columns are minmax(0, …) and children have min-width: 0 so
+   nothing can be wider than its box.
+   ≥1200: lookup 6 in a row; entry Row1 3 cols, Row2 Spec 2fr | Brand | Unit | ×
+   768–1199: lookup 3×2; entry Row2 = Spec full width, then Brand | Unit | ×
+   <768: 2 columns, badges above the fields; <480: 1 column
+   ──────────────────────────────────────────────────────────────── */
+.mm-lookup, .mm-entry { display: grid; column-gap: 10px; row-gap: 10px; box-sizing: border-box; max-width: 100%; }
+.mm-lookup > *, .mm-entry > *, .mm-entry-fields > * { min-width: 0; }
+.mm-lookup .ant-select, .mm-entry .ant-select, .mm-lookup .ant-input, .mm-entry .ant-input { width: 100%; }
+
+.mm-lookup { grid-template-columns: 46px minmax(0, 1fr) 28px; grid-template-areas: "badge fields close"; align-items: start; }
+.mm-lookup-badge { grid-area: badge; padding-top: 22px; text-align: center; }
+.mm-lookup-fields { grid-area: fields; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.mm-lookup-close { grid-area: close; padding-top: 4px; justify-self: end; }
+
+.mm-entry { grid-template-columns: 46px minmax(0, 1fr); align-items: start; }
+.mm-entry-badge { padding-top: 28px; text-align: center; }
+.mm-entry-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.mm-entry-row1 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mm-entry-row2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 10px; align-items: start; }
+.mm-entry-remove { padding-top: 30px; justify-self: end; }
+
+/* code + name text-input pairs (replaces antd Row gutter, which uses negative margins) */
+.mm-pair.ant-row { display: grid !important; grid-template-columns: minmax(0, 9fr) minmax(0, 13fr) auto; column-gap: 6px; margin: 0 !important; }
+.mm-pair.ant-row > .ant-col { max-width: none !important; flex: none !important; width: auto; padding: 0 !important; min-width: 0; }
+
+.mm-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 1199px) {
+  .mm-lookup-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mm-entry-row2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px; }
+  .mm-entry-row2 > .mm-entry-spec { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
+  .mm-lookup { grid-template-columns: minmax(0, 1fr) 28px; grid-template-areas: "badge close" "fields fields"; }
+  .mm-lookup-badge { padding-top: 0; text-align: left; display: flex; align-items: center; gap: 6px; }
+  .mm-lookup-close { padding-top: 0; }
+  .mm-lookup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mm-entry { grid-template-columns: minmax(0, 1fr); }
+  .mm-entry-badge { padding-top: 0; text-align: left; display: flex; align-items: center; gap: 6px; }
+  .mm-entry-badge > div { margin: 0 !important; }
+  .mm-entry-row1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mm-entry-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mm-entry-remove { grid-column: 1 / -1; padding-top: 0; }
+}
+@media (max-width: 479px) {
+  .mm-lookup-fields, .mm-entry-row1, .mm-entry-row2 { grid-template-columns: minmax(0, 1fr); }
+  .mm-actions { flex-direction: column; align-items: stretch; }
+  .mm-actions .ant-btn { width: 100%; }
+}
+
+/* Petty cash approver picker: tall rows, 14px text, large single-select tick */
+.pc-approver-table .ant-table-tbody > tr > td { height: 56px; padding: 0 12px; font-size: 14px; }
+.pc-approver-table .ant-table-thead > tr > th { font-size: 14px; }
+.pc-approver-table .ant-checkbox-inner { width: 28px; height: 28px; border-radius: 6px; }
+.pc-approver-table .ant-checkbox-inner::after { width: 9px; height: 16px; inset-inline-start: 30%; }
+.pc-approver-table .ant-checkbox-checked .ant-checkbox-inner { background-color: #2563eb; border-color: #2563eb; }
+
+/* PO approval list (/po/approval) only: thin blue separators between header
+   cells. Scoped to .po-approval-table so no other Table is restyled. */
+.po-approval-table .ant-table-thead > tr > th:not(:last-child) {
+  border-inline-end: 1px solid #bfdbfe;
+}
+/* antd draws its own light header divider via ::before; hide it here so it
+   doesn't double up with the blue border. */
+.po-approval-table .ant-table-thead > tr > th::before {
+  display: none;
+}

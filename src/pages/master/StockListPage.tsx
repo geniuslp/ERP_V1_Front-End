@@ -10,6 +10,7 @@ import { useAppSelector } from '@/store'
 import { stockService } from '@/services/stock.service'
 import type { BulkPreviewRow, BulkPreviewSummary } from '@/services/stock.service'
 import type { StockItem, StockCategory, StockImportResult, StockItemType, StockTrackingType } from '@/types'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const { Text, Title } = Typography
 
@@ -327,7 +328,7 @@ const StockListPage: React.FC = () => {
     },
     {
       title: 'Cost Code', dataIndex: 'costCode', key: 'costCode', width: 130, align: 'center' as const,
-      render: (v: string | null | undefined) => v || '-',
+      render: (v: string | null | undefined) => formatCostCodeDisplay(v) || '-',
     },
     {
       title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 170, align: 'center' as const,

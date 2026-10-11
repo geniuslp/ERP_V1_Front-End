@@ -104,7 +104,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
 
   const filteredOptions = prOptions.filter((pr) => {
     if (!search.trim()) return true
-    const haystack = `${pr.pr_no} ${pr.status} ${pr.requested_by}`.toLowerCase()
+    const haystack = `${pr.pr_no} ${pr.status} ${pr.requested_by} ${pr.project_code ?? ''} ${pr.project_name ?? ''}`.toLowerCase()
     return haystack.includes(search.toLowerCase())
   })
 
@@ -493,7 +493,20 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                       <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 12 }}>{pr.pr_no}</span>
                       <Tag style={{ margin: 0, fontSize: 11 }}>{pr.status}</Tag>
                     </div>
-                    <div style={{ fontSize: 13, marginBottom: 2 }}>{pr.requested_by || '—'}</div>
+                    {(() => {
+                      const projectText = [pr.project_code, pr.project_name].filter(Boolean).join(' ')
+                      return (
+                        <div
+                          title={projectText || undefined}
+                          style={{
+                            fontSize: 13, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            color: projectText ? undefined : '#9ca3af',
+                          }}
+                        >
+                          {projectText || '-'}
+                        </div>
+                      )
+                    })()}
                     {pr.order_type && (
                       <Tag color="blue" style={{ margin: '0 0 2px', fontSize: 11 }}>
                         {ORDER_TYPE_LABEL[pr.order_type] ?? pr.order_type}

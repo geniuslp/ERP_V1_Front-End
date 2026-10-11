@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ORDER_TYPE_LABEL as SHARED_ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 // Standalone PR print component. NOT shared with PurchaseOrderPrint.tsx —
 // PurchaseOrderPrint.tsx was only used as a visual/structural reference
@@ -241,7 +242,7 @@ const PRInfoBox = ({ data }: { data: PRData }) => (
 const formatCostCodeForPrint = (costCode?: string): string => {
   if (!costCode) return ''
   const dashIdx = costCode.indexOf('—')
-  return dashIdx === -1 ? costCode.trim() : costCode.slice(0, dashIdx).trimEnd()
+  return formatCostCodeDisplay(dashIdx === -1 ? costCode.trim() : costCode.slice(0, dashIdx).trimEnd())
 }
 
 // Some existing PR lines carry ItemName and SpecName pre-joined into a single

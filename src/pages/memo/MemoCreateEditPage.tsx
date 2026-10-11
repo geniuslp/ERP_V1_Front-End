@@ -48,6 +48,9 @@ const cardTitleStyle: React.CSSProperties = {
 
 interface EditableItem {
   key: string
+  // memo_line id from GET /memo/:id — present only on lines that already exist
+  // in the DB; new rows never have one (backend syncs lines in place by id).
+  id?: number
   description: string
   unit: string
   quantity: number
@@ -275,6 +278,7 @@ const MemoCreateEditPage: React.FC = () => {
       setItems(
         lines.map((it: any) => ({
           key:         String(it.id ?? `${Date.now()}-${Math.random()}`),
+          id:          typeof it.id === 'number' ? it.id : undefined,
           description: it.description ?? '',
           unit:        it.unit        ?? '',
           quantity:    it.quantity    ?? 1,
@@ -435,6 +439,7 @@ const MemoCreateEditPage: React.FC = () => {
         site_delivery_date: values.site_delivery_date ? values.site_delivery_date.format('YYYY-MM-DD') : undefined,
         note:         values.note         ?? undefined,
         lines: items.map((item, i) => ({
+          ...(item.id !== undefined ? { id: item.id } : {}),
           line_no:     i + 1,
           description: item.description,
           unit:        item.unit,

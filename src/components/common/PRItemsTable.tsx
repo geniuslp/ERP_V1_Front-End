@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
-import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip, Badge } from 'antd'
+import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip, Badge, Modal } from 'antd'
 import { PlusOutlined, SearchOutlined, DeleteOutlined, CloseCircleFilled, FileTextOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
@@ -9,6 +9,8 @@ import { isOhOrderType } from '@/constants/orderTypes'
 import { useAppSelector } from '@/store'
 import { isExemptMatCode } from '@/utils/matCode'
 import { formatItemLabel } from '@/utils/itemLabel'
+import { formatCostCodeDisplay } from '@/utils/costCode'
+import { missingCostRowProps } from '@/utils/validateCostCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -30,12 +32,20 @@ interface PRItem {
   costSubgroupId: number | null
   costCodeLabel: string | null
   // true only for lines seeded from an existing PR's initialItems (edit mode).
-  // Locks mat_code/cost_subgroup_id in place — changing material or cost code
-  // requires deleting this line and adding a new one instead.
+  // Locks mat_code in place — changing the material requires deleting this
+  // line and adding a new one. Cost code stays editable on existing lines.
   isExisting?: boolean
   // Whether this line should be filled from central stock first (default) or
   // always ordered in full regardless of stock on hand.
   deductStock: boolean
+  // Memo line this PR line takes (null/undefined for manual lines and for PRs
+  // created before line-level Memo linking). Reference text is display-only.
+  memoLineId?: number | null
+  memoLineNo?: number | null
+  memoLineDescription?: string | null
+  memoLineUnit?: string | null
+  // Quantity prefilled from the Memo line — used only to detect a user-edited quantity.
+  memoLineQty?: number | null
 }
 
 interface InitialPRItem {
@@ -49,11 +59,14 @@ interface InitialPRItem {
   cost_code_label?: string | null
   deduct_stock?: boolean
   remarks?: string | null
+  memo_line_id?: number | null
+  memo_line_no?: number | null
+  memo_line_description?: string | null
 }
 
 interface PRItemsTableProps {
   readonly?: boolean
-  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean; remarks: string }[]) => void
+  onItemsChange?: (items: { mat_code: string; qty_requested: number; qty_to_order: number; cost_subgroup_id: number | null; deductStock: boolean; remarks: string; memo_line_id: number | null }[]) => void
   // Edit mode: seed the table from an existing PR's lines. Only applied once
   // per array identity — the parent should set this from its own fetch effect
   // exactly once, not recompute it on every render.
@@ -67,17 +80,27 @@ interface PRItemsTableProps {
   // down so the CostCode picker can filter its options to that job type.
   jobTypeCode?: string
   // Document-level "ประเภทการสั่งซื้อ" (PR header field: 'stock' | 'cost') —
-  // passed down so an existing line's Cost Code stays editable for
-  // order_type 'stock' (no PO-split/stock-reservation dependency on cost
-  // code there); mat_code itself stays locked on existing lines regardless
-  // of order_type. See PRItemsTable.tsx cost-code column disabled logic.
+  // used to pick the OH-only cost-code list. Cost Code is editable on
+  // existing lines for every order type; mat_code stays locked on them.
   orderType?: PROrderType
+  // Set by the parent after a failed submit: rows with no cost code are tinted
+  // red. Never set for draft saves.
+  highlightMissingCost?: boolean
 }
 
 // Exposed to the parent (PRCreatePage) so its own action bar can trigger a
 // print using this table's current line items — the parent no longer renders
 // its own copy of the print button, but this table alone doesn't have access
 // to the header fields needed to assemble full print data.
+// A Memo line handed over by MemoSidebarPanel ("Use selected items").
+export interface MemoLineInput {
+  id: number
+  line_no: number
+  description: string
+  unit: string
+  quantity: number
+}
+
 export interface PRItemsTableHandle {
   getPrintItems: () => {
     mat_code: string
@@ -90,10 +113,17 @@ export interface PRItemsTableHandle {
   // Drops every line's cost code (used when the order type switches between
   // the OH group and stock/cost — see OrderTypeSelect).
   clearCostCodes: () => void
+  // Memo-derived lines (memo_line_id set) — manual lines are never counted/removed.
+  hasMemoLines: () => boolean
+  removeMemoLines: () => void
+  // Append one Memo-derived line per Memo line (mat_code left empty).
+  addMemoLines: (lines: MemoLineInput[]) => void
+  // Remove Memo-derived lines by memo_line id (confirms first if a material was already chosen).
+  removeMemoLinesByIds: (ids: number[]) => void
 }
 
 const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
-  readonly = false, onItemsChange, initialItems, remark = '', onRemarkChange, jobTypeCode, orderType,
+  readonly = false, onItemsChange, initialItems, remark = '', onRemarkChange, jobTypeCode, orderType, highlightMissingCost = false,
 }, ref) => {
   const [items, setItems] = useState<PRItem[]>([])
 
@@ -107,12 +137,55 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
       remark: i.remark,
     })),
     clearCostCodes: () => setItems((prev) => prev.map((i) => ({ ...i, costSubgroupId: null, costCodeLabel: null }))),
+    hasMemoLines: () => items.some((i) => i.memoLineId != null),
+    removeMemoLines: () => setItems((prev) => prev.filter((i) => i.memoLineId == null).map((i, idx) => ({ ...i, no: idx + 1 }))),
+    addMemoLines: (lines) => {
+      setItems((prev) => {
+        const have = new Set(prev.filter((i) => i.memoLineId != null).map((i) => i.memoLineId as number))
+        const added: PRItem[] = lines.filter((l) => !have.has(l.id)).map((l) => ({
+          key: `memo-${l.id}-${Date.now()}`,
+          no: 0,
+          code: '',
+          description: '',
+          spec: '',
+          qtyPR: Number(l.quantity) > 0 ? Number(l.quantity) : 1,
+          qtyStock: Number(l.quantity) > 0 ? Number(l.quantity) : 1,
+          unit: '',
+          remark: '',
+          costSubgroupId: null,
+          costCodeLabel: null,
+          deductStock: true,
+          memoLineId: l.id,
+          memoLineNo: l.line_no,
+          memoLineDescription: l.description,
+          memoLineUnit: l.unit,
+          memoLineQty: Number(l.quantity) > 0 ? Number(l.quantity) : 1,
+        }))
+        return [...prev, ...added].map((i, idx) => ({ ...i, no: idx + 1 }))
+      })
+    },
+    removeMemoLinesByIds: (ids) => {
+      const idSet = new Set(ids)
+      const doRemove = () => setItems((prev) => prev.filter((i) => !(i.memoLineId != null && idSet.has(i.memoLineId))).map((i, idx) => ({ ...i, no: idx + 1 })))
+      const withMaterial = items.filter((i) => i.memoLineId != null && idSet.has(i.memoLineId)
+        && (i.code || (i.memoLineQty != null && i.qtyPR !== i.memoLineQty)))
+      if (withMaterial.length > 0) {
+        Modal.confirm({
+          title: 'ยืนยันการเอารายการออก',
+          content: `มี ${withMaterial.length} รายการที่เลือกวัสดุหรือแก้ไขจำนวนไว้แล้ว จะถูกลบออกจาก PR`,
+          okText: 'ยืนยัน',
+          cancelText: 'ยกเลิก',
+          onOk: doRemove,
+        })
+      } else {
+        doRemove()
+      }
+    },
   }), [items])
 
   // OH order types: cost code picker loads only the OH list, and existing
   // lines stay editable (their old non-OH cost code is cleared on type switch).
   const isOh = isOhOrderType(orderType)
-  const costCodeLocked = (r: PRItem) => !!r.isExisting && orderType !== 'stock' && !isOh
 
   useEffect(() => {
     if (!initialItems || initialItems.length === 0) return
@@ -131,6 +204,9 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         costCodeLabel: it.cost_code_label ?? null,
         isExisting: true,
         deductStock: it.deduct_stock ?? true,
+        memoLineId: it.memo_line_id ?? null,
+        memoLineNo: it.memo_line_no ?? null,
+        memoLineDescription: it.memo_line_description ?? null,
       }))
     )
   }, [initialItems])
@@ -149,9 +225,12 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
       cost_subgroup_id: i.costSubgroupId,
       deductStock: i.deductStock,
       remarks: i.remark,
+      memo_line_id: i.memoLineId ?? null,
     })))
   }, [items])
   const [pickerOpen, setPickerOpen] = useState(false)
+  // key of a Memo-derived row whose material is being picked (single-row picker)
+  const [rowPickerKey, setRowPickerKey] = useState<string | null>(null)
   // key of the row whose Description/รายละเอียด textarea is expanded — same
   // expandable-row pattern as POItemsTable's renderDescription.
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
@@ -201,6 +280,13 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
   // deductStock is only ever changed by the user's switch or by loading a
   // saved value — never by stock lookup results. The backend reserves
   // min(requested, stock), so a true flag on a zero-stock line is harmless.
+
+  // Zero-stock rule, derived from current row state (never a one-time snapshot):
+  // a row with a material whose looked-up stock is 0 — or has no stock row at all
+  // (the lookup omits null qty, and the picker lists every active material) — is
+  // treated as stock 0 once the lookup has finished. Display only: deductStock
+  // and the payload are untouched.
+  const isZeroStock = (r: PRItem) => !!r.code && !stockLoading && (stockMap[r.code] ?? 0) <= 0
 
   const addItem = () => {
     const no = items.length + 1
@@ -274,6 +360,26 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
     })
   }
 
+  // Single-row material pick for a Memo-derived line (uses the first selection).
+  const handleRowMaterialConfirm = (materials: Material[]) => {
+    const key = rowPickerKey
+    setRowPickerKey(null)
+    const m = materials[0]
+    if (!key || !m) return
+    if (materials.length > 1) message.info('เลือกได้ 1 วัสดุต่อรายการ — ใช้รายการแรกที่เลือก')
+    if (!isExemptMatCode(m.mat_code) && items.some((i) => i.key !== key && i.code === m.mat_code)) {
+      message.warning('วัสดุนี้มีอยู่ในรายการอื่นแล้ว')
+      return
+    }
+    setItems((prev) => prev.map((i) => (i.key === key ? {
+      ...i,
+      code: m.mat_code,
+      description: formatItemLabel(m.mat_name_th, m.spec_description),
+      spec: '',
+      unit: m.unit_name || 'Ea',
+    } : i)))
+  }
+
   const handleMaterialConfirm = (materials: Material[]) => {
     const existingCodes = new Set(items.map((i) => i.code).filter(Boolean))
     // x## codes (e.g. x01, x02) are exempt from the duplicate check — always
@@ -338,19 +444,20 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
       align: 'center' as const,
       render: (_: unknown, r: PRItem) =>
         readonly ? (
-          <span style={{ fontSize: 13 }}>{r.costCodeLabel ?? '-'}</span>
+          <span style={{ fontSize: 13 }}>{r.costCodeLabel ? formatCostCodeDisplay(r.costCodeLabel) : '-'}</span>
         ) : (
           <Space size={4} style={{ width: '100%' }}>
             <Button
               size="small"
+              danger={highlightMissingCost && r.costSubgroupId == null}
               style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              disabled={!r.code || costCodeLocked(r)}
+              disabled={!r.code}
               onClick={() => setCostCodeModalRowKey(r.key)}
-              title={r.costCodeLabel ?? undefined}
+              title={r.costCodeLabel ? formatCostCodeDisplay(r.costCodeLabel) : undefined}
             >
-              {r.code ? (r.costCodeLabel ?? 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
+              {r.code ? (r.costCodeLabel ? formatCostCodeDisplay(r.costCodeLabel) : 'เลือก Cost Code') : 'เลือกวัสดุก่อน'}
             </Button>
-            {r.costCodeLabel && !costCodeLocked(r) && (
+            {r.costCodeLabel && (
               <Button
                 size="small"
                 type="text"
@@ -364,9 +471,17 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
     {
       title: 'Code',
       dataIndex: 'code',
-      width: 120,
+      width: 140,
       render: (_: unknown, r: PRItem) => {
         if (readonly || r.isExisting) return <span style={{ fontSize: 13 }}>{r.code}</span>
+        if (r.memoLineId != null) {
+          return (
+            <Space.Compact style={{ width: '100%' }}>
+              <Input size="small" value={r.code} placeholder="เลือกวัสดุ" readOnly onClick={() => setRowPickerKey(r.key)} />
+              <Button size="small" icon={<SearchOutlined />} onClick={() => setRowPickerKey(r.key)} />
+            </Space.Compact>
+          )
+        }
         // Inline-only warning (never blocks typing) for a manually-entered
         // mat_code that duplicates another row's — x## codes are exempt and
         // never flagged, matching handleMaterialConfirm's dedupe exemption.
@@ -438,7 +553,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         if (qty === undefined) {
           return stockLoading
             ? <Spin size="small" />
-            : <span style={{ color: '#9ca3af', fontSize: 12 }}>ไม่พบใน stock</span>
+            : <span style={{ color: '#dc2626', fontSize: 12 }}>ไม่พบใน stock (0)</span>
         }
         if (qty === 0) {
           return <span style={{ color: '#dc2626', fontWeight: 500 }}>0 <span style={{ fontSize: 12 }}>(ไม่มีสต็อก)</span></span>
@@ -475,7 +590,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
             checked={r.deductStock}
             disabled={!r.code}
             onChange={(checked) => toggleDeductStock(r.key, checked)}
-            style={{ backgroundColor: r.deductStock ? '#16a34a' : '#dc2626' }}
+            style={{ backgroundColor: r.deductStock && !isZeroStock(r) ? '#16a34a' : '#dc2626' }}
           />
         ),
     },
@@ -578,6 +693,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — กด "เพิ่มรายการใหม่" เพื่อเริ่มต้น' }}
         scroll={{ x: 700 }}
+        onRow={(r) => missingCostRowProps(highlightMissingCost, r.costSubgroupId == null)}
         style={{ marginBottom: items.length > 0 ? 16 : 0 }}
         expandable={!readonly ? {
           expandedRowKeys: expandedKeys,
@@ -605,6 +721,14 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onConfirm={handleMaterialConfirm}
+        showStockLookup={false}
+        hasCostSubgroup
+      />
+
+      <MaterialPickerModal
+        open={rowPickerKey !== null}
+        onClose={() => setRowPickerKey(null)}
+        onConfirm={handleRowMaterialConfirm}
         showStockLookup={false}
         hasCostSubgroup
       />

@@ -245,6 +245,8 @@ export interface AvailablePR {
   pr_no: string
   status: string
   requested_by_name?: string
+  project_code?: string | null
+  project_name?: string | null
   created_at: string
 }
 
@@ -271,6 +273,8 @@ export interface PODetailResponse {
 // filter like mat_code/job_code narrows the match, backend excludes
 // non-matching lines/POs but `net_amount` still reflects the PO's real
 // after-discount total, not the sum of the filtered lines.
+export type POLineReceivingStatus = 'NOT_RECEIVED' | 'PARTIAL' | 'COMPLETE'
+
 export interface POLineItemLine {
   mat_code: string
   mat_name?: string
@@ -279,6 +283,16 @@ export interface POLineItemLine {
   amount: number
   job_code?: string
   job_name?: string
+  cost_subgroup_id?: number | null
+  cost_code?: string | null
+  cost_name?: string | null
+  head_subgroup_id?: number | null
+  head_cost_code?: string | null
+  head_cost_name?: string | null
+  qty_received?: number
+  qty_outstanding?: number
+  // null for a cancelled line
+  line_receiving_status?: POLineReceivingStatus | null
 }
 
 export interface POLineItemGroup {
@@ -297,6 +311,8 @@ export interface POLineItemGroup {
   // or blank). See ProjectOverviewPage.tsx and POLineItemsPage.tsx.
   net_amount: number
   total_amount?: number
+  // Derived from non-cancelled lines; null for draft/cancelled POs.
+  receiving_status?: POLineReceivingStatus | null
   lines: POLineItemLine[]
 }
 

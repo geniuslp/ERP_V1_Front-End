@@ -66,6 +66,18 @@ export const financeService = {
     return unwrapListEnvelope(res.data) as FinancePaymentLogEntry[]
   },
 
+  getOne: async (token: string, docType: FinanceDocType, docId: string | number): Promise<FinancePaymentListItem> => {
+    const res = await axios.get(`${BASE_URL}/finance/payments/${docType}/${docId}`, { headers: authHeader(token) })
+    const raw = res.data?.data ?? res.data
+    return { ...raw, receivingStatus: raw?.receiving_status ?? null } as FinancePaymentListItem
+  },
+
+  // Backend creates the linked negative reversal row itself (amount derived server-side).
+  cancelPayment: async (token: string, paymentId: number, reason: string): Promise<{ id: number; doc_no: string; reversed_id: number }> => {
+    const res = await axios.post(`${BASE_URL}/finance/payments/${paymentId}/cancel`, { reason }, { headers: authHeader(token) })
+    return res.data?.data ?? res.data
+  },
+
   recordPayment: async (token: string, payload: RecordPaymentPayload): Promise<FinancePaymentLogEntry> => {
     const res = await axios.post(`${BASE_URL}/finance/payments`, payload, { headers: authHeader(token) })
     return res.data?.data ?? res.data

@@ -15,7 +15,7 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 interface RoleOption { role_id: number; role_code: string; role_name: string; dept_code: string | null }
 interface UserRole { role_id: number; role_code: string; role_name: string }
 interface UserRecord {
-  key: string; id: string; username: string; fullName: string; email: string
+  key: string; id: string; username: string; fullName: string; fullNameTh: string; employeeCode: string; email: string
   role: string; department: string; isActive: boolean
   roleId: number | null; roleIds: number[]; roles: UserRole[]; deptCode: string | null
   hasSignature: boolean
@@ -55,6 +55,8 @@ const UsersPage: React.FC = () => {
         id: String(u.id),
         username: u.username,
         fullName: u.full_name ?? u.fullName ?? u.username,
+        fullNameTh: u.full_name_th ?? '',
+        employeeCode: u.employee_code ?? '',
         email: u.email,
         role: (u.roles ?? []).map((rl: UserRole) => rl.role_name).join(', ') || u.role || '-',
         department: u.dept_name ?? '-',
@@ -133,6 +135,12 @@ const UsersPage: React.FC = () => {
       if (Array.isArray(fresh?.roles)) roleIds = fresh.roles.map((rl: UserRole) => rl.role_id)
       // GET /users/:id includes the freshest has_signature — prefer it over the
       // list row's copy in case the signature was changed since the list loaded.
+      if (fresh) {
+        form.setFieldsValue({
+          fullNameTh: fresh.full_name_th ?? '',
+          employeeCode: fresh.employee_code ?? '',
+        })
+      }
       if (typeof fresh?.has_signature === 'boolean') {
         setEditing((prev) => (prev ? { ...prev, hasSignature: fresh.has_signature } : prev))
       }
@@ -156,6 +164,8 @@ const UsersPage: React.FC = () => {
     form.setFieldsValue({
       username: r.username,
       fullName: r.fullName,
+      fullNameTh: r.fullNameTh,
+      employeeCode: r.employeeCode,
       email: r.email,
       deptCode,
       roleIds,
@@ -231,6 +241,8 @@ const UsersPage: React.FC = () => {
           const profilePayload = {
             username: values.username,
             full_name: values.fullName,
+            full_name_th: values.fullNameTh ?? '',
+            employee_code: values.employeeCode ?? '',
             email: values.email,
             dept_code: values.deptCode,
           }
@@ -323,6 +335,8 @@ const UsersPage: React.FC = () => {
             ...d,
             username: fresh?.username ?? values.username,
             fullName: fresh?.full_name ?? fresh?.fullName ?? values.fullName,
+            fullNameTh: fresh?.full_name_th ?? values.fullNameTh ?? '',
+            employeeCode: fresh?.employee_code ?? values.employeeCode ?? '',
             email: fresh?.email ?? values.email,
             deptCode: freshDeptCode,
             roleId: freshRoleIds[0] ?? null,
@@ -332,14 +346,16 @@ const UsersPage: React.FC = () => {
             role: (fresh?.roles ?? []).map((r: UserRole) => r.role_name).join(', ') || d.role,
           } : d))
           setOpen(false)
-        } catch {
-          message.error('แก้ไขข้อมูลไม่สำเร็จ')
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'แก้ไขข้อมูลไม่สำเร็จ')
         }
       } else {
         try {
           const payload = {
             username: values.username,
             full_name: values.fullName,
+            full_name_th: values.fullNameTh ?? '',
+            employee_code: values.employeeCode ?? '',
             email: values.email,
             password: values.password,
             dept_code: values.deptCode,
@@ -376,6 +392,8 @@ const UsersPage: React.FC = () => {
             id: String(created?.id ?? Date.now()),
             username: values.username,
             fullName: values.fullName,
+            fullNameTh: values.fullNameTh ?? '',
+            employeeCode: values.employeeCode ?? '',
             email: values.email,
             role: selectedRoles.map((r) => r.role_name).join(', ') || '-',
             department: dept?.dept_name ?? '-',
@@ -416,6 +434,9 @@ const UsersPage: React.FC = () => {
         <div><div style={{ fontWeight: 600, fontSize: 13 }}>{r.fullName}</div><div style={{ fontSize: 11, color: '#60a5fa' }}>{r.username}</div></div>
       </Space>
     )},
+    { title: 'รหัสพนักงาน', dataIndex: 'employeeCode', render: (v: string) => v || '-' },
+    { title: 'ชื่อ (อังกฤษ)', dataIndex: 'fullName', render: (v: string) => v || '-' },
+    { title: 'ชื่อ (ไทย)', dataIndex: 'fullNameTh', render: (v: string) => v || '-' },
     { title: 'อีเมล', dataIndex: 'email' },
     { title: 'บทบาท', dataIndex: 'role', render: (v: string) => <Tag color={v === 'Admin' ? 'blue' : v === 'Manager' ? 'purple' : 'default'}>{v}</Tag> },
     { title: 'แผนก', dataIndex: 'department' },
@@ -441,7 +462,9 @@ const UsersPage: React.FC = () => {
       <Modal title={editing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก" destroyOnClose>
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="ชื่อผู้ใช้" name="username" rules={[{ required: true }]}><Input prefix={<UserOutlined />} /></Form.Item>
-          <Form.Item label="ชื่อ-นามสกุล" name="fullName" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item label="รหัสพนักงาน" name="employeeCode"><Input maxLength={30} /></Form.Item>
+          <Form.Item label="ชื่อ-นามสกุล (ภาษาอังกฤษ)" name="fullName" rules={[{ required: true, message: 'กรุณากรอกชื่อ-นามสกุล (ภาษาอังกฤษ)' }]}><Input maxLength={200} /></Form.Item>
+          <Form.Item label="ชื่อ-นามสกุล (ภาษาไทย)" name="fullNameTh"><Input maxLength={200} /></Form.Item>
           <Form.Item label="อีเมล" name="email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
           {!editing && <Form.Item label="รหัสผ่าน" name="password" rules={[{ required: true }]}><Input.Password /></Form.Item>}
           <Form.Item label="แผนก" name="deptCode" rules={[{ required: true }]}>

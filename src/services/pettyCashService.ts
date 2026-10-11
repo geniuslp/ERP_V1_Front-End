@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type {
   PettyCashRequisition, CreatePettyCashRequest, UpdatePettyCashRequest,
-  PettyCashListFilter,
+  PettyCashListFilter, PettyCashLineOptions, PettyCashSubmitResult, PettyCashApprovalChain,
 } from '@/types/pettyCash'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
@@ -16,7 +16,22 @@ interface PaginatedResponse<T> {
   total_pages: number
 }
 
+let lineOptionsCache: PettyCashLineOptions | null = null
+
 export const pettyCashService = {
+  // Static lookup (tax forms / WHT income types / VAT rate) — fetched once and cached.
+  getLineOptions: async (token: string): Promise<PettyCashLineOptions> => {
+    if (lineOptionsCache) return lineOptionsCache
+    const res = await axios.get(`${BASE_URL}/petty-cash/line-options`, { headers: authHeader(token) })
+    const d = res.data?.data ?? res.data
+    lineOptionsCache = {
+      tax_forms: d?.tax_forms ?? [],
+      wht_income_types: d?.wht_income_types ?? [],
+      vat_rate: d?.vat_rate ?? 7,
+    }
+    return lineOptionsCache
+  },
+
   list: async (token: string, filter: PettyCashListFilter): Promise<PaginatedResponse<PettyCashRequisition>> => {
     const res = await axios.get(`${BASE_URL}/petty-cash`, {
       headers: authHeader(token),
@@ -44,8 +59,14 @@ export const pettyCashService = {
     await axios.delete(`${BASE_URL}/petty-cash/${id}`, { headers: authHeader(token) })
   },
 
-  submit: async (token: string, id: number | string, approverId?: number | null): Promise<void> => {
-    await axios.post(`${BASE_URL}/petty-cash/${id}/submit`, { approver_id: approverId ?? undefined }, { headers: authHeader(token) })
+  submit: async (token: string, id: number | string, approverId?: number | null): Promise<PettyCashSubmitResult> => {
+    const res = await axios.post(`${BASE_URL}/petty-cash/${id}/submit`, { approver_id: approverId ?? undefined }, { headers: authHeader(token) })
+    return res.data?.data ?? res.data
+  },
+
+  getApprovalChain: async (token: string, id: number | string): Promise<PettyCashApprovalChain> => {
+    const res = await axios.get(`${BASE_URL}/petty-cash/${id}/approval-chain`, { headers: authHeader(token) })
+    return res.data?.data ?? res.data
   },
 
   approve: async (token: string, id: number | string, comments?: string): Promise<void> => {
@@ -54,6 +75,17 @@ export const pettyCashService = {
 
   reject: async (token: string, id: number | string, comments: string): Promise<void> => {
     await axios.post(`${BASE_URL}/petty-cash/${id}/reject`, { comments }, { headers: authHeader(token) })
+  },
+
+  // Single-step multipart upload (field "file"); allowed only while the document is DRAFT.
+  uploadAttachment: async (token: string, id: number | string, file: File): Promise<void> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    await axios.post(`${BASE_URL}/petty-cash/${id}/attachments`, fd, { headers: authHeader(token) })
+  },
+
+  deleteAttachment: async (token: string, id: number | string, attId: number | string): Promise<void> => {
+    await axios.delete(`${BASE_URL}/petty-cash/${id}/attachments/${attId}`, { headers: authHeader(token) })
   },
 
   cancel: async (token: string, id: number | string): Promise<void> => {

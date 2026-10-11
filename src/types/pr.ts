@@ -8,6 +8,8 @@ export interface PRListItem {
   approver_name: string | null
   location_code: string
   project_code: string | null
+  // Only populated by GET /po/available-prs (PO create drawer); null/absent elsewhere.
+  project_name?: string | null
   remarks: string | null
   pr_date: string
   // purchase_request.job_code — "ประเภท Job", shared 12-code JOB_TYPES list

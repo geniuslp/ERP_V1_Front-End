@@ -71,6 +71,9 @@ export const poApprovalService = {
       requested_by?: number
       job_code?: string
       project_code?: string
+      receiving_status?: string
+      head_subgroup_id?: number
+      cost_subgroup_id?: number
       page?: number
       page_size?: number
     } = {},

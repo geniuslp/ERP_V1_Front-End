@@ -15,6 +15,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES, type JobTypeOption } from '@/constants/jobTypes'
 import CostCodeJobTypeModal from './CostCodeJobTypeModal'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -423,8 +424,43 @@ const CostCodePage: React.FC = () => {
   // POLineItemsPage.tsx, so subject_code/job_code/group_code/subgroup_code
   // are confirmed-real field names here, not guesses.
   const [fullCostCodeList, setFullCostCodeList] = useState<CostCodeRecord[]>([])
+  const [exportingXlsx, setExportingXlsx] = useState(false)
 
   const authHeader = { Authorization: `Bearer ${accessToken}` }
+
+  // Export Excel: always refetches the complete list from GET /master/cost-code/full (not the
+  // table's current page/filter). The endpoint already returns active AND inactive subgroups.
+  const handleExportExcel = async () => {
+    setExportingXlsx(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/master/cost-code/full`, { headers: authHeader })
+      const raw = Array.isArray(res.data) ? res.data : res.data?.data
+      const list: any[] = Array.isArray(raw) ? raw : []
+      if (list.length === 0) {
+        message.warning('ไม่มีข้อมูลสำหรับ export')
+        return
+      }
+      const aoa = [
+        ['Subject Code', 'Subject Name', 'Job Code', 'Job Name', 'Group Code', 'Group Name', 'Subgroup Code', 'Subgroup Name', 'Cost Code', 'Active'],
+        ...list.map((r) => [
+          r.subject_code ?? '', r.subject_name ?? '', r.job_code ?? '', r.job_name ?? '',
+          r.group_code ?? '', r.group_name ?? '', r.subgroup_code ?? '', r.subgroup_name ?? '',
+          r.cost_code ?? '', (r.is_active ?? true) ? 'Y' : 'N',
+        ]),
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      ws['!cols'] = [14, 30, 12, 30, 14, 30, 16, 30, 16, 8].map((wch) => ({ wch }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'CostCode')
+      const t = new Date()
+      const dateStr = `${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}`
+      XLSX.writeFile(wb, `cost-code_${dateStr}.xlsx`)
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'export ไม่สำเร็จ')
+    } finally {
+      setExportingXlsx(false)
+    }
+  }
 
   const fetchCostCodes = useCallback(async () => {
     if (!accessToken) return
@@ -564,7 +600,7 @@ const CostCodePage: React.FC = () => {
   const columns = [
     {
       title: 'Cost Code', dataIndex: 'costCode', key: 'costCode', width: 160,
-      render: (v: string) => <Text code style={{ fontSize: 13 }}>{v}</Text>,
+      render: (v: string) => <Text code style={{ fontSize: 13 }}>{formatCostCodeDisplay(v)}</Text>,
     },
     {
       title: 'Subject / Job', key: 'subjectJob', width: 220,
@@ -761,6 +797,7 @@ const CostCodePage: React.FC = () => {
         title="จับคู่ Cost Code"
         subtitle="กำหนดรหัสและโครงสร้าง Cost Code ตาม Subject / Job / Group / Subgroup"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ข้อมูลหลัก' }, { title: 'Cost Code' }]}
+        extra={<Button icon={<DownloadOutlined />} loading={exportingXlsx} onClick={handleExportExcel}>Export Excel</Button>}
       />
 
       <div style={{ padding: '0 0 32px', overflowX: 'hidden' }}>

@@ -2,10 +2,10 @@ import PanelTabs from '@/components/common/PanelTabs'
 import React, { useEffect, useState } from 'react'
 import {
   Card, Form, Select, DatePicker, Input, Button, Space, Spin, Result, Row, Col, Grid,
-  Table, Descriptions, Modal, message,
+  Table, Descriptions, Modal, Tooltip, message,
 } from 'antd'
 import {
-  ArrowLeftOutlined, SaveOutlined, EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined, CheckCircleOutlined,
+  ArrowLeftOutlined, SaveOutlined, EditOutlined, DeleteOutlined, PlusOutlined, PrinterOutlined, CheckCircleOutlined,
 } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
@@ -19,6 +19,10 @@ import { goBackToICProject, confirmLeaveIfDirty } from '@/pages/ic/utils/icNavig
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import ICMovementAddLineModal, { type PendingMovementLine } from '@/pages/ic/components/ICMovementAddLineModal'
+import { formatCostCodeDisplay } from '@/utils/costCode'
+import PermissionButton from '@/components/common/PermissionButton'
+import ICMovementPrint, { buildMovementPrintData, type ICMovementPrintData } from '@/pages/ic/components/ICMovementPrint'
+import { runBrowserPrint } from '@/pages/ic/components/ICPrintLayout'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -272,14 +276,16 @@ const ICProjectMovementPage: React.FC = () => {
   // GET /ic/projects/:projectCode/movements/:movementId — endpoint not confirmed to
   // exist yet on the backend. TODO: verify with backend; until then, fall back to
   // whatever was passed via navigation state so the page still renders.
-  const fetchHeader = async (id: string) => {
+  const fetchHeader = async (id: string): Promise<MovementHeader | undefined> => {
     if (!projectCode) return
+    let fetched: MovementHeader | undefined
     try {
       const res = await axios.get(`${BASE_URL}/ic/projects/${projectCode}/movements/${id}`, {
         headers: authHeader,
       })
       const data: MovementHeader = res.data?.data ?? res.data
       setHeader(data)
+      fetched = data
       form.setFieldsValue({
         job_code: data?.job_code,
         doc_type: data?.doc_type,
@@ -295,6 +301,7 @@ const ICProjectMovementPage: React.FC = () => {
       const stateDocNo = (location.state as any)?.doc_no
       setHeader((prev) => prev ?? (stateDocNo ? { doc_no: stateDocNo } : {}))
     }
+    return fetched
   }
 
   const fetchLines = async (id: string) => {
@@ -393,9 +400,9 @@ const ICProjectMovementPage: React.FC = () => {
         { headers: authHeader },
       )
       const data = res.data?.data ?? res.data
-      message.success(data?.doc_no ? `บันทึกสำเร็จ เลขที่เอกสาร ${data.doc_no}` : 'บันทึกเอกสารสำเร็จ')
       setPendingLines([])
-      goBackToICProject(navigate, projectCode, preparedBy)
+      // Stay on the page: the success dialog offers printing before the redirect.
+      setSuccessInfo({ id: data?.id != null ? String(data.id) : null, docNo: data?.doc_no, docType: values.doc_type })
     } catch (err: any) {
       // Failure: nothing was saved; keep every entered value so the user can retry.
       const code = showMovementError(err)
@@ -409,8 +416,32 @@ const ICProjectMovementPage: React.FC = () => {
     }
   }
 
-  const handlePreview = () => {
-    message.info('Preview - coming soon')
+  // Print the SAVED document: header + lines are re-fetched so the print always matches the server
+  // (lines added locally but not yet submitted are not on it).
+  const [printData, setPrintData] = useState<ICMovementPrintData | null>(null)
+  const [printLoading, setPrintLoading] = useState(false)
+  // Shown after a successful Submit (new or existing document); closing it does the redirect.
+  const [successInfo, setSuccessInfo] = useState<{ id: string | null; docNo?: string; docType?: string } | null>(null)
+  const closeSuccess = () => {
+    setSuccessInfo(null)
+    if (projectCode) goBackToICProject(navigate, projectCode, preparedBy)
+  }
+  const handlePrint = () => printDoc(docId)
+  const printDoc = async (id: string | null) => {
+    if (!projectCode || !id || printLoading) return
+    setPrintLoading(true)
+    try {
+      const [h, l] = await Promise.all([
+        axios.get(`${BASE_URL}/ic/projects/${projectCode}/movements/${id}`, { headers: authHeader }),
+        axios.get(`${BASE_URL}/ic/projects/${projectCode}/movements/${id}/lines`, { headers: authHeader }),
+      ])
+      if (!successInfo && pendingLines.length > 0) message.warning('รายการที่เพิ่มใหม่ยังไม่ได้บันทึก จะไม่แสดงในเอกสารที่พิมพ์')
+      setPrintData(buildMovementPrintData(h.data, l.data))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'โหลดข้อมูลเพื่อพิมพ์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    } finally {
+      setPrintLoading(false)
+    }
   }
 
   const handleAddItem = () => {
@@ -478,11 +509,10 @@ const ICProjectMovementPage: React.FC = () => {
       await axios.post(`${BASE_URL}/ic/projects/${projectCode}/movements/${docId}/submit`, {}, {
         headers: authHeader,
       })
-      message.success('บันทึกเอกสารสำเร็จ')
       await fetchLines(docId)
-      await fetchHeader(docId)
-      // Submitted (document is now POSTED/locked): return to the project page.
-      goBackToICProject(navigate, projectCode, preparedBy)
+      const h = await fetchHeader(docId)
+      // Submitted (document is now POSTED/locked): offer printing, then return to the project page.
+      setSuccessInfo({ id: docId, docNo: h?.doc_no ?? header?.doc_no, docType: h?.doc_type ?? header?.doc_type })
     } catch (err: any) {
       const code = showMovementError(err)
       if (code === LINKED_WAREHOUSE_ISSUE_NOT_SUPPORTED) {
@@ -518,7 +548,7 @@ const ICProjectMovementPage: React.FC = () => {
       title: 'ToCostCode',
       dataIndex: 'to_cost_code',
       key: 'to_cost_code',
-      render: (value: string | undefined) => value || '-',
+      render: (value: string | undefined) => formatCostCodeDisplay(value) || '-',
     }
   ]
 
@@ -547,7 +577,7 @@ const ICProjectMovementPage: React.FC = () => {
       render: (_: unknown, record: MovementLine) =>
         [record.item_name, record.spec_name].filter(Boolean).join(' '),
     },
-    { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code' },
+    { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', render: (v?: string) => formatCostCodeDisplay(v) },
     { title: 'Qty', dataIndex: 'qty', key: 'qty', align: 'right' as const },
     { title: 'Unit', dataIndex: 'unit', key: 'unit' },
     ...destColumns,
@@ -722,9 +752,20 @@ const ICProjectMovementPage: React.FC = () => {
       </Descriptions>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
-        <Button icon={<EyeOutlined />} onClick={handlePreview}>
-          Preview
-        </Button>
+        <Tooltip title={docId ? undefined : 'บันทึกก่อนพิมพ์'}>
+          <span>
+            <PermissionButton
+              menuCode="MENU_IC_PROJECT"
+              action="read"
+              icon={<PrinterOutlined />}
+              loading={printLoading}
+              disabled={!docId}
+              onClick={handlePrint}
+            >
+              พิมพ์
+            </PermissionButton>
+          </span>
+        </Tooltip>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAddItem} disabled={isPosted}>
           เพิ่มรายการ
         </Button>
@@ -789,6 +830,36 @@ const ICProjectMovementPage: React.FC = () => {
           ]}
         />
       </Card>
+
+      <Modal
+        title="บันทึกเอกสารสำเร็จ"
+        open={!!successInfo}
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        footer={[
+          <Button
+            key="print"
+            type="primary"
+            icon={<PrinterOutlined />}
+            loading={printLoading}
+            disabled={!successInfo?.id}
+            onClick={() => printDoc(successInfo?.id ?? null)}
+          >
+            พิมพ์เอกสาร
+          </Button>,
+          <Button key="back" onClick={closeSuccess}>
+            กลับ
+          </Button>,
+        ]}
+      >
+        <div>เลขที่เอกสาร: {successInfo?.docType ? docTypeLabel(successInfo.docType) : ''}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#0f2d5e', marginTop: 4 }}>{successInfo?.docNo}</div>
+      </Modal>
+
+      {printData && (
+        <ICMovementPrint data={printData} onReady={() => runBrowserPrint(() => setPrintData(null))} />
+      )}
 
       {projectCode && (docId || (effectiveJob && effectiveDocType)) && (
         <ICMovementAddLineModal

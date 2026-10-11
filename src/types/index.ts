@@ -9,6 +9,8 @@ export interface User {
   username: string
   fullName: string
   full_name?: string
+  full_name_th?: string | null
+  employee_code?: string | null
   email: string
   roles: string[]
   avatar?: string
@@ -70,6 +72,8 @@ export interface CreatePRLineRequest {
   qty_to_order: number
   cost_subgroup_id: number | null
   deduct_stock: boolean
+  // Optional: the memo_line this PR line takes (Memo-derived lines only)
+  memo_line_id?: number | null
 }
 
 export interface CreatePRRequest {

@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Switch, Button, Space, message } from 'antd'
+import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Button, Space, Alert, Modal, Tag, message } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
+import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
+import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
-import type { FinanceDocType, FinancePaymentListItem, FinancePaymentLogEntry } from '@/types/finance'
+import { FINANCE_DOC_TYPE_LABEL, type FinanceDocType, type FinancePaymentListItem, type FinancePaymentLogEntry } from '@/types/finance'
 import type { POStatus, PODetail, POLine } from '@/types/po'
 import type { WOStatus } from '@/types/workOrder'
 import { JOB_TYPES } from '@/constants/jobTypes'
@@ -57,17 +59,17 @@ const FinancePaymentDetailPage: React.FC = () => {
   const [users, setUsers] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
 
-  const [isReversal, setIsReversal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<FinancePaymentLogEntry | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
   const [form] = Form.useForm()
 
   const fetchDoc = async () => {
     if (!docType || !docId) return
     setDocLoading(true)
     try {
-      const result = await financeService.list(accessToken, { doc_type: docType, page: 1, page_size: 1000 })
-      const found = result.items.find((it) => String(it.id) === String(docId))
-      if (found) setDocItem(found)
+      setDocItem(await financeService.getOne(accessToken, docType, docId))
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลเอกสารไม่สำเร็จ')
     } finally {
@@ -124,8 +126,12 @@ const FinancePaymentDetailPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType, docId])
 
-  const paidAmount = docItem?.paid_amount ?? log.filter((l) => l.reverses_id == null).reduce((s, l) => s + l.amount_paid, 0)
+  // Same as the backend: sum of every row, reversal (negative) rows included.
+  const paidAmount = docItem?.paid_amount ?? log.reduce((s, l) => s + l.amount_paid, 0)
   const remaining = docItem?.remaining_to_pay ?? Math.max((docItem?.net_amount ?? 0) - paidAmount, 0)
+  // Remaining is only trustworthy once the document itself has loaded.
+  const fullyPaid = !!docItem && remaining <= 0
+  const cancelledIds = new Set(log.filter((l) => l.reverses_id != null).map((l) => l.reverses_id as number))
 
   const handleSubmit = async () => {
     try {
@@ -135,15 +141,13 @@ const FinancePaymentDetailPage: React.FC = () => {
       await financeService.recordPayment(accessToken, {
         doc_type: docType,
         doc_id: Number(docId),
-        amount_paid: isReversal ? -Math.abs(values.amount_paid) : values.amount_paid,
+        amount_paid: values.amount_paid,
         paid_date: values.paid_date ? values.paid_date.format('YYYY-MM-DD') : undefined,
         paid_by: values.paid_by,
         remark: values.remark || undefined,
-        reverses_id: isReversal ? values.reverses_id : undefined,
       })
       message.success('บันทึกการจ่ายเงินสำเร็จ')
       form.resetFields()
-      setIsReversal(false)
       fetchLog()
       fetchDoc()
     } catch (err: any) {
@@ -151,6 +155,28 @@ const FinancePaymentDetailPage: React.FC = () => {
       message.error(err?.response?.data?.message || err?.message || 'บันทึกการจ่ายเงินไม่สำเร็จ')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!cancelTarget) return
+    const reason = cancelReason.trim()
+    if (!reason) {
+      message.warning('กรุณาระบุเหตุผลการยกเลิก')
+      return
+    }
+    setCancelling(true)
+    try {
+      await financeService.cancelPayment(accessToken, cancelTarget.id, reason)
+      message.success('ยกเลิกการจ่ายสำเร็จ')
+      setCancelTarget(null)
+      setCancelReason('')
+      fetchLog()
+      fetchDoc()
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || 'ยกเลิกการจ่ายไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -166,8 +192,16 @@ const FinancePaymentDetailPage: React.FC = () => {
       dataIndex: 'amount_paid',
       key: 'amount_paid',
       align: 'right',
-      render: (v: number) => (
-        <span style={v < 0 ? { color: '#dc2626', fontStyle: 'italic', fontWeight: 600 } : { fontWeight: 600 }}>
+      render: (v: number, r: FinancePaymentLogEntry) => (
+        <span
+          style={
+            v < 0
+              ? { color: '#dc2626', fontStyle: 'italic', fontWeight: 600 }
+              : cancelledIds.has(r.id)
+                ? { fontWeight: 600, textDecoration: 'line-through', color: '#9ca3af' }
+                : { fontWeight: 600 }
+          }
+        >
           {v < 0 ? `(${thb(Math.abs(v))})` : thb(v)}
         </span>
       ),
@@ -180,16 +214,30 @@ const FinancePaymentDetailPage: React.FC = () => {
       render: (_: unknown, r: FinancePaymentLogEntry) =>
         r.amount_paid < 0 ? (
           <span style={{ color: '#dc2626', fontStyle: 'italic', fontSize: 12 }}>รายการยกเลิก (Reversal)</span>
+        ) : cancelledIds.has(r.id) ? (
+          <Tag>ยกเลิกแล้ว</Tag>
+        ) : null,
+    },
+    {
+      title: 'ยกเลิก',
+      key: 'cancel',
+      render: (_: unknown, r: FinancePaymentLogEntry) =>
+        r.amount_paid > 0 && !cancelledIds.has(r.id) ? (
+          <PermissionButton
+            menuCode="MENU_FINANCE_PAYMENTS"
+            action="write"
+            danger
+            size="small"
+            onClick={() => {
+              setCancelReason('')
+              setCancelTarget(r)
+            }}
+          >
+            ยกเลิกการจ่าย
+          </PermissionButton>
         ) : null,
     },
   ]
-
-  const reversalOptions = log
-    .filter((l) => l.amount_paid > 0)
-    .map((l) => ({
-      value: l.id,
-      label: `${dayjs(l.paid_date).format('DD/MM/YYYY')} — ${thb(l.amount_paid)} บาท (${l.paid_by_name})`,
-    }))
 
   // Same columns as POApprovalDetailPage.tsx's lineColumns, reused verbatim
   // so the line-item shape/rendering stays consistent between the two pages.
@@ -274,20 +322,27 @@ const FinancePaymentDetailPage: React.FC = () => {
     <div>
       <PageHeader
         title={`รายละเอียดการจ่ายเงิน — ${docItem?.doc_no ?? docId ?? ''}`}
-        subtitle={docType === 'PO' ? 'ใบสั่งซื้อ (PO)' : 'ใบสั่งงาน (WO)'}
+        subtitle={docType ? FINANCE_DOC_TYPE_LABEL[docType] ?? docType : ''}
         breadcrumbs={[{ title: 'Home' }, { title: 'การเงิน' }, { title: 'การจ่ายเงิน' }, { title: docItem?.doc_no ?? '' }]}
       />
 
       <Card style={{ ...cardStyle, marginBottom: 20 }} loading={docLoading}>
         <Descriptions column={4} bordered size="small">
-          <Descriptions.Item label="เลขที่เอกสาร">{docItem?.doc_no ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="โครงการ">{docItem?.project_code ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="เลขที่เอกสาร">
+            {docItem?.doc_no ?? '—'}
+            {docType === 'PC' && docItem && (
+              <a style={{ marginLeft: 8 }} onClick={() => navigate(`/petty-cash/${docItem.id}`)}>เปิดเอกสาร</a>
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label="โครงการ">{docItem ? <FinanceProjectsCell item={docItem} /> : '—'}</Descriptions.Item>
           <Descriptions.Item label="มูลค่าสุทธิ">{docItem ? thb(docItem.net_amount) : '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {docItem
               ? docType === 'PO'
                 ? <POStatusBadges status={docItem.status as POStatus} />
-                : <WOStatusBadge status={docItem.status as WOStatus} />
+                : docType === 'PC'
+                  ? <Tag color="success">{docItem.status === 'APPROVED' ? 'อนุมัติแล้ว' : docItem.status}</Tag>
+                  : <WOStatusBadge status={docItem.status as WOStatus} />
               : '—'}
           </Descriptions.Item>
         </Descriptions>
@@ -344,21 +399,34 @@ const FinancePaymentDetailPage: React.FC = () => {
           loading={logLoading}
           columns={logColumns}
           dataSource={log}
+          onRow={(r) => (cancelledIds.has(r.id) ? { style: { background: '#f5f5f5', color: '#9ca3af' } } : {})}
           pagination={false}
           locale={{ emptyText: 'ยังไม่มีประวัติการจ่ายเงิน' }}
         />
       </Card>
 
+      {fullyPaid ? (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            message="เอกสารนี้จ่ายครบแล้ว หากต้องการจ่ายใหม่ให้ยกเลิกรายการจ่ายก่อน"
+            style={{ marginBottom: 16 }}
+          />
+          <Button onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
+        </>
+      ) : (
       <Card title="บันทึกการจ่ายเงินใหม่" style={cardStyle}>
         <Form form={form} layout="vertical" initialValues={{ paid_date: dayjs() }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <Form.Item
               name="amount_paid"
               label="จำนวนเงิน"
+              extra={docItem ? `คงเหลือ ${thb(remaining)} บาท` : undefined}
               rules={[{ required: true, message: 'กรุณากรอกจำนวนเงิน' }]}
               style={{ width: 220 }}
             >
-              <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} formatter={(v) => `${v}`} />
+              <InputNumber min={0.01} max={docItem ? remaining : undefined} step={0.01} style={{ width: '100%' }} formatter={(v) => `${v}`} />
             </Form.Item>
             <Form.Item name="paid_date" label="วันที่จ่าย" style={{ width: 200 }}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
@@ -382,23 +450,10 @@ const FinancePaymentDetailPage: React.FC = () => {
             </Form.Item>
           </div>
 
-          <Form.Item label="เป็นรายการยกเลิกรายการที่มีอยู่ (Reversal)">
-            <Switch checked={isReversal} onChange={setIsReversal} />
-          </Form.Item>
-
-          {isReversal && (
-            <Form.Item
-              name="reverses_id"
-              label="ยกเลิกรายการ"
-              rules={[{ required: isReversal, message: 'กรุณาเลือกรายการที่ต้องการยกเลิก' }]}
-              style={{ maxWidth: 420 }}
-            >
-              <Select options={reversalOptions} placeholder="เลือกรายการที่จ่ายไว้ก่อนหน้า" />
-            </Form.Item>
-          )}
-
           <Space>
-            <Button
+            <PermissionButton
+              menuCode="MENU_FINANCE_PAYMENTS"
+              action="write"
               type="primary"
               icon={<SaveOutlined />}
               loading={submitting}
@@ -406,11 +461,38 @@ const FinancePaymentDetailPage: React.FC = () => {
               style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}
             >
               บันทึกการจ่ายเงิน
-            </Button>
+            </PermissionButton>
             <Button onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
           </Space>
         </Form>
       </Card>
+      )}
+
+      <Modal
+        title="ยกเลิกการจ่ายเงิน"
+        open={!!cancelTarget}
+        onCancel={() => !cancelling && setCancelTarget(null)}
+        maskClosable={false}
+        footer={[
+          <Button key="close" disabled={cancelling} onClick={() => setCancelTarget(null)}>ปิด</Button>,
+          <Button key="ok" danger type="primary" loading={cancelling} disabled={!cancelReason.trim()} onClick={handleCancel}>
+            ยืนยันยกเลิก
+          </Button>,
+        ]}
+      >
+        <Descriptions column={1} size="small" bordered style={{ marginBottom: 12 }}>
+          <Descriptions.Item label="เลขที่เอกสาร">{docItem?.doc_no ?? cancelTarget?.doc_no ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="จำนวนเงิน">{cancelTarget ? `${thb(cancelTarget.amount_paid)} บาท` : '—'}</Descriptions.Item>
+          <Descriptions.Item label="วันที่จ่าย">{cancelTarget?.paid_date ? dayjs(cancelTarget.paid_date).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
+          <Descriptions.Item label="ผู้จ่ายเงิน">{cancelTarget?.paid_by_name || '—'}</Descriptions.Item>
+        </Descriptions>
+        <Input.TextArea
+          rows={3}
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="ระบุเหตุผลการยกเลิก (จำเป็น)"
+        />
+      </Modal>
     </div>
   )
 }

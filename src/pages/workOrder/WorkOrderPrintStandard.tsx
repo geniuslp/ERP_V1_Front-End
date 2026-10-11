@@ -5,6 +5,7 @@ import logo from '@/components/asset/Genius Logo-01.jpg'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
 import type { WorkOrder, WOContractType } from '@/types/workOrder'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 // Restored to the original numbered-fields (1–10) paper-form-replica layout,
 // matching the physical "หนังสือสั่งจ้าง" document — completely distinct from
@@ -263,7 +264,7 @@ const NumberedFields = ({ data }: { data: WOPrintDataLite }) => (
 // array is a non-issue here: it just renders the "ไม่มีรายการ" fallback text
 // inline, same page, same as any other empty field.
 const CostCodeLine = ({ data }: { data: WOPrintDataLite }) => {
-  const codes = (data.lines ?? []).map(l => l.cost_code).filter(Boolean)
+  const codes = (data.lines ?? []).map(l => formatCostCodeDisplay(l.cost_code)).filter(Boolean)
   return (
     <div className="wo-std-costcode">
       <b>Cost Code :</b> {codes.length > 0 ? codes.join(', ') : 'ไม่มีรายการ'}

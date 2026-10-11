@@ -98,29 +98,19 @@ const SectionPill: React.FC<{ color: string; bg: string; label: string; onClick?
     )
   }
 
-// Shared 2-row field layout — used by InsertRow (add-new entry) and the list
-// page's filter bar so both sections line up. Row 1: 3 equal fields; Row 2:
-// Spec ≈50% + Brand/Unit ≈25% each. Rows wrap on narrow widths.
-const ENTRY_GAP = 10
-const ENTRY_ROW_STYLE: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: ENTRY_GAP, alignItems: 'flex-start' }
-const ENTRY_FIELD_EQUAL: React.CSSProperties = { flex: '1 1 200px', minWidth: 0 }
-const ENTRY_FIELD_SPEC: React.CSSProperties = { flex: '2 1 320px', minWidth: 0 }
-const ENTRY_FIELD_NARROW: React.CSSProperties = { flex: '1 1 160px', minWidth: 0 }
-
 const FL: React.FC<{ text: string; required?: boolean }> = ({ text, required }) => (
   <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>
     {text}{required && <span style={{ color: '#f87171', marginLeft: 2 }}>*</span>}
   </div>
 )
 
-const VSep = () => <div style={{ width: 1, background: '#e5e7eb', alignSelf: 'stretch', margin: '0 2px', flexShrink: 0 }} />
-
 // ── cascade breadcrumb ──────────────────────────────────────────────
 interface BreadcrumbStep { value: string; placeholderLabel: string }
 
 const CascadeBreadcrumb: React.FC<{ steps: BreadcrumbStep[] }> = ({ steps }) => (
   <div style={{
-    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, boxSizing: 'border-box', maxWidth: '100%', minWidth: 0,
+    overflowWrap: 'anywhere',
     background: '#eff6ff', borderRadius: 8, padding: '6px 12px', marginBottom: 10, fontSize: 12,
   }}>
     {steps.map((s, i) => (
@@ -196,10 +186,10 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
   return (
   <div>
   <CascadeBreadcrumb steps={breadcrumbSteps} />
-  <div style={{ display: 'flex', alignItems: 'flex-start', background: '#fff', border: isExample ? '1px dashed #d1d5db' : '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', gap: 0 }}>
+  <div className="mm-entry" style={{ background: '#fff', border: isExample ? '1px dashed #d1d5db' : '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', boxSizing: 'border-box', maxWidth: '100%' }}>
 
     {/* number */}
-    <div style={{ flex: '0 0 46px', paddingTop: 28, marginRight: 12, textAlign: 'center' }}>
+    <div className="mm-entry-badge">
       {isExample ? (
         <>
           <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#e5e7eb', color: '#9ca3af', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
@@ -214,12 +204,12 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
       )}
     </div>
 
-    <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: ENTRY_GAP }}>
+    <div className="mm-entry-fields">
     {/* ROW 1: Group | Subgroup | Material */}
-    <div style={ENTRY_ROW_STYLE}>
+    <div className="mm-entry-row1">
 
     {/* GROUP */}
-    <div style={ENTRY_FIELD_EQUAL}>
+    <div style={{ minWidth: 0 }}>
       <SectionPill color="#2563eb" bg="#dbeafe" label="Group" />
       <FL text="กลุ่ม" required />
       <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่ม"
@@ -239,7 +229,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
         Select↔Input toggle pattern as Spec/Brand below. Reload button
         switches back to <Select> mode, clearing downstream fields too (same
         as picking a new Sub Group from the dropdown already does). */}
-    <div style={ENTRY_FIELD_EQUAL}>
+    <div style={{ minWidth: 0 }}>
       <SectionPill color="#0284c7" bg="#e0f2fe" label="Sub Group" />
       {!row.subGroupIsText ? (
         <>
@@ -260,7 +250,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
             }} />
         </>
       ) : (
-        <Row gutter={6}>
+        <Row gutter={0} className="mm-pair">
           <Col span={9}>
             <FL text="รหัสกลุ่มย่อย" required />
             <Input size="small" placeholder="กรอกรหัสกลุ่มย่อย" value={row.subGroupCode}
@@ -287,7 +277,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
 
     {/* MATERIAL — same Select↔Input toggle as Sub Group above, cascaded off
         row.subGroupId when in <Select> mode. */}
-    <div style={ENTRY_FIELD_EQUAL}>
+    <div style={{ minWidth: 0 }}>
       <SectionPill color="#4f46e5" bg="#e0e7ff" label="Material" />
       {!row.matNameIsText ? (
         <>
@@ -307,7 +297,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
             }} />
         </>
       ) : (
-        <Row gutter={6}>
+        <Row gutter={0} className="mm-pair">
           <Col span={9}>
             <FL text="รหัสวัสดุ" required />
             <Input size="small" placeholder="กรอกรหัสวัสดุ" value={row.materialCode}
@@ -334,14 +324,14 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
     </div>
 
     {/* ROW 2: Spec (widest, ~50%) | Brand | Unit | remove */}
-    <div style={ENTRY_ROW_STYLE}>
+    <div className="mm-entry-row2">
 
     {/* SPEC — locked <Select> (same pattern as Group/Sub Group/Material) until
         the "ดูข้อมูล" pill copies a value in (row.specIsText), at which point
         this row's Spec switches to two free-text <Input>s. The small reload
         button switches it back to <Select> mode (clearing the value) if the
         user wants to pick fresh from the list instead. */}
-    <div style={ENTRY_FIELD_SPEC}>
+    <div className="mm-entry-spec" style={{ minWidth: 0 }}>
       <SectionPill color="#7c3aed" bg="#ede9fe" label="Spec" />
       {!row.specIsText ? (
         <>
@@ -361,12 +351,12 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
         </>
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-start' }}>
-          <div style={{ flex: '0 0 120px' }}>
+          <div style={{ flex: '0 0 120px', minWidth: 0 }}>
             <FL text="รหัสสเปค" />
             <Input size="small" placeholder="กรอกรหัสสเปค" value={row.specCode}
               onChange={(e) => onChange(row.rowKey, { specCode: e.target.value })} />
           </div>
-          <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+          <div style={{ flex: '1 1 120px', minWidth: 0 }}>
             <FL text="รายละเอียดสเปค" />
             <Input size="small" placeholder="รายละเอียดสเปค (ถ้ามี)" value={row.specDescription}
               onChange={(e) => onChange(row.rowKey, { specDescription: e.target.value })} />
@@ -381,7 +371,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
     </div>
 
     {/* BRAND — same Select↔Input toggle pattern as Spec above */}
-    <div style={ENTRY_FIELD_NARROW}>
+    <div style={{ minWidth: 0 }}>
       <SectionPill color="#b45309" bg="#fef3c7" label="Brand" />
       {!row.brandIsText ? (
         <>
@@ -400,7 +390,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
             }} />
         </>
       ) : (
-        <Row gutter={6}>
+        <Row gutter={0} className="mm-pair">
           <Col span={9}>
             <FL text="รหัสยี่ห้อ" />
             <Input size="small" placeholder="กรอกรหัสยี่ห้อ" value={row.brandCode}
@@ -421,9 +411,9 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
     </div>
 
     {/* UNIT */}
-    <div style={ENTRY_FIELD_NARROW}>
+    <div style={{ minWidth: 0 }}>
       <SectionPill color="#059669" bg="#d1fae5" label="Unit" />
-      <Row gutter={6}>
+      <Row gutter={0} className="mm-pair">
         <Col span={10}>
           <FL text="รหัสหน่วย" required />
           <Input size="small" placeholder="UN001" value={row.unitCode}
@@ -438,7 +428,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
     </div>
 
     {/* delete */}
-    <div style={{ flex: '0 0 28px', paddingTop: 30, marginLeft: 'auto' }}>
+    <div className="mm-entry-remove">
       {canRemove && (
         <Button type="text" size="small" danger icon={<CloseOutlined style={{ fontSize: 12 }} />}
           onClick={() => onRemove(row.rowKey)} style={{ padding: '0 4px' }} />
@@ -626,18 +616,19 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
   return (
     <div>
       <CascadeBreadcrumb steps={breadcrumbSteps} />
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', background: '#fffbeb',
+      <div className="mm-lookup" style={{
+        background: '#fffbeb',
         border: '1px dashed #f59e0b', borderRadius: 10, padding: '12px 14px',
-        marginBottom: 12, gap: 0,
+        marginBottom: 12, boxSizing: 'border-box', maxWidth: '100%',
       }}>
         {/* label — visually distinct from InsertRow's numbered-circle column */}
-        <div style={{ flex: '0 0 46px', paddingTop: 22, textAlign: 'center', marginRight: 12 }}>
+        <div className="mm-lookup-badge">
           <SearchOutlined style={{ fontSize: 16, color: '#b45309' }} />
           <div style={{ fontSize: 9, color: '#b45309', marginTop: 3, lineHeight: 1.2, fontWeight: 700 }}>ดูข้อมูล</div>
         </div>
 
-        <div style={{ flex: '0 0 170px', marginRight: 10 }}>
+        <div className="mm-lookup-fields">
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Group" onClick={copyGroup} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="กลุ่ม" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่ม"
@@ -653,9 +644,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             }} />
         </div>
 
-        <VSep />
-
-        <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Sub Group" onClick={copySubGroup} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="กลุ่มย่อย" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกกลุ่มย่อย"
@@ -672,9 +661,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             }} />
         </div>
 
-        <VSep />
-
-        <div style={{ flex: '1 1 0', minWidth: 200, marginLeft: 10, marginRight: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Material" onClick={copyMatName} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="ชื่อวัสดุ" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกชื่อวัสดุ"
@@ -690,9 +677,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             }} />
         </div>
 
-        <VSep />
-
-        <div style={{ flex: '0 0 220px', marginLeft: 10, marginRight: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Spec" onClick={copySpec} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="สเปค" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกสเปค"
@@ -707,9 +692,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             }} />
         </div>
 
-        <VSep />
-
-        <div style={{ flex: '0 0 200px', marginLeft: 10, marginRight: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Brand" onClick={copyBrand} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="ยี่ห้อ" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกยี่ห้อ"
@@ -723,9 +706,7 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             }} />
         </div>
 
-        <VSep />
-
-        <div style={{ flex: '0 0 170px', marginLeft: 10, marginRight: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <SectionPill color="#b45309" bg="#fef3c7" label="Unit" onClick={copyUnit} title="คลิกเพื่อคัดลอกค่านี้ลงทุกแถวด้านล่าง" />
           <FL text="หน่วย" />
           <Select size="small" style={{ width: '100%' }} placeholder="เลือกหน่วย"
@@ -735,7 +716,9 @@ const ReferenceLookupRow: React.FC<ReferenceLookupRowProps> = ({ groupOptions, a
             value={unitId} onChange={(v) => setUnitId(v ?? undefined)} />
         </div>
 
-        <div style={{ flex: '0 0 28px', paddingTop: 30, marginLeft: 6 }}>
+        </div>
+
+        <div className="mm-lookup-close">
           <Button type="text" size="small" icon={<CloseOutlined style={{ fontSize: 12 }} />}
             onClick={reset} style={{ padding: '0 4px' }} />
         </div>
@@ -1498,8 +1481,8 @@ const MaterialPage: React.FC = () => {
             </Space>
           </div>
 
-          <div style={{ padding: '16px 20px', overflowX: 'auto' }}>
-            <div style={{ minWidth: 1100 }}>
+          <div style={{ padding: '16px 20px', boxSizing: 'border-box', minWidth: 0 }}>
+            <div style={{ minWidth: 0 }}>
               {/* Reference/lookup row — browse-only, independent state, never
                   touches pendingRows/InsertRow. See ReferenceLookupRow above. */}
               <Text style={{ fontSize: 11, color: '#b45309', fontWeight: 600, display: 'block', marginBottom: 4 }}>
@@ -1529,16 +1512,16 @@ const MaterialPage: React.FC = () => {
               + เพิ่มแถวใหม่
             </Button>
             <Divider style={{ margin: '16px 0' }} />
-            <Row justify="end">
-              <Space>
+            <div className="mm-actions">
+              <>
                 <Button onClick={() => setPendingRows([newRow(true)])}>ล้างทั้งหมด</Button>
                 <Button type="primary" size="large" icon={<SaveOutlined />} onClick={handleSubmitAll} loading={submitting}
                   disabled={pendingRows.filter(isRealRow).length === 0}
                   style={{ background: 'linear-gradient(135deg,#1d4ed8,#3b82f6)', border: 'none', paddingLeft: 28, paddingRight: 28 }}>
                   บันทึกทั้งหมด ({pendingRows.filter(isRealRow).length} รายการ)
                 </Button>
-              </Space>
-            </Row>
+              </>
+            </div>
           </div>
         </div>
 

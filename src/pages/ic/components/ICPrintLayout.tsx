@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../../components/asset/Genius Logo-01.jpg'
 import { IC_DOC_TYPE_STYLE, type ICDocType } from './ICDocTypeTag'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 // Shared A4 print shell for the IC PO documents (PO Receive / PO Return): CSS, letterhead header,
 // 3-box signature footer, the line-items table (no vertical column lines, header alignment follows
@@ -126,7 +127,7 @@ const FillerTr = () => (
 const ItemRow = ({ row, qtyAlign }: { row: ICPrintItem; qtyAlign: 'center' | 'right' }) => (
   <tr>
     <td style={{ textAlign: 'center' }}>{row.no}</td>
-    <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.costCode || '-'}</td>
+    <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeDisplay(row.costCode) || '-'}</td>
     <td style={{ textAlign: 'left', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {row.desc}
       {row.remark ? <div style={{ fontSize: '10.5pt', color: '#444' }}>หมายเหตุ: {row.remark}</div> : null}
@@ -135,7 +136,7 @@ const ItemRow = ({ row, qtyAlign }: { row: ICPrintItem; qtyAlign: 'center' | 'ri
   </tr>
 )
 
-const ICPrintHeader = (
+export const ICPrintHeader = (
   { pageNum, totalPages, titleTh, titleEn, docType }:
   { pageNum: number; totalPages: number; titleTh: string; titleEn: string; docType: ICDocType },
 ) => {

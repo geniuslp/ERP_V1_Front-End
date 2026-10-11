@@ -6,6 +6,7 @@ import { useAppSelector } from '@/store'
 import ICMovementMaterialPickerModal, {
   type ICMovementMaterialOption,
 } from '@/pages/ic/components/ICMovementMaterialPickerModal'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -288,7 +289,7 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
         <Row gutter={24}>
           <Col xs={24} sm={12}>
             <Form.Item label="CostCode">
-              <Input value={selectedMaterial?.cost_code || ''} disabled />
+              <Input value={formatCostCodeDisplay(selectedMaterial?.cost_code)} disabled />
             </Form.Item>
           </Col>
           <Col xs={24} sm={12}>
@@ -377,9 +378,10 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
                   showSearch
                   disabled={!selectedToProject}
                   filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase()) ||
+                    String((option as { storedCode?: string } | undefined)?.storedCode ?? '').toLowerCase().includes(input.toLowerCase())
                   }
-                  options={costCodes.map((c) => ({ value: c.cost_subgroup_id, label: c.cost_code }))}
+                  options={costCodes.map((c) => ({ value: c.cost_subgroup_id, label: formatCostCodeDisplay(c.cost_code), storedCode: c.cost_code }))}
                   onChange={(value) => setSelectedCostSubgroupId(value)}
                 />
               </Form.Item>
@@ -407,6 +409,7 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
         onClose={() => setPickerOpen(false)}
         onIssueBlocked={onClose}
         onSelect={handleMaterialSelect}
+        size={isIssue ? 'large' : undefined}
       />
     </Modal>
   )

@@ -12,6 +12,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const MENU_CODE = 'stock-items'
 
@@ -270,7 +271,7 @@ const StockItemListPage: React.FC = () => {
       key: 'cost_code',
       width: 130,
       align: 'center' as const,
-      render: (val: string | null | undefined) => val || '-',
+      render: (val: string | null | undefined) => formatCostCodeDisplay(val) || '-',
     },
     {
       title: 'รหัสวัสดุ',

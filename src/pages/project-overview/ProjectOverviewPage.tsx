@@ -10,6 +10,7 @@ import { poApprovalService } from '@/services/poApprovalService'
 import { financeService } from '@/services/financeService'
 import { POApprovalStatusTag } from '@/components/po/POStatusBadge'
 import type { POLineItemGroup, POLine, PODetail } from '@/types/po'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -309,7 +310,7 @@ const ProjectOverviewPage: React.FC = () => {
       dataIndex: 'cost_code',
       key: 'cost_code',
       width: 140,
-      render: (v?: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+      render: (v?: string) => formatCostCodeDisplay(v) || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     { title: 'มูลค่า', dataIndex: 'amount', key: 'amount', width: 100, align: 'right', render: (v: number) => thb(v) },
   ]

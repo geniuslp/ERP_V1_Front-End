@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input } from 'antd'
-import { ArrowLeftOutlined, EditOutlined, StopOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, PrinterOutlined, EditOutlined, StopOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import StatusBadge from '@/components/common/StatusBadge'
@@ -11,6 +11,10 @@ import { usePermissionContext } from '@/contexts/PermissionContext'
 import { useApprovalPermission } from '@/hooks/useApprovalPermission'
 import { pettyCashService } from '@/services/pettyCashService'
 import type { PettyCashRequisition } from '@/types/pettyCash'
+import PettyCashStagedAttachments from '@/components/pettyCash/PettyCashStagedAttachments'
+import { validateAttachmentFile } from '@/components/pettyCash/attachmentUtils'
+import type { PettyCashAttachment } from '@/types/pettyCash'
+import PettyCashPrint, { buildPettyCashPrintData, buildPettyCashPrintLines } from './PettyCashPrint'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -41,12 +45,60 @@ const PettyCashDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [acting, setActing] = useState(false)
   const [rejectModal, setRejectModal] = useState(false)
+  const [printing, setPrinting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
 
   // Assigned-approver check is identity-based (mirrors PO/Memo) — the
   // MENU_PETTY_CASH_APPROVAL.can_write permission check below is ADDITIVE to
   // this, not a substitute: both must pass before Approve/Reject render.
   const { isAssignedApprover, loading: approvalStatusLoading } = useApprovalPermission('PETTY_CASH', pc?.status === 'PENDING_APPROVAL' ? id : undefined)
+
+  // Silent re-fetch (no page-level loading flash) after an attachment upload/delete.
+  const refreshPc = async () => {
+    if (!id) return
+    try {
+      setPc(await pettyCashService.get(accessToken, id))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลใบเบิกเงินสดย่อยไม่สำเร็จ')
+    }
+  }
+
+  const [attUploading, setAttUploading] = useState(false)
+
+  // Detail page: files are uploaded immediately (DRAFT documents only), then the list is re-fetched.
+  const handleAttachUpload = async (file: File) => {
+    const invalid = validateAttachmentFile(file)
+    if (invalid) {
+      message.error(invalid)
+      return
+    }
+    if ((pc?.attachments ?? []).some((a) => a.file_name === file.name && a.file_size === file.size)) {
+      message.error(`ไฟล์ "${file.name}" ถูกเลือกไว้แล้ว`)
+      return
+    }
+    if (!id) return
+    setAttUploading(true)
+    try {
+      await pettyCashService.uploadAttachment(accessToken, id, file)
+      message.success('แนบไฟล์เรียบร้อย')
+      await refreshPc()
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'แนบไฟล์ไม่สำเร็จ')
+    } finally {
+      setAttUploading(false)
+    }
+  }
+
+  const handleAttachDelete = async (att: PettyCashAttachment) => {
+    if (!id) return
+    try {
+      await pettyCashService.deleteAttachment(accessToken, id, att.id)
+      message.success('ลบไฟล์แนบเรียบร้อย')
+      await refreshPc()
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'ลบไฟล์แนบไม่สำเร็จ')
+    }
+  }
 
   const fetchPc = async () => {
     if (!id) return
@@ -192,12 +244,24 @@ const PettyCashDetailPage: React.FC = () => {
         extra={
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/petty-cash')}>กลับ</Button>
+            <Button icon={<PrinterOutlined />} disabled={!pc} onClick={() => setPrinting(true)}>พิมพ์</Button>
             {canEditDoc && (
               <Button icon={<EditOutlined />} onClick={() => navigate(`/petty-cash/${pc!.id}/edit`)}>แก้ไข</Button>
             )}
           </Space>
         }
       />
+
+      {printing && pc && (
+        <PettyCashPrint
+          data={buildPettyCashPrintData(pc)}
+          lines={buildPettyCashPrintLines(pc.lines ?? [])}
+          onReady={() => {
+            window.print()
+            setPrinting(false)
+          }}
+        />
+      )}
 
       {pc?.status === 'DRAFT' && <Alert type="info" showIcon message="ร่าง — ยังไม่ได้ส่งขออนุมัติ" style={{ marginBottom: 16, borderRadius: 8 }} />}
       {pc?.status === 'PENDING_APPROVAL' && <Alert type="warning" showIcon message="รอการอนุมัติ" style={{ marginBottom: 16, borderRadius: 8 }} />}
@@ -216,6 +280,16 @@ const PettyCashDetailPage: React.FC = () => {
           <Descriptions.Item label="ผู้ขอเบิก">{pc?.requested_by_name || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{pc?.approver_name || '—'}</Descriptions.Item>
           <Descriptions.Item label="วัตถุประสงค์" span={2}>{pc?.purpose || '—'}</Descriptions.Item>
+          <Descriptions.Item label="แนบไฟล์" span={2}>
+            <PettyCashStagedAttachments
+              saved={pc?.attachments ?? []}
+              canStage={pc?.status === 'DRAFT' && !attUploading}
+              canDeleteSaved={pc?.status === 'DRAFT'}
+              busy={attUploading}
+              onStage={handleAttachUpload}
+              onDeleteSaved={handleAttachDelete}
+            />
+          </Descriptions.Item>
           <Descriptions.Item label="หมายเหตุ" span={2}>{pc?.remarks || '—'}</Descriptions.Item>
         </Descriptions>
       </Card>

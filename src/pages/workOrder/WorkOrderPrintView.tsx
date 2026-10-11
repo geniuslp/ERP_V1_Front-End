@@ -10,6 +10,7 @@ import type { WorkOrder } from '@/types/workOrder'
 // file is just the template-picker dispatch + the shared data mapper.
 import WorkOrderPrintStandard from './WorkOrderPrintStandard'
 import WorkOrderPrintPOStyle, { type WOPOData, type WOPOItem } from './WorkOrderPrintPOStyle'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 export type WOPrintTemplate = 'WO_STANDARD' | 'PO_HEADER'
 
@@ -29,7 +30,7 @@ function mapWorkOrderToPOStyle(data: WOPrintData): WOPOData {
   const useDisc = Boolean(data.use_discount)
   const items: WOPOItem[] = (data.lines ?? []).map((l) => ({
     no: String(l.line_no ?? ''),
-    code: l.cost_code,
+    code: formatCostCodeDisplay(l.cost_code),
     desc: l.description ?? '',
     qty: l.qty,
     unit: '', // no per-line unit field on WorkOrderLine — left blank, not guessed

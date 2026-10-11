@@ -11,6 +11,7 @@ import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
 import type { WorkOrder, WorkOrderLine } from '@/types/workOrder'
 import { calcDisc } from '@/utils/poCalc'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const MENU_CODE = 'MENU_WO_APPROVAL'
 
@@ -206,7 +207,7 @@ const WorkOrderDetailPage: React.FC = () => {
           locale={{ emptyText: '—' }}
           columns={[
             { title: 'ลำดับ', dataIndex: 'line_no', width: 70 },
-            { title: 'Cost Code', dataIndex: 'cost_code', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
+            { title: 'Cost Code', dataIndex: 'cost_code', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{formatCostCodeDisplay(v)}</span> },
             { title: 'รายละเอียด', dataIndex: 'description', render: (v?: string) => v || '—' },
             { title: 'จำนวน', dataIndex: 'qty', width: 90, align: 'center' as const },
             { title: 'ราคา/หน่วย', dataIndex: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => money(v) },

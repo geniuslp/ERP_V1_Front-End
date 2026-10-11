@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Input, Table, Button, Descriptions, Empty, Spin, Space, Tag, Tooltip, message } from 'antd'
+import { Input, Table, Button, Descriptions, Empty, Spin, Space, Tag, Tooltip, Checkbox, message } from 'antd'
 import {
   CloseOutlined, ArrowLeftOutlined, CheckOutlined, SearchOutlined,
   ExpandOutlined, ShrinkOutlined,
@@ -10,6 +10,7 @@ import MemoStatusBadge from '@/pages/memo/components/MemoStatusBadge'
 import { useAppSelector } from '@/store'
 import type { Memo } from '@/types'
 import { resolveFileUrl } from '@/utils/fileUrl'
+import type { MemoLineInput } from '@/components/common/PRItemsTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -20,11 +21,29 @@ const SIDEBAR_WIDTH: Record<SidebarSize, number> = {
   expanded: 480,
 }
 
+// One row of GET /memo/:id/available-lines
+interface MemoLineRow extends MemoLineInput {
+  remark?: string | null
+  taken: boolean
+  taken_by_pr_id?: number | null
+  taken_by_pr_no?: string | null
+}
+
 interface MemoSidebarPanelProps {
   open: boolean
   onClose: () => void
-  onSelect: (memo: Memo) => void
+  // "Apply selection": lines to add (newly ticked) and memo_line ids to remove
+  // (Memo-derived PR lines that were unticked). The caller applies both.
+  onApply: (memo: Memo, addLines: MemoLineInput[], removeIds: number[]) => void
   selectedMemoId?: string
+  // Edit mode: the PR's own Memo cannot change — open straight into its detail.
+  lockedMemoId?: number | null
+  // Edit mode: the saved PR's id, so its own lines are not reported as taken.
+  excludePrId?: number | null
+  // memo_line ids currently on the PR form (saved or not yet saved).
+  formMemoLineIds: number[]
+  // Bumped by the caller (after a 409 or a successful save) to refetch the Memo list and the open detail's lines.
+  refreshKey?: number
 }
 
 const sectionTitleStyle: React.CSSProperties = {
@@ -73,7 +92,9 @@ const mapMemo = (raw: any): Memo => ({
   createdAt:   raw.created_at        ?? raw.createdAt     ?? '',
 })
 
-const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSelect, selectedMemoId }) => {
+const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({
+  open, onClose, onApply, selectedMemoId, lockedMemoId, excludePrId, formMemoLineIds, refreshKey = 0,
+}) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [size, setSize] = useState<SidebarSize>('compact')
@@ -82,6 +103,13 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
   const [loading, setLoading] = useState(false)
   const [detailMemo, setDetailMemo] = useState<Memo | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [lines, setLines] = useState<MemoLineRow[]>([])
+  const [linesLoading, setLinesLoading] = useState(false)
+  // The panel is a live selector; nothing changes on the PR until "Apply selection".
+  // Selection is kept as a diff against the PR form: `ticked` = lines ticked that are
+  // not on the form yet (to add), `unticked` = form lines the user unticked (to remove).
+  const [ticked, setTicked] = useState<number[]>([])
+  const [unticked, setUnticked] = useState<number[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -111,11 +139,31 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
       }
     }
     fetchMemos()
-  }, [open, search])
+  }, [open, search, refreshKey])
 
-  const handleCardClick = async (memo: Memo) => {
+  const fetchLines = async (memoId: number | string) => {
+    setLinesLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/memo/${memoId}/available-lines`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: excludePrId ? { exclude_pr_id: excludePrId } : undefined,
+      })
+      const raw = res.data?.data ?? res.data
+      setLines(Array.isArray(raw) ? raw : [])
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรายการ Memo ไม่สำเร็จ')
+      setLines([])
+    } finally {
+      setLinesLoading(false)
+    }
+  }
+
+  const openDetail = async (memo: Memo) => {
     setView('detail')
+    setTicked([])
+    setUnticked([])
     setDetailLoading(true)
+    fetchLines(memo.id)
     try {
       const res = await axios.get(`${BASE_URL}/memo/${memo.id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -130,9 +178,87 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
     }
   }
 
+  const handleCardClick = (memo: Memo) => openDetail(memo)
+
+  // Every time the panel opens: reset ticks and refetch. Edit mode jumps straight
+  // to the PR's own Memo (its list entry may be gone once all its lines are used).
+  useEffect(() => {
+    if (!open) return
+    setTicked([])
+    setUnticked([])
+    if (lockedMemoId) openDetail({ id: String(lockedMemoId) } as Memo)
+    else setView('list')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lockedMemoId])
+
+  // Caller-requested refresh (e.g. after a 409 "line already taken" on save)
+  useEffect(() => {
+    if (open && view === 'detail' && detailMemo) {
+      setTicked([])
+      setUnticked([])
+      fetchLines(detailMemo.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
+
+  const formIds = new Set(formMemoLineIds)
+  // 'taken'   = used by ANOTHER saved PR (backend taken flag; counts as Used)
+  // 'selected'= ticked: on the PR form (saved or not) and not unticked, or newly ticked
+  // 'available'= empty, tickable
+  type RowState = 'taken' | 'selected' | 'available'
+  const stateOf = (l: MemoLineRow): RowState => {
+    if (l.taken) return 'taken'
+    if (formIds.has(l.id) ? !unticked.includes(l.id) : ticked.includes(l.id)) return 'selected'
+    return 'available'
+  }
+  const selectedCount = lines.filter((l) => stateOf(l) === 'selected').length
+  const usedCount = lines.filter((l) => l.taken).length
+  // Select-all only touches rows that are neither taken by another PR nor already on the form.
+  const selectAllIds = lines.filter((l) => !l.taken && !formIds.has(l.id)).map((l) => l.id)
+  const allTicked = selectAllIds.length > 0 && selectAllIds.every((id) => ticked.includes(id))
+
+  const addLines = lines.filter((l) => !l.taken && !formIds.has(l.id) && ticked.includes(l.id))
+  const removeIds = lines.filter((l) => !l.taken && formIds.has(l.id) && unticked.includes(l.id)).map((l) => l.id)
+
+  const toggleLine = (l: MemoLineRow, checked: boolean) => {
+    if (l.taken) return
+    if (formIds.has(l.id)) {
+      setUnticked((prev) => (checked ? prev.filter((id) => id !== l.id) : [...prev, l.id]))
+    } else {
+      setTicked((prev) => (checked ? [...prev, l.id] : prev.filter((id) => id !== l.id)))
+    }
+  }
+
+  const handleApply = () => {
+    if (!detailMemo || (addLines.length === 0 && removeIds.length === 0)) return
+    onApply(detailMemo, addLines, removeIds)
+    setTicked([])
+    setUnticked([])
+    setView('list')
+    onClose()
+  }
+
   const columns = [
-    { title: '#', key: 'no', width: 36, align: 'center' as const, render: (_: any, __: any, idx: number) => idx + 1 },
-    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    { title: '#', dataIndex: 'line_no', key: 'no', width: 32, align: 'center' as const },
+    {
+      title: 'Description',
+      dataIndex: 'description',
+      key: 'description',
+      render: (v: string, r: MemoLineRow) => {
+        const st = stateOf(r)
+        return (
+          <div style={{ color: st === 'taken' ? '#9ca3af' : undefined }}>
+            <div>{v}</div>
+            {st === 'taken' && (
+              <Tag color="default" style={{ margin: '2px 0 0', fontSize: 11, color: '#374151' }}>
+                In {r.taken_by_pr_no ?? `PR #${r.taken_by_pr_id}`}
+              </Tag>
+            )}
+            {st === 'selected' && <Tag color="blue" style={{ margin: '2px 0 0', fontSize: 11 }}>Selected</Tag>}
+          </div>
+        )
+      },
+    },
     {
       title: 'Qty',
       dataIndex: 'quantity',
@@ -211,6 +337,11 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
                   <div style={{ fontSize: 11, color: '#60a5fa' }}>
                     {memo.requestedBy} · {memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
                   </div>
+                  {(memo as any).total_lines != null && (
+                    <div style={{ fontSize: 11, color: '#16a34a', marginTop: 2 }}>
+                      remaining {(memo as any).remaining_lines ?? 0} of {(memo as any).total_lines} items
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -232,7 +363,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 8px' }}>
             <Space size={8}>
-              <Button size="small" type="text" icon={<ArrowLeftOutlined />} onClick={() => setView('list')} />
+              {!lockedMemoId && <Button size="small" type="text" icon={<ArrowLeftOutlined />} onClick={() => setView('list')} />}
               <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 13 }}>{detailMemo?.memoNo}</span>
               {detailMemo && <MemoStatusBadge status={detailMemo.status} />}
             </Space>
@@ -299,14 +430,36 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
             <div style={{ borderTop: '0.5px solid #dbeafe', margin: '4px 0 12px' }} />
             <div style={{ ...sectionTitleStyle, marginBottom: 8 }}>Line Items</div>
 
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+              Selected {selectedCount} of {lines.length} · Used {usedCount}
+            </div>
             <Table
-              dataSource={(detailMemo as any)?.lines ?? (detailMemo as any)?.items ?? []}
+              dataSource={lines}
               rowKey="id"
               size="small"
               pagination={false}
-              loading={detailLoading}
+              loading={detailLoading || linesLoading}
               scroll={{ x: 400 }}
               columns={columns}
+              rowSelection={{
+                selectedRowKeys: lines.filter((l) => stateOf(l) !== 'available').map((l) => l.id),
+                columnWidth: 36,
+                // Header select-all touches only available rows (not taken, not already on the form).
+                columnTitle: (
+                  <Checkbox
+                    checked={allTicked}
+                    indeterminate={selectAllIds.some((id) => ticked.includes(id)) && !allTicked}
+                    disabled={selectAllIds.length === 0}
+                    onChange={(e) => setTicked((prev) => (
+                      e.target.checked
+                        ? Array.from(new Set([...prev, ...selectAllIds]))
+                        : prev.filter((id) => !selectAllIds.includes(id))
+                    ))}
+                  />
+                ),
+                getCheckboxProps: (l: MemoLineRow) => ({ disabled: l.taken }),
+                onSelect: (l: MemoLineRow, selected: boolean) => toggleLine(l, selected),
+              }}
             />
           </div>
 
@@ -315,20 +468,15 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({ open, onClose, onSe
               type="primary"
               icon={<CheckOutlined />}
               block
-              disabled={!detailMemo}
-              onClick={() => {
-                if (detailMemo) {
-                  onSelect(detailMemo)
-                  setView('list')
-                }
-              }}
+              disabled={!detailMemo || linesLoading || (addLines.length === 0 && removeIds.length === 0)}
+              onClick={handleApply}
               style={{
                 background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                 border: 'none',
                 boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
               }}
             >
-              Use this Memo
+              Apply selection (Add {addLines.length} · Remove {removeIds.length})
             </Button>
           </div>
         </div>

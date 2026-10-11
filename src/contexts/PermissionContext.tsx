@@ -86,6 +86,10 @@ export const PermissionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ⬇️ แทรก debug ตรงนี้ ก่อน setMenus/setEffectivePermissions ⬇️
   const debugRow = eff.find((e) => e.menu_code === 'MENU_MEMO_CREATE')
   console.log('[perm-debug] MENU_MEMO_CREATE row:', debugRow)
+  // Temporary: cost-code Head switch not appearing — shows the menu row and
+  // the effective-permission row the can() check actually reads.
+  const ccMenu = mn.find((m) => m.menu_code === 'MENU_MASTER_COST_CODE')
+  console.log('[perm-debug] MENU_MASTER_COST_CODE menu:', ccMenu, 'effective:', eff.find((e) => e.menu_id === ccMenu?.id))
 
 
   setMenus(mn)

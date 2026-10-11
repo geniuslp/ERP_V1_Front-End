@@ -9,6 +9,9 @@ interface EditApprovedButtonProps {
   poNo: string
   menuCode?: string
   size?: 'small' | 'middle' | 'large'
+  // Icon + "แก้ไข" text (detail-page header). Default stays icon-only with a
+  // Tooltip, which the compact list-page action columns rely on.
+  showLabel?: boolean
 }
 
 // Edit-approved requires a mandatory reason (per the original edit-approved
@@ -16,7 +19,7 @@ interface EditApprovedButtonProps {
 // reason travels via router state and POCreatePage sends it to
 // PUT /po/:id/edit-approved instead of the normal PUT /po/:id on save.
 const EditApprovedButton: React.FC<EditApprovedButtonProps> = ({
-  poId, poNo, menuCode = 'MENU_PO_STATUS', size,
+  poId, poNo, menuCode = 'MENU_PO_STATUS', size, showLabel = false,
 }) => {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -35,15 +38,27 @@ const EditApprovedButton: React.FC<EditApprovedButtonProps> = ({
 
   return (
     <>
-      <Tooltip title="แก้ไข">
+      {showLabel ? (
         <PermissionButton
           menuCode={menuCode}
           action="edit"
           icon={<EditOutlined />}
           size={size}
           onClick={() => setOpen(true)}
-        />
-      </Tooltip>
+        >
+          แก้ไข
+        </PermissionButton>
+      ) : (
+        <Tooltip title="แก้ไข">
+          <PermissionButton
+            menuCode={menuCode}
+            action="edit"
+            icon={<EditOutlined />}
+            size={size}
+            onClick={() => setOpen(true)}
+          />
+        </Tooltip>
+      )}
       <Modal
         open={open}
         title="แก้ไขใบสั่งซื้อที่อนุมัติแล้ว"

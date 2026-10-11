@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, Space, Button, DatePicker, Row, Col, message, Tooltip } from 'antd'
-import { SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined } from '@ant-design/icons'
+import { SearchOutlined, ReloadOutlined, EyeOutlined, EditOutlined, WarningOutlined } from '@ant-design/icons'
+import { PO_LINKED_EDIT_BLOCKED_MESSAGE } from '@/constants/prEdit'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -293,17 +294,22 @@ const PRStatusPage: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => navigate(`/pr/${record.id}`)}
           />
-          {record.status === 'DRAFT' && !record.hasActivePoLink && (
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="edit"
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => navigate(`/pr/${record.id}/edit`)}
-            >
-              แก้ไข
-            </PermissionButton>
+          {record.status !== 'CANCELLED' && (
+            <Tooltip title={record.hasActivePoLink ? PO_LINKED_EDIT_BLOCKED_MESSAGE : undefined}>
+              <span style={{ display: 'inline-block' }}>
+                <PermissionButton
+                  menuCode={MENU_CODE}
+                  action="edit"
+                  type="link"
+                  size="small"
+                  disabled={record.hasActivePoLink}
+                  icon={record.hasActivePoLink ? <WarningOutlined style={{ color: '#d97706' }} /> : <EditOutlined />}
+                  onClick={() => navigate(`/pr/${record.id}/edit`)}
+                >
+                  แก้ไข
+                </PermissionButton>
+              </span>
+            </Tooltip>
           )}
         </Space>
       ),

@@ -13,6 +13,7 @@ import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 import type { PROrderType } from '@/types'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import { formatItemLabel } from '@/utils/itemLabel'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const { Text } = Typography
 
@@ -359,7 +360,7 @@ const PRDetailPage: React.FC = () => {
     {
       title: 'Cost Code', key: 'costCode', width: 180,
       render: (_: unknown, r: PRLineItem) => r.costCode
-        ? <Text code>{r.costCode}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
+        ? <Text code>{formatCostCodeDisplay(r.costCode)}{r.costSubgroupName ? ` — ${r.costSubgroupName}` : ''}</Text>
         : <Text type="secondary">-</Text>,
     },
     { title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130 },

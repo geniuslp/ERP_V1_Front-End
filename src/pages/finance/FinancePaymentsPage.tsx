@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, Button, Space, Tabs, Tag, Tooltip, message } from 'antd'
-import { SearchOutlined, ReloadOutlined, DollarOutlined } from '@ant-design/icons'
+import { SearchOutlined, ReloadOutlined, DollarOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
@@ -8,6 +8,7 @@ import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
+import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
@@ -50,6 +51,12 @@ const WO_STATUS_OPTIONS = [
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
+]
+
+// Petty cash stays APPROVED; payment progress is derived from paid/remaining, not status.
+const PC_STATUS_OPTIONS = [
+  { value: '', label: 'ทุกสถานะ' },
+  { value: 'APPROVED', label: 'อนุมัติแล้ว' },
 ]
 
 const DOC_NO_COL_DEFAULT_WIDTH = 150
@@ -128,7 +135,7 @@ const FinancePaymentsPage: React.FC = () => {
   const handleResize =
     (set: (w: number) => void) => (_e: React.SyntheticEvent, data: ResizeCallbackData) => set(data.size.width)
 
-  const statusOptions = docType === 'PO' ? PO_STATUS_OPTIONS : WO_STATUS_OPTIONS
+  const statusOptions = docType === 'PO' ? PO_STATUS_OPTIONS : docType === 'PC' ? PC_STATUS_OPTIONS : WO_STATUS_OPTIONS
 
   const fetchList = async (nextPage = page, type = docType) => {
     setLoading(true)
@@ -167,18 +174,28 @@ const FinancePaymentsPage: React.FC = () => {
 
   const columns: ColumnsType<FinancePaymentListItem> = [
     {
-      title: docType === 'PO' ? 'เลขที่ PO' : 'เลขที่ WO',
+      title: docType === 'PO' ? 'เลขที่ PO' : docType === 'PC' ? 'เลขที่เงินสดย่อย' : 'เลขที่ WO',
       dataIndex: 'doc_no',
       key: 'doc_no',
       width: docNoColWidth,
       onHeaderCell: () => ({ width: docNoColWidth, onResize: handleResize(setDocNoColWidth) }),
       render: (v: string, r) => (
+      <>
         <a
           style={{ color: '#2563eb', fontWeight: 600 }}
           onClick={() => navigate(`/finance/payments/${r.doc_type}/${r.id}`, { state: { docItem: r } })}
         >
           {v}
         </a>
+        {r.doc_type === 'PC' && (
+          <Tooltip title="เปิดเอกสารเงินสดย่อย">
+            <FileTextOutlined
+              style={{ marginLeft: 8, color: '#64748b', cursor: 'pointer' }}
+              onClick={() => navigate(`/petty-cash/${r.id}`)}
+            />
+          </Tooltip>
+        )}
+      </>
       ),
     },
     {
@@ -188,18 +205,7 @@ const FinancePaymentsPage: React.FC = () => {
       width: projectColWidth,
       ellipsis: true,
       onHeaderCell: () => ({ width: projectColWidth, onResize: handleResize(setProjectColWidth) }),
-      render: (_: unknown, r) => {
-        if (!r.project_code) return '—'
-        const name = (r.project_name ?? '').replace(/\s+/g, ' ').trim()
-        const text = name ? `${r.project_code} ${name}` : r.project_code
-        return (
-          <Tooltip title={text}>
-            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {text}
-            </span>
-          </Tooltip>
-        )
-      },
+      render: (_: unknown, r) => <FinanceProjectsCell item={r} />,
     },
     {
       title: 'มูลค่าสุทธิ',
@@ -217,7 +223,13 @@ const FinancePaymentsPage: React.FC = () => {
       width: statusColWidth,
       onHeaderCell: () => ({ width: statusColWidth, onResize: handleResize(setStatusColWidth) }),
       render: (s: string) =>
-        docType === 'PO' ? <POStatusBadges status={s as POStatus} /> : <WOStatusBadge status={s as WOStatus} />,
+        docType === 'PO' ? (
+          <POStatusBadges status={s as POStatus} />
+        ) : docType === 'PC' ? (
+          <Tag color="success">{s === 'APPROVED' ? 'อนุมัติแล้ว' : s}</Tag>
+        ) : (
+          <WOStatusBadge status={s as WOStatus} />
+        ),
     },
     {
       title: 'สถานะรับของ',
@@ -274,7 +286,7 @@ const FinancePaymentsPage: React.FC = () => {
     <div>
       <PageHeader
         title="การเงิน — ติดตามการจ่ายเงิน"
-        subtitle="ติดตามสถานะการจ่ายเงินของ PO และ WO"
+        subtitle="ติดตามสถานะการจ่ายเงินของ PO, WO และเงินสดย่อย"
         breadcrumbs={[{ title: 'Home' }, { title: 'การเงิน' }, { title: 'การจ่ายเงิน' }]}
       />
 
@@ -285,6 +297,7 @@ const FinancePaymentsPage: React.FC = () => {
           items={[
             { key: 'PO', label: 'ใบสั่งซื้อ (PO)' },
             { key: 'WO', label: 'ใบสั่งงาน (WO)' },
+            { key: 'PC', label: 'เงินสดย่อย' },
           ]}
         />
 

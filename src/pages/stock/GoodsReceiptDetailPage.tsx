@@ -8,6 +8,7 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import type { GRNPoDetail, GRNPoLine, GRNCreateLine, GRNCreateResult, GRNScorePayload } from '@/types'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const MENU_CODE = 'MENU_STOCK_RECEIVING'
 
@@ -193,7 +194,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
       title: 'รหัสวัสดุต้นทุน',
       dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (val: string | null | undefined) => val || '-',
+      render: (val: string | null | undefined) => formatCostCodeDisplay(val) || '-',
     },
     {
       title: 'รายการ',

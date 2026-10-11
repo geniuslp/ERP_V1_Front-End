@@ -1,4 +1,15 @@
-export type FinanceDocType = 'PO' | 'WO'
+export type FinanceDocType = 'PO' | 'WO' | 'PC'
+
+export const FINANCE_DOC_TYPE_LABEL: Record<FinanceDocType, string> = {
+  PO: 'ใบสั่งซื้อ (PO)',
+  WO: 'ใบสั่งงาน (WO)',
+  PC: 'เงินสดย่อย',
+}
+
+export interface FinanceProject {
+  project_code: string
+  project_name?: string | null
+}
 
 export type ReceivingStatus = 'FULLY_RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED'
 
@@ -12,6 +23,9 @@ export interface FinancePaymentListItem {
   status: string
   paid_amount: number
   remaining_to_pay: number
+  // Distinct projects of the document: 1 for PO/WO, possibly several for petty cash (PC).
+  project_count?: number
+  projects?: FinanceProject[]
   // Live-computed from GRN vs PO lines — null for WO rows (doc_type === 'WO').
   receivingStatus: ReceivingStatus | null
 }
@@ -55,5 +69,4 @@ export interface RecordPaymentPayload {
   paid_date?: string
   paid_by: number
   remark?: string
-  reverses_id?: number
 }

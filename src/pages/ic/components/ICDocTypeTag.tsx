@@ -1,12 +1,12 @@
 import React from 'react'
 import { Tag } from 'antd'
 
-export type ICDocType = 'RECEIVE' | 'RETURN'
+export type ICDocType = 'RECEIVE' | 'RETURN' | 'ISSUE' | 'TRANSFER'
 
 // Prefer the API's doc_type; otherwise derive from the stock transaction's ref_doc_type.
 // Never derive from the document-number prefix.
 export const resolveICDocType = (docType?: string | null, refDocType?: string | null): ICDocType | null => {
-  if (docType === 'RECEIVE' || docType === 'RETURN') return docType
+  if (docType === 'RECEIVE' || docType === 'RETURN' || docType === 'ISSUE' || docType === 'TRANSFER') return docType
   if (refDocType === 'PO') return 'RECEIVE'
   if (refDocType === 'PO_RETURN') return 'RETURN'
   return null
@@ -15,6 +15,8 @@ export const resolveICDocType = (docType?: string | null, refDocType?: string | 
 export const IC_DOC_TYPE_STYLE: Record<ICDocType, { label: string; color: string; bg: string; border: string }> = {
   RECEIVE: { label: 'PO Receive', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
   RETURN: { label: 'PO Return', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+  ISSUE: { label: 'Issue', color: '#0e7490', bg: '#ecfeff', border: '#a5f3fc' },
+  TRANSFER: { label: 'Transfer', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
 }
 
 interface Props {

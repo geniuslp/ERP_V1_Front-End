@@ -3,6 +3,7 @@ import { Modal, Table, Input, Select, Button, Typography, message } from 'antd'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -174,7 +175,7 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
       dataIndex: 'costCode',
       key: 'costCode',
       width: 120,
-      render: (v: string) => <Text code style={{ fontSize: 13 }}>{v}</Text>,
+      render: (v: string) => <Text code style={{ fontSize: 13 }}>{formatCostCodeDisplay(v)}</Text>,
     },
     {
       title: '',

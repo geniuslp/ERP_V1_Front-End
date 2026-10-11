@@ -104,7 +104,9 @@ const POApprovalListPage: React.FC = () => {
       width: 160,
       align: 'right',
       render: (_: unknown, r: POListItem) =>
-        `${r.net_amount.toLocaleString('th-TH')} ${r.currency}`,
+        r.net_amount == null
+          ? '—'
+          : `${Number(r.net_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${r.currency ?? ''}`.trim(),
     },
     {
       title: 'สถานะ',
@@ -183,6 +185,7 @@ const POApprovalListPage: React.FC = () => {
 
       <Table
         rowKey="po_id"
+        className="po-approval-table"
         loading={loading}
         dataSource={filtered}
         columns={columns}

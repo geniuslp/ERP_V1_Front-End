@@ -28,6 +28,7 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import { sumLineAmtDiscounts } from '@/utils/poCalc'
 import { formatItemLabel } from '@/utils/itemLabel'
 import { PaperClipOutlined } from '@ant-design/icons'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 
 const MENU_CODE = 'MENU_PO_STATUS'
@@ -250,7 +251,7 @@ const POApprovalDetailPage: React.FC = () => {
       title: 'Cost Code',
       key: 'cost_code',
       render: (_: unknown, r: POLine) =>
-        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+        r.cost_code ? <span>{formatCostCodeDisplay(r.cost_code)}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
     },
     {
       title: 'รหัสวัสดุ',
@@ -365,7 +366,7 @@ const POApprovalDetailPage: React.FC = () => {
             </PermissionButton>
           )}
           {canEditApprovedNow && (
-            <EditApprovedButton poId={po.po_id} poNo={po.po_no} menuCode={MENU_CODE} />
+            <EditApprovedButton poId={po.po_id} poNo={po.po_no} menuCode={MENU_CODE} showLabel />
           )}
           {canAct && (
             <>

@@ -1,14 +1,20 @@
 import PanelTabs from '@/components/common/PanelTabs'
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
-import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography } from 'antd'
+import { Modal, Table, Button, Space, Empty, Input, Form, Popconfirm, message, Tag, Typography, Switch } from 'antd'
 import { PlusOutlined, EditOutlined, StopOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
+import type { FormInstance } from 'antd'
 import type { JobTypeOption } from '@/constants/jobTypes'
+import { usePermissionContext } from '@/contexts/PermissionContext'
+import { clearPettyCashCostCodeCache } from '@/components/pettyCash/PettyCashLineModal'
+import PermissionGate from '@/components/permission/PermissionGate'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
 const { Text } = Typography
+
+const MENU_CODE = 'MENU_MASTER_COST_CODE'
 
 interface GroupRow {
   id: number
@@ -24,6 +30,8 @@ interface SubgroupRow {
   subgroup_code: string
   subgroup_name: string
   is_active: boolean
+  // Head rows are hidden from PR/PO pickers; only returned here via include_head=true.
+  is_head?: boolean
 }
 
 interface Props {
@@ -32,8 +40,25 @@ interface Props {
   jobType: JobTypeOption | null
 }
 
+// "เป็น Head" switch for the add/edit subgroup forms. Hidden unless the user
+// has edit permission on the page's menu code.
+const HeadSwitchField: React.FC<{ form: FormInstance }> = ({ form }) => {
+  const isHead = Form.useWatch('is_head', form)
+  return (
+    <PermissionGate menuCode={MENU_CODE} action="edit">
+      <Form.Item name="is_head" valuePropName="checked" label="เป็น Head" extra={
+        isHead ? 'Head จะไม่ถูกแสดงให้เลือกใน PR/PO' : 'รายการนี้เลือกใช้ใน PR/PO ได้'
+      }>
+        <Switch />
+      </Form.Item>
+    </PermissionGate>
+  )
+}
+
 const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const { can } = usePermissionContext()
+  const canEditHead = can(MENU_CODE, 'edit')
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
   const [loading, setLoading] = useState(false)
@@ -96,11 +121,20 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
     setSubgroupsLoading((p) => ({ ...p, [groupId]: true }))
     try {
       const res = await axios.get(`${BASE_URL}/master/cost-code/subgroups`, {
-        params: { group_id: groupId },
+        // include_head: this admin page only — pickers never pass it.
+        params: { group_id: groupId, include_head: true },
         headers: authHeader,
       })
       const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setSubgroupsByGroup((p) => ({ ...p, [groupId]: Array.isArray(list) ? list : [] }))
+      const rows: SubgroupRow[] = (Array.isArray(list) ? list : []).map((r: any) => ({
+        ...r,
+        is_head: typeof r.is_head === 'boolean' ? r.is_head : typeof r.isHead === 'boolean' ? r.isHead : undefined,
+      }))
+      if (import.meta.env.DEV && rows.length > 0 && rows.every((r) => r.is_head === undefined)) {
+        // eslint-disable-next-line no-console
+        console.warn('[cost-code] /subgroups rows carry no is_head key — keys:', Object.keys(list[0] ?? {}))
+      }
+      setSubgroupsByGroup((p) => ({ ...p, [groupId]: rows }))
     } catch {
       message.error('โหลดข้อมูล Subgroup ไม่สำเร็จ')
     } finally {
@@ -240,18 +274,32 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const handleAddSubgroup = async () => {
     if (!addSubgroupForGroup) return
     const values = await addSubgroupForm.validateFields()
+    const gid = addSubgroupForGroup.id
     setAddSubgroupSaving(true)
     try {
-      await axios.post(`${BASE_URL}/master/cost-code/subgroups`, {
-        group_id: addSubgroupForGroup.id, subgroup_code: values.subgroup_code, subgroup_name: values.subgroup_name,
+      const res = await axios.post(`${BASE_URL}/master/cost-code/subgroups`, {
+        group_id: gid, subgroup_code: values.subgroup_code, subgroup_name: values.subgroup_name,
       }, { headers: authHeader })
       message.success('เพิ่ม Subgroup สำเร็จ')
-      const gid = addSubgroupForGroup.id
+      if (canEditHead && values.is_head) {
+        // Create response shape isn't documented; accept the usual id keys.
+        const d = res.data?.data ?? res.data ?? {}
+        const newId = d.id ?? d.subgroup_id
+        if (newId == null) {
+          message.warning('เพิ่ม Subgroup แล้ว แต่ไม่ได้รับรหัสรายการจากระบบ จึงยังไม่ได้ตั้งเป็น Head — กรุณากดแก้ไขรายการนี้เพื่อตั้งค่า Head')
+        } else {
+          try {
+            await applyHead(Number(newId), gid, true)
+          } catch (err: any) {
+            message.error(`เพิ่ม Subgroup แล้ว แต่ตั้งเป็น Head ไม่สำเร็จ: ${apiMessage(err, 'เปลี่ยนสถานะ Head ไม่สำเร็จ')}`)
+          }
+        }
+      }
       setAddSubgroupForGroup(null)
       addSubgroupForm.resetFields()
       fetchSubgroups(gid)
     } catch (err: any) {
-      message.error(err?.response?.data?.error || 'เพิ่ม Subgroup ไม่สำเร็จ')
+      message.error(apiMessage(err, 'เพิ่ม Subgroup ไม่สำเร็จ'))
     } finally {
       setAddSubgroupSaving(false)
     }
@@ -260,17 +308,30 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const handleEditSubgroup = async () => {
     if (!editSubgroup) return
     const values = await editSubgroupForm.validateFields()
+    const target = editSubgroup
     setEditSubgroupSaving(true)
     try {
-      await axios.patch(`${BASE_URL}/master/cost-code/subgroups/${editSubgroup.id}`, {
+      await axios.patch(`${BASE_URL}/master/cost-code/subgroups/${target.id}`, {
         subgroup_name: values.subgroup_name,
       }, { headers: authHeader })
-      message.success('แก้ไข Subgroup สำเร็จ')
-      const gid = editSubgroup.group_id
-      setEditSubgroup(null)
-      fetchSubgroups(gid)
     } catch (err: any) {
-      message.error(err?.response?.data?.error || 'แก้ไข Subgroup ไม่สำเร็จ')
+      message.error(`ยังไม่ได้บันทึกอะไร: ${apiMessage(err, 'แก้ไข Subgroup ไม่สำเร็จ')}`)
+      setEditSubgroupSaving(false)
+      return
+    }
+    try {
+      // Only call the Head endpoint when the switch actually changed.
+      if (canEditHead && !!values.is_head !== !!target.is_head) {
+        await applyHead(target.id, target.group_id, !!values.is_head)
+      }
+      message.success('แก้ไข Subgroup สำเร็จ')
+      setEditSubgroup(null)
+      fetchSubgroups(target.group_id)
+    } catch (err: any) {
+      // Name update succeeded, Head change did not — keep the modal open.
+      message.error(`บันทึกชื่อ Subgroup แล้ว แต่เปลี่ยนสถานะ Head ไม่สำเร็จ: ${apiMessage(err, 'เปลี่ยนสถานะ Head ไม่สำเร็จ')}`)
+      setEditSubgroup({ ...target, subgroup_name: values.subgroup_name })
+      fetchSubgroups(target.group_id)
     } finally {
       setEditSubgroupSaving(false)
     }
@@ -314,9 +375,48 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
     },
   ]
 
+  // PATCH /master/cost-code/subgroups/:id/head. Updates the local row from the
+  // response (matched on subgroup_id) and surfaces in_use counts. Throws on
+  // failure so the caller can say what was and wasn't saved.
+  const applyHead = async (subgroupId: number, groupId: number, next: boolean) => {
+    const res = await axios.patch(
+      `${BASE_URL}/master/cost-code/subgroups/${subgroupId}/head`,
+      { is_head: next },
+      { headers: authHeader },
+    )
+    clearPettyCashCostCodeCache()
+    const d = res.data?.data ?? res.data ?? {}
+    const updated = d.row ?? d
+    const inUse = d.in_use ?? updated?.in_use
+    const isHead = typeof updated?.is_head === 'boolean' ? updated.is_head : next
+    const targetId = updated?.subgroup_id ?? d.subgroup_id ?? subgroupId
+    setSubgroupsByGroup((p) => ({
+      ...p,
+      [groupId]: (p[groupId] ?? []).map((r) => (r.id === targetId ? { ...r, is_head: isHead } : r)),
+    }))
+    if (isHead) {
+      const parts: string[] = []
+      if (inUse?.pr_lines > 0) parts.push(`PR ${inUse.pr_lines} บรรทัด`)
+      if (inUse?.po_lines > 0) parts.push(`PO ${inUse.po_lines} บรรทัด`)
+      if (inUse?.materials > 0) parts.push(`วัสดุ ${inUse.materials} รายการ`)
+      if (parts.length > 0) message.info(`มีการใช้งานแล้ว: ${parts.join(', ')} — ข้อมูลเดิมไม่ถูกแก้ไข`)
+    }
+  }
+
+  const apiMessage = (err: any, fallback: string) =>
+    err?.response?.data?.message || err?.response?.data?.error || fallback
+
   const subgroupColumns = [
     { title: 'รหัส Subgroup', dataIndex: 'subgroup_code', width: 140 },
-    { title: 'ชื่อ Subgroup', dataIndex: 'subgroup_name' },
+    {
+      title: 'ชื่อ Subgroup', dataIndex: 'subgroup_name',
+      render: (v: string, r: SubgroupRow) => (
+        <Space size={6}>
+          <span>{v}</span>
+          {r.is_head && <Tag color="blue" style={{ margin: 0 }}>Head</Tag>}
+        </Space>
+      ),
+    },
     {
       title: 'สถานะ', dataIndex: 'is_active', width: 100,
       render: (v: boolean) => <Tag color={v ? 'success' : 'default'}>{v ? 'ใช้งาน' : 'ปิดใช้งาน'}</Tag>,
@@ -327,7 +427,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         <Space size={4}>
           <Button
             size="small" icon={<EditOutlined />}
-            onClick={() => { setEditSubgroup(r); editSubgroupForm.setFieldsValue({ subgroup_name: r.subgroup_name }) }}
+            onClick={() => { setEditSubgroup(r); editSubgroupForm.setFieldsValue({ subgroup_name: r.subgroup_name, is_head: !!r.is_head }) }}
           />
           {r.is_active && (
             <Popconfirm title="ยืนยันปิดใช้งาน Subgroup นี้?" onConfirm={() => handleDeactivateSubgroup(r)}>
@@ -388,6 +488,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
                     loading={!!subgroupsLoading[record.id]}
                     dataSource={subgroupsByGroup[record.id] ?? []}
                     columns={subgroupColumns}
+                    onRow={(r: SubgroupRow) => (r.is_head ? { style: { background: '#eff6ff' } } : {})}
                     pagination={false}
                     size="small"
                     locale={{ emptyText: 'ยังไม่มี Subgroup' }}
@@ -445,13 +546,14 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         confirmLoading={addSubgroupSaving}
         destroyOnClose
       >
-        <Form form={addSubgroupForm} layout="vertical">
+        <Form form={addSubgroupForm} layout="vertical" initialValues={{ is_head: false }}>
           <Form.Item name="subgroup_code" label="รหัส Subgroup" rules={[{ required: true, message: 'กรุณากรอกรหัส Subgroup' }]}>
             <Input placeholder="เช่น 01" maxLength={5} />
           </Form.Item>
           <Form.Item name="subgroup_name" label="ชื่อ Subgroup" rules={[{ required: true, message: 'กรุณากรอกชื่อ Subgroup' }]}>
             <Input placeholder="ชื่อ Subgroup" />
           </Form.Item>
+          <HeadSwitchField form={addSubgroupForm} />
         </Form>
       </Modal>
 
@@ -469,6 +571,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
           <Form.Item name="subgroup_name" label="ชื่อ Subgroup" rules={[{ required: true, message: 'กรุณากรอกชื่อ Subgroup' }]} style={{ marginTop: 8 }}>
             <Input placeholder="ชื่อ Subgroup" />
           </Form.Item>
+          <HeadSwitchField form={editSubgroupForm} />
         </Form>
       </Modal>
     </>

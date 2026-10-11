@@ -34,6 +34,7 @@ import ICDocTypeTag from './ICDocTypeTag'
 import ICPoDocumentList from './ICPoDocumentList'
 import ICReturnDetailView from './ICReturnDetailView'
 import ICPoReceivePrint, { type ICReceivePrintData } from './ICPoReceivePrint'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -784,7 +785,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       title: 'CostCode',
       dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
     },
     {
       title: 'MatCode',
@@ -858,7 +859,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
       title: 'CostCode',
       dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
     },
     { title: 'MatCode', dataIndex: 'mat_code', key: 'mat_code' },
     { title: 'Description', dataIndex: 'description', key: 'description' },
@@ -922,8 +923,12 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
               value={costCodeFilter}
               onChange={setCostCodeFilter}
               style={{ width: 220 }}
-              options={(linesData?.cost_code_options ?? []).map((code) => ({ value: code, label: code }))}
-              filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+              options={(linesData?.cost_code_options ?? []).map((code) => ({ value: code, label: formatCostCodeDisplay(code) }))}
+              // value is the stored code, label the displayed one: match either.
+              filterOption={(input, option) => {
+                const q = input.toLowerCase()
+                return String(option?.label ?? '').toLowerCase().includes(q) || String(option?.value ?? '').toLowerCase().includes(q)
+              }}
             />
           </Space>
 

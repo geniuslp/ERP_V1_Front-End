@@ -6,6 +6,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -148,7 +149,7 @@ const ICProjectStockPage: React.FC = () => {
     ...(isWarehouseLinked
       ? []
       : [
-          { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', render: (v: string) => v || '-' },
+          { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', render: (v: string) => formatCostCodeDisplay(v) || '-' },
         ]),
     { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 80 },
     {

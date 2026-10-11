@@ -3,6 +3,7 @@ import { Table, Button, InputNumber, Input, Space, Select } from 'antd'
 import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import { calcDisc } from '@/utils/poCalc'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 // Row shape while editing — key/no/cost_code_label are frontend-only display
 // concerns, stripped down to WorkOrderLine's submit shape by the caller.
@@ -211,10 +212,10 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
         <Button
           size="small"
           onClick={() => setCostCodeModalRowKey(r.key)}
-          title={r.cost_code_label ?? undefined}
+          title={r.cost_code_label ? formatCostCodeDisplay(r.cost_code_label) : undefined}
           style={{ width: '100%', textAlign: 'left' }}
         >
-          {r.cost_code_label ?? 'เลือก Cost Code'}
+          {r.cost_code_label ? formatCostCodeDisplay(r.cost_code_label) : 'เลือก Cost Code'}
         </Button>
       ),
     },

@@ -6,6 +6,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -202,7 +203,7 @@ const ICProjectCostTransactionPage: React.FC = () => {
       title: 'CostCode',
       dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (value: string | undefined) => value || '-',
+      render: (value: string | undefined) => formatCostCodeDisplay(value) || '-',
     },
     {
       title: 'จำนวน',

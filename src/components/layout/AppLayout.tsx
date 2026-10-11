@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Layout, Avatar, Dropdown, Badge, Button, Typography, Drawer, Grid } from 'antd'
 import {
-  BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined,
+  BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
 import SidebarMenu from './SidebarMenu'
 import BrandLogo from '@/components/common/BrandLogo'
+import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
 
 const { Header, Sider, Content } = Layout
@@ -22,6 +23,7 @@ interface AppLayoutProps {
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pwModalOpen, setPwModalOpen] = useState(false)
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const location = useLocation()
@@ -42,6 +44,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const userMenuItems = [
     { key: 'profile', icon: <UserOutlined />, label: 'โปรไฟล์' },
     { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่า' },
+    { key: 'change-password', icon: <LockOutlined />, label: 'เปลี่ยนรหัสผ่าน', onClick: () => setPwModalOpen(true) },
     { type: 'divider' as const },
     { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true, onClick: handleLogout },
   ]
@@ -198,6 +201,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           © 2026 ERP System — Genius Engineering
         </div>
       </Layout>
+      <ChangePasswordModal open={pwModalOpen} onClose={() => setPwModalOpen(false)} />
     </Layout>
   )
 }
