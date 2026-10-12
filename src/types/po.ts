@@ -76,6 +76,10 @@ export interface POListItem {
   // approval_log, nullable (never approved yet, or approval isn't logged there).
   approved_at?: string | null
   approved_by_name?: string | null
+  // Added to GET /po (and GET /po/export): credit days parsed from supplier.payment_terms (number),
+  // else the raw payment_terms text, else null. deposit_paid toggled via PUT /po/:id/deposit-paid.
+  credit?: number | string | null
+  deposit_paid?: boolean
 }
 
 export interface POLine {
@@ -110,6 +114,12 @@ export interface POLine {
   // cost_subgroup_id is null (no cost code assigned to this line).
   cost_code?: string | null
   cost_subgroup_name?: string | null
+  // Added to GET /po/:id lines: spec_name mirrors `spec`; cost_code_full mirrors `cost_code`;
+  // cost_code_main = subject+job+group; cost_code_sub = subgroup_code only.
+  spec_name?: string | null
+  cost_code_full?: string | null
+  cost_code_main?: string | null
+  cost_code_sub?: string | null
 }
 
 export interface POAttachment {

@@ -21,6 +21,13 @@ const { Text } = Typography
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const DATE_FORMAT = 'YYYY-MM-DD'
 
+// "{cost_code} - {cost_group_name}"; only the code when the group name is empty, "—" when there is no code.
+const formatCostCodeWithGroup = (code?: string | null, groupName?: string | null) => {
+  const c = formatCostCodeDisplay(code)
+  if (!c) return '—'
+  return groupName ? `${c} - ${groupName}` : c
+}
+
 interface ICPoReturnContext {
   po_no: string
   project_name?: string | null
@@ -29,6 +36,9 @@ interface ICPoReturnContext {
 interface ICReturnLine {
   line_id: number
   cost_code?: string | null
+  cost_group_code?: string | null
+  cost_group_name?: string | null
+  cost_subgroup_name?: string | null
   mat_code: string
   description: string
   qty_received: number
@@ -275,10 +285,13 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose, 
       },
       {
         title: 'CostCode',
-        dataIndex: 'cost_code',
         key: 'cost_code',
-        width: 100,
-        render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
+        width: 260,
+        ellipsis: true,
+        render: (_: unknown, record: { cost_code?: string | null; cost_group_name?: string | null }) => {
+          const text = formatCostCodeWithGroup(record.cost_code, record.cost_group_name)
+          return <span title={text}>{text}</span>
+        },
       },
       {
         title: 'MatCode',

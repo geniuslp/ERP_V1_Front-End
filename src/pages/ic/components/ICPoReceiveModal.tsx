@@ -57,6 +57,13 @@ const noFutureDateRule = (message: string) => ({
     isFutureDay(value) ? Promise.reject(new Error(message)) : Promise.resolve(),
 })
 
+// "{cost_code} - {cost_group_name}"; only the code when the group name is empty, "—" when there is no code.
+const formatCostCodeWithGroup = (code?: string | null, groupName?: string | null) => {
+  const c = formatCostCodeDisplay(code)
+  if (!c) return '—'
+  return groupName ? `${c} - ${groupName}` : c
+}
+
 interface ICPoReceiveContext {
   po_no: string
   supplier_name?: string | null
@@ -142,6 +149,9 @@ interface ICPoReceiveModalProps {
 interface ICReceiveLine {
   line_id: number
   cost_code?: string | null
+  cost_group_code?: string | null
+  cost_group_name?: string | null
+  cost_subgroup_name?: string | null
   mat_code: string
   description: string
   qty_ordered: number
@@ -163,6 +173,9 @@ interface ICReceiveLinesResponse {
 // bal_receive here since nothing on this view is editable anymore.
 interface ICReceiveLineReadonly {
   cost_code?: string | null
+  cost_group_code?: string | null
+  cost_group_name?: string | null
+  cost_subgroup_name?: string | null
   mat_code: string
   description: string
   unit: string
@@ -783,9 +796,13 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     },
     {
       title: 'CostCode',
-      dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
+      width: 260,
+      ellipsis: true,
+      render: (_: unknown, record: { cost_code?: string | null; cost_group_name?: string | null }) => {
+        const text = formatCostCodeWithGroup(record.cost_code, record.cost_group_name)
+        return <span title={text}>{text}</span>
+      },
     },
     {
       title: 'MatCode',
@@ -857,9 +874,13 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
     },
     {
       title: 'CostCode',
-      dataIndex: 'cost_code',
       key: 'cost_code',
-      render: (value: string | null | undefined) => formatCostCodeDisplay(value) || '-',
+      width: 260,
+      ellipsis: true,
+      render: (_: unknown, record: { cost_code?: string | null; cost_group_name?: string | null }) => {
+        const text = formatCostCodeWithGroup(record.cost_code, record.cost_group_name)
+        return <span title={text}>{text}</span>
+      },
     },
     { title: 'MatCode', dataIndex: 'mat_code', key: 'mat_code' },
     { title: 'Description', dataIndex: 'description', key: 'description' },
