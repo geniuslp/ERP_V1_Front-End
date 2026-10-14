@@ -580,13 +580,6 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       ),
     },
     {
-      title: 'หน่วย',
-      dataIndex: 'unit_name',
-      width: 60,
-      align: 'center' as const,
-      render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
-    },
-    {
       title: 'จำนวน',
       dataIndex: 'qty',
       width: 110,
@@ -609,6 +602,13 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           <Tooltip title={`คงเหลือที่สั่งได้: ${max}`}>{qtyInput}</Tooltip>
         ) : qtyInput
       },
+    },
+    {
+      title: 'หน่วย',
+      dataIndex: 'unit_name',
+      width: 60,
+      align: 'center' as const,
+      render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
     },
     {
       title: 'ราคา/หน่วย',
