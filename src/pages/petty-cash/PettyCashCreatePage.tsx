@@ -7,6 +7,7 @@ import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import PanelTabs from '@/components/common/PanelTabs'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import ApproverPickerModal, { type ChosenApprover } from '@/components/pettyCash/ApproverPickerModal'
 import PettyCashSubmitApprove, { type SubmitApproveSummary } from '@/components/pettyCash/PettyCashSubmitApprove'
 import PettyCashStationBar from './PettyCashStationBar'
@@ -231,6 +232,8 @@ const PettyCashCreatePage: React.FC = () => {
           wht_income_label: l.wht_income_label ?? '',
           wht_rate: l.wht_rate ?? null,
           wht_pay_date: l.wht_pay_date ? String(l.wht_pay_date).slice(0, 10) : '',
+          invoice_no: l.invoice_no ?? '',
+          invoice_date: l.invoice_date ? String(l.invoice_date).slice(0, 10) : '',
           line_vat: l.line_vat ?? 0,
           line_wht: l.line_wht ?? 0,
           line_net: l.line_net ?? amount,
@@ -272,7 +275,7 @@ const PettyCashCreatePage: React.FC = () => {
 
   // Exactly the line keys the backend contract lists — no qty / unit_price / discount / wht_rate.
   const buildLinesPayload = () => items.filter((r) => !r.isNew).map((r) => ({
-    project_code: r.project_code,
+    project_code: r.project_code || undefined,
     mat_code: r.mat_code,
     description: r.description,
     cost_subgroup_id: r.cost_subgroup_id,
@@ -290,6 +293,8 @@ const PettyCashCreatePage: React.FC = () => {
     tax_form_code: r.tax_form_code,
     wht_income_type_id: r.has_wht ? r.wht_income_type_id : null,
     wht_pay_date: r.wht_pay_date,
+    invoice_no: r.invoice_no?.trim() ? r.invoice_no.trim() : null,
+    invoice_date: r.invoice_date || null,
   }))
 
   // หมายเหตุผู้เบิก + at least one line are required at submit only, never for a DRAFT save.
@@ -394,10 +399,6 @@ const PettyCashCreatePage: React.FC = () => {
       // values set via setFieldsValue), independent of which tab is visible.
       if (rejectBlankRows()) return null
       const v = form.getFieldsValue(true)
-      if (items.some((r) => !r.project_code) && !v.project_code) {
-        message.error('กรุณาเลือกโครงการให้ครบทุกแถว')
-        return null
-      }
       setSubmitting(true)
       // ALL Tab A keys are sent on every save — an empty string clears the stored value.
       // purpose/currency are intentionally omitted (backend keeps stored / defaults to THB);
@@ -407,7 +408,7 @@ const PettyCashCreatePage: React.FC = () => {
         branch_code: v.branch_code ?? '',
         payee_emp_code: v.payee_emp_code ?? '',
         payee_name: v.payee_name ?? '',
-        project_code: v.project_code ?? '',
+        project_code: v.project_code || undefined,
         project_name: v.project_name ?? '',
         order_type: v.order_type ?? '',
         dept_code: v.dept_code ?? '',
@@ -626,6 +627,8 @@ const PettyCashCreatePage: React.FC = () => {
         net: r.line_net,
         vendor: r.supplier_name,
         remark: r.remarks,
+        invoiceNo: r.invoice_no ?? '',
+        invoiceDate: dmy(r.invoice_date),
         taxInvoiceNo: r.has_tax_invoice ? r.tax_invoice_no : '',
         taxInvoiceDate: r.has_tax_invoice ? dmy(r.tax_invoice_date) : '',
         whtLabel: r.has_wht ? r.wht_income_label : '',
@@ -646,6 +649,7 @@ const PettyCashCreatePage: React.FC = () => {
       has_tax_invoice: false, tax_invoice_no: '', tax_invoice_date: '',
       has_wht: false, wht_base_amount: null, tax_form_code: '', wht_income_type_id: null,
       wht_income_label: '', wht_rate: null, wht_pay_date: '',
+      invoice_no: '', invoice_date: '',
       line_vat: 0, line_wht: 0, line_net: 0,
     }])
   }
@@ -747,7 +751,19 @@ const PettyCashCreatePage: React.FC = () => {
 
         <Row gutter={16}>
           <Col xs={24} sm={12} lg={6}>
-            <Form.Item name="dept_code" label="รหัสแผนก">
+            <Form.Item
+              name="dept_code"
+              label="รหัสแผนก"
+              dependencies={['project_code']}
+              rules={[
+                ({ getFieldValue }) => ({
+                  validator: (_, value) =>
+                    value || getFieldValue('project_code')
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('กรุณาเลือกแผนกหรือโครงการอย่างน้อยหนึ่งอย่าง')),
+                }),
+              ]}
+            >
               <Select
                 placeholder="เลือกแผนก"
                 showSearch
@@ -1011,7 +1027,8 @@ const PettyCashCreatePage: React.FC = () => {
             key: chosenApprover.userId,
             employeeCode: chosenApprover.code,
             seq: 1,
-            approveBy: chosenApprover.name,
+            // Picker-flow summary: username only (print data above keeps the full name).
+            approveBy: formatApproverOption(chosenApprover.username, chosenApprover.userId),
             roleNames: chosenApprover.roleNames,
             status: null,
           }] : []}

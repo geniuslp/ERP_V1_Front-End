@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import dayjs from 'dayjs'
 import {
   showMovementError,
@@ -44,6 +45,7 @@ interface JobCodeOption {
 
 interface UserOption {
   id: string
+  username?: string
   fullName: string
   department?: string
 }
@@ -248,6 +250,7 @@ const ICProjectMovementPage: React.FC = () => {
           setUsers(
             list.map((u: any) => ({
               id: String(u.id),
+              username: u.username,
               fullName: u.full_name ?? u.fullName ?? u.username,
               department: u.department ?? '-',
             }))
@@ -706,9 +709,9 @@ const ICProjectMovementPage: React.FC = () => {
                 )}
                 options={users.map((u) => ({
                   value: Number(u.id),
-                  label: u.fullName,
-                  searchLabel: `${u.fullName} ${u.department ?? ''}`,
-                  name: u.fullName,
+                  label: formatApproverOption(u.username, u.id),
+                  searchLabel: `${u.username ?? ''} ${u.fullName} ${u.department ?? ''}`,
+                  name: formatApproverOption(u.username, u.id),
                   dept: u.department,
                 }))}
               />

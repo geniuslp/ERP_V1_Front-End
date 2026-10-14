@@ -13,7 +13,7 @@ export interface PettyCashLine {
   id: number
   pc_id: number
   line_no: number
-  project_code: string
+  project_code?: string | null
   mat_code: string
   cost_subgroup_id?: number | null
   description?: string | null
@@ -43,6 +43,8 @@ export interface PettyCashLine {
   tax_form_code?: string | null
   wht_income_type_id?: number | null
   wht_pay_date?: string | null
+  invoice_no?: string | null // plain (non-tax) invoice
+  invoice_date?: string | null
   // read-only response extras
   mat_name_th?: string | null
   cost_code?: string | null
@@ -105,6 +107,11 @@ export interface PettyCashRequisition {
 
   // aggregated (distinct, from every line) — the header itself has no single project
   project_codes?: string[] | null
+  // List-page aggregates (money may arrive as numeric strings).
+  supplier_names?: string | string[] | null
+  wht_total?: number | string | null
+  net_value?: number | string | null
+  amount?: number | string | null
   requested_by_name?: string | null
   approver_name?: string | null
   lines?: PettyCashLine[]
@@ -113,7 +120,7 @@ export interface PettyCashRequisition {
 
 // Exactly the line keys the backend accepts (no qty / unit_price / discount / wht_rate).
 export interface CreatePettyCashLineItem {
-  project_code: string
+  project_code?: string
   mat_code?: string
   description: string
   cost_subgroup_id?: number | null
@@ -131,6 +138,8 @@ export interface CreatePettyCashLineItem {
   tax_form_code: string
   wht_income_type_id?: number | null
   wht_pay_date: string // YYYY-MM-DD or ''
+  invoice_no: string | null
+  invoice_date: string | null // YYYY-MM-DD or null
 }
 
 // GET /petty-cash/line-options
@@ -170,6 +179,8 @@ export interface PettyCashLineForm {
   wht_income_label: string
   wht_rate: number | null
   wht_pay_date: string
+  invoice_no: string
+  invoice_date: string // YYYY-MM-DD or ''
   line_vat: number
   line_wht: number
   line_net: number

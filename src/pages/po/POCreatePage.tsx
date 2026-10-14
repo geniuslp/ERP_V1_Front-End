@@ -12,6 +12,7 @@ import {
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import axios from 'axios'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import dayjs from 'dayjs'
 import { useAppSelector } from '@/store'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
@@ -170,9 +171,9 @@ const POCreatePage: React.FC = () => {
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
   const [supplierDetailLoading, setSupplierDetailLoading] = useState(false)
-  const [users, setUsers] = useState<{ value: number; label: string; dept?: string }[]>([])
+  const [users, setUsers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
-  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string }[]>([])
+  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
   const [prOptions, setPrOptions] = useState<PRListItem[]>([])
   const [prOptionsLoading, setPrOptionsLoading] = useState(false)
@@ -276,7 +277,9 @@ const POCreatePage: React.FC = () => {
         const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
         setUsers(list.map((u: any) => ({
           value: Number(u.id),
-          label: u.full_name ?? u.fullName ?? u.username,
+          label: formatApproverOption(u.username, u.id),
+          username: u.username,
+          name: u.full_name ?? u.fullName,
           dept: u.department,
         })))
       } catch {
@@ -312,8 +315,10 @@ const POCreatePage: React.FC = () => {
         // underlying form value is technically set.
         setApprovers(list.map((u: any) => ({
           value: Number(u.value ?? u.id),
-          label: u.label ?? u.full_name ?? u.fullName ?? u.username,
+          label: formatApproverOption(u.username, u.value ?? u.id),
           dept: u.dept ?? u.department,
+          username: u.username,
+          name: u.full_name ?? u.label ?? u.fullName,
         })))
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดรายชื่อผู้อนุมัติไม่สำเร็จ')
@@ -1387,9 +1392,11 @@ const POCreatePage: React.FC = () => {
                           placeholder="- เลือกรายการ -"
                           loading={usersLoading || prDetailLoading}
                           showSearch
-                          filterOption={(input, option) =>
-                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                          }
+                          filterOption={(input, option) => {
+                            const q = input.toLowerCase()
+                            const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                            return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+                          }}
                           optionRender={(option) => (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                               <span>{option.data.label}</span>
@@ -1582,9 +1589,11 @@ const POCreatePage: React.FC = () => {
                           placeholder="- เลือกรายการ -"
                           loading={approversLoading}
                           showSearch
-                          filterOption={(input, option) =>
-                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                          }
+                          filterOption={(input, option) => {
+                            const q = input.toLowerCase()
+                            const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                            return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+                          }}
                           optionRender={(option) => (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                               <span>{option.data.label}</span>

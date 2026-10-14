@@ -16,6 +16,7 @@ export interface POListFilters {
   dept_code?: string
   search?: string
   status?: string
+  payment_status?: 'UNPAID' | 'PARTIAL' | 'PAID'
 }
 
 export const listPOs = async (params: POListFilters & { page: number; page_size: number }) => {

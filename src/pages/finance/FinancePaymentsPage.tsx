@@ -9,11 +9,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
-import POStatusBadges from '@/components/po/POStatusBadge'
-import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
-import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
-import type { POStatus } from '@/types/po'
-import type { WOStatus } from '@/types/workOrder'
+import type { ApprovalStatus, FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
 
 // Same map+Tag convention as POStatusBadge.tsx's approvalMap/receiveMap —
 // distinct from POReceiveStatus (status_receive, NOT_SENT/SENT/PARTIALLY_
@@ -31,33 +27,17 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-const PO_STATUS_OPTIONS = [
-  { value: '', label: 'ทุกสถานะ' },
-  { value: 'DRAFT', label: 'แบบร่าง' },
+// Document approval status only (sent as the `status` query param); payment progress is separate.
+const STATUS_OPTIONS = [
+  { value: '', label: 'ทั้งหมด' },
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
-  { value: 'REJECTED', label: 'ไม่อนุมัติ' },
-  { value: 'PENDING_REAPPROVAL', label: 'รออนุมัติอีกครั้ง' },
-  { value: 'SENT', label: 'ส่งแล้ว' },
-  { value: 'PARTIALLY_RECEIVED', label: 'รับสินค้าบางส่วน' },
-  { value: 'RECEIVED', label: 'รับสินค้าแล้ว' },
-  { value: 'CANCELLED', label: 'ยกเลิก' },
 ]
 
-const WO_STATUS_OPTIONS = [
-  { value: '', label: 'ทุกสถานะ' },
-  { value: 'DRAFT', label: 'แบบร่าง' },
-  { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
-  { value: 'APPROVED', label: 'อนุมัติแล้ว' },
-  { value: 'REJECTED', label: 'ไม่อนุมัติ' },
-  { value: 'CANCELLED', label: 'ยกเลิก' },
-]
-
-// Petty cash stays APPROVED; payment progress is derived from paid/remaining, not status.
-const PC_STATUS_OPTIONS = [
-  { value: '', label: 'ทุกสถานะ' },
-  { value: 'APPROVED', label: 'อนุมัติแล้ว' },
-]
+const APPROVAL_TAG: Record<ApprovalStatus, { color: string; label: string }> = {
+  PENDING_APPROVAL: { color: 'warning', label: 'รออนุมัติ' },
+  APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
+}
 
 const DOC_NO_COL_DEFAULT_WIDTH = 150
 const PROJECT_COL_DEFAULT_WIDTH = 320
@@ -134,8 +114,6 @@ const FinancePaymentsPage: React.FC = () => {
   const [remainingColWidth, setRemainingColWidth] = useState(REMAINING_COL_DEFAULT_WIDTH)
   const handleResize =
     (set: (w: number) => void) => (_e: React.SyntheticEvent, data: ResizeCallbackData) => set(data.size.width)
-
-  const statusOptions = docType === 'PO' ? PO_STATUS_OPTIONS : docType === 'PC' ? PC_STATUS_OPTIONS : WO_STATUS_OPTIONS
 
   const fetchList = async (nextPage = page, type = docType) => {
     setLoading(true)
@@ -218,18 +196,13 @@ const FinancePaymentsPage: React.FC = () => {
     },
     {
       title: 'สถานะ',
-      dataIndex: 'status',
       key: 'status',
       width: statusColWidth,
       onHeaderCell: () => ({ width: statusColWidth, onResize: handleResize(setStatusColWidth) }),
-      render: (s: string) =>
-        docType === 'PO' ? (
-          <POStatusBadges status={s as POStatus} />
-        ) : docType === 'PC' ? (
-          <Tag color="success">{s === 'APPROVED' ? 'อนุมัติแล้ว' : s}</Tag>
-        ) : (
-          <WOStatusBadge status={s as WOStatus} />
-        ),
+      render: (_: unknown, r: FinancePaymentListItem) => {
+        const t = r.approval_status ? APPROVAL_TAG[r.approval_status] : undefined
+        return t ? <Tag color={t.color}>{t.label}</Tag> : '-'
+      },
     },
     {
       title: 'สถานะรับของ',
@@ -310,7 +283,7 @@ const FinancePaymentsPage: React.FC = () => {
             style={{ width: 180 }}
             allowClear
           />
-          <Select value={status} onChange={setStatus} style={{ width: 200 }} options={statusOptions} />
+          <Select value={status} onChange={setStatus} style={{ width: 200 }} options={STATUS_OPTIONS} />
           <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchList(1)}>ค้นหา</Button>
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
         </Space>

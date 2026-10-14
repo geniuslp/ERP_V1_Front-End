@@ -31,6 +31,11 @@ const ProjectCreateEditPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const isEdit = Boolean(id)
   const [form] = Form.useForm()
+  const watchedCustomerId: number | undefined = Form.useWatch('customer_id', form)
+  // Create flow: project_code is a read-only preview from GET /master/projects/next-code. If that endpoint is
+  // unavailable the field falls back to a normal editable input so a project can still be created.
+  const [codeFallback, setCodeFallback] = useState(false)
+  const [codeLoading, setCodeLoading] = useState(false)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   const [loading, setLoading] = useState(false)
@@ -49,19 +54,57 @@ const ProjectCreateEditPage: React.FC = () => {
   // elsewhere in this codebase.
   useEffect(() => {
     if (!accessToken) return
+    let cancelled = false
     setCustomersLoading(true)
-    axios.get(`${BASE_URL}/customer`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      params: { page: 1, page_size: 1000 },
-    })
-      .then((res) => {
+    ;(async () => {
+      const all: CustomerOption[] = []
+      // Backend caps page_size at 500 — walk the pages so every active customer is reachable.
+      for (let page = 1; page <= 20; page++) {
+        const res = await axios.get(`${BASE_URL}/customer`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { page, page_size: 500 },
+        })
         const body = res.data?.data ?? res.data
         const list: CustomerOption[] = Array.isArray(body) ? body : body?.items ?? body?.data ?? []
-        setCustomers(list)
-      })
+        all.push(...list)
+        const totalPages: number = body?.total_pages ?? 1
+        if (page >= totalPages || list.length === 0) break
+      }
+      if (!cancelled) setCustomers(all)
+    })()
       .catch(() => message.error('โหลดข้อมูลลูกค้าไม่สำเร็จ'))
-      .finally(() => setCustomersLoading(false))
+      .finally(() => { if (!cancelled) setCustomersLoading(false) })
+    return () => { cancelled = true }
   }, [accessToken])
+
+  useEffect(() => {
+    if (isEdit || !accessToken) return
+    if (!watchedCustomerId) {
+      if (!codeFallback) form.setFieldsValue({ project_code: undefined })
+      return
+    }
+    let cancelled = false
+    setCodeLoading(true)
+    axios.get(`${BASE_URL}/master/projects/next-code`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { customer_id: watchedCustomerId },
+    })
+      .then((res) => {
+        if (cancelled) return
+        const d = res.data?.data ?? res.data
+        const code = typeof d === 'string' ? d : d?.project_code ?? d?.next_code ?? d?.code
+        if (!code) throw new Error('empty next-code response')
+        setCodeFallback(false)
+        form.setFieldsValue({ project_code: String(code) })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCodeFallback(true)
+        message.warning('ยังไม่สามารถสร้างรหัสโครงการอัตโนมัติได้ กรุณากรอกรหัสโครงการเอง')
+      })
+      .finally(() => { if (!cancelled) setCodeLoading(false) })
+    return () => { cancelled = true }
+  }, [watchedCustomerId, isEdit, accessToken])
 
   useEffect(() => {
     if (!isEdit) return
@@ -81,6 +124,10 @@ const ProjectCreateEditPage: React.FC = () => {
           customer_id: p.customer_id ?? undefined,
           job_codes: p.job_codes ?? [],
           budget_amount: p.budget_amount ?? 0,
+          vo_amount: p.vo_amount ?? 0,
+          contract_amount: p.contract_amount ?? 0,
+          cost_amount: p.cost_amount ?? 0,
+          project_kind: p.project_kind ?? 'NEW',
           date_range: p.start_date && p.end_date
             ? [dayjs(p.start_date), dayjs(p.end_date)]
             : undefined,
@@ -100,6 +147,10 @@ const ProjectCreateEditPage: React.FC = () => {
     try {
       values = await form.validateFields()
     } catch {
+      return
+    }
+    if (!isEdit && !values.project_code) {
+      message.error('กรุณาเลือกเจ้าของโครงการเพื่อให้ระบบสร้างรหัสโครงการ')
       return
     }
 
@@ -124,6 +175,10 @@ const ProjectCreateEditPage: React.FC = () => {
       project_owner_name: legacyProjectOwnerName,
       job_codes:     values.job_codes ?? [],
       budget_amount: values.budget_amount ?? 0,
+      vo_amount:     values.vo_amount ?? 0,
+      contract_amount: values.contract_amount ?? 0,
+      cost_amount:   values.cost_amount ?? 0,
+      project_kind:  values.project_kind ?? 'NEW',
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
       end_date:      endDate ? endDate.format('YYYY-MM-DD') : undefined,
       status:        values.status ?? 'ACTIVE',
@@ -173,16 +228,27 @@ const ProjectCreateEditPage: React.FC = () => {
         ]}
       />
 
-      <Form form={form} layout="vertical" initialValues={{ status: 'ACTIVE', budget_amount: 0 as number }}>
+      <Form form={form} layout="vertical" initialValues={{ status: 'ACTIVE', budget_amount: 0 as number, vo_amount: 0 as number, contract_amount: 0 as number, cost_amount: 0 as number, project_kind: 'NEW' }}>
         <Card title={<span style={cardTitleStyle}>ข้อมูลโครงการ</span>} style={cardStyle} loading={loading}>
           <Row gutter={16}>
             <Col md={12} xs={24}>
+              {/* "เจ้าของโครงการ" — customer dropdown (GET /customer); also drives the project_code preview on create. */}
               <Form.Item
-                label="รหัสโครงการ"
-                name="project_code"
-                rules={[{ required: true, message: 'กรุณากรอกรหัสโครงการ' }]}
+                label="เจ้าของโครงการ"
+                name="customer_id"
+                rules={isEdit ? [] : [{ required: true, message: 'กรุณาเลือกเจ้าของโครงการ' }]}
               >
-                <Input placeholder="เช่น XM-400" />
+                <Select
+                  placeholder="— เลือกลูกค้า —"
+                  loading={customersLoading}
+                  showSearch
+                  allowClear
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={customers.map((c) => ({ value: c.cus_id, label: `${c.customer_code} ${c.customer_name}` }))}
+                  notFoundContent={customersLoading ? 'กำลังโหลด...' : 'ไม่พบข้อมูล'}
+                />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
@@ -195,51 +261,42 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* location_code repurposed as free-text project address per the
-                  backend's Create/Update Swagger description — no longer
-                  validated/joined against the location master. Same field,
-                  just relabeled/re-typed here (was never a Select in this
-                  form to begin with). */}
+              {/* Read-only: preview on create (after an owner is chosen), existing code on edit. */}
+              <Form.Item
+                label="รหัสโครงการ"
+                name="project_code"
+                rules={codeFallback && !isEdit ? [{ required: true, message: 'กรุณากรอกรหัสโครงการ' }] : []}
+              >
+                <Input
+                  disabled={isEdit}
+                  readOnly={!isEdit && !codeFallback}
+                  placeholder={isEdit || codeFallback ? 'เช่น XM-400' : codeLoading ? 'กำลังสร้างรหัส...' : 'เลือกเจ้าของโครงการเพื่อแสดงรหัส'}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="ประเภทโครงการ" name="project_kind">
+                <Select
+                  options={[
+                    { value: 'NEW', label: 'โครงการใหม่' },
+                    { value: 'VO',  label: 'งานเพิ่ม (VO)' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              {/* location_code is free-text project address (not validated against the location master). */}
               <Form.Item label="ที่อยู่โครงการ" name="location_code">
                 <Input.TextArea rows={2} placeholder="ที่อยู่โครงการ" />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* Required free text — replaces the old owner_id (users) dropdown. */}
               <Form.Item
                 label="ผู้รับผิดชอบหลัก"
                 name="responsible_person_name"
                 rules={[{ required: true, message: 'กรุณากรอกผู้รับผิดชอบหลัก' }]}
               >
                 <Input placeholder="ชื่อผู้รับผิดชอบหลัก" />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              {/* "เจ้าของโครงการ" — customer dropdown (GET /customer), same
-                  source/pattern as CustomerPage.tsx. Replaces the old
-                  project_owner_name free-text input; distinct from
-                  responsible_person_name above. */}
-              <Form.Item label="เจ้าของโครงการ" name="customer_id">
-                <Select
-                  placeholder="— เลือกลูกค้า —"
-                  loading={customersLoading}
-                  showSearch
-                  allowClear
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={customers.map((c) => ({ value: c.cus_id, label: `${c.customer_code} - ${c.customer_name}` }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="ประเภทงาน" name="job_codes">
-                <Select
-                  mode="multiple"
-                  placeholder="— เลือกประเภทงาน —"
-                  allowClear
-                  options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
-                />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
@@ -259,10 +316,70 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
+              <Form.Item label="ประเภทงาน" name="job_codes">
+                <Select
+                  mode="multiple"
+                  placeholder="— เลือกประเภทงาน —"
+                  allowClear
+                  options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item
+                label="มูลค่า VO"
+                name="vo_amount"
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0 as number}
+                  step={1000}
+                  precision={2}
+                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
+                  placeholder="0.00"
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
               <Form.Item label="ระยะเวลาโครงการ" name="date_range">
                 <DatePicker.RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
+            <Col md={12} xs={24}>
+              <Form.Item
+                label="มูลค่าสัญญา"
+                name="contract_amount"
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0 as number}
+                  step={1000}
+                  precision={2}
+                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
+                  placeholder="0.00"
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24} />
+            <Col md={12} xs={24}>
+              <Form.Item
+                label="มูลค่าต้นทุน"
+                name="cost_amount"
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0 as number}
+                  step={1000}
+                  precision={2}
+                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
+                  placeholder="0.00"
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24} />
             <Col md={12} xs={24}>
               <Form.Item label="สถานะ" name="status">
                 <Select

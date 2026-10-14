@@ -6,19 +6,10 @@ import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import OptionCard from '@/components/common/OptionCard'
 import { useAppSelector } from '@/store'
+import { icService } from '@/services/icService'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
-
-const PREPARER_ROLE_CODES = [
-  'ADMIN_CENTER',
-  'ROLE_A_PROJECT',
-  'ROLE_A_PURCHASE',
-  'ROLE_H1_PURCHASE',
-  'ROLE_H2_PURCHASE',
-  'ROLE_M_PURCHASE',
-  'ROLE_S_PURCHASE',
-  'ROLE_SV_PURCHASE',
-]
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -48,7 +39,7 @@ const ICProjectListPage: React.FC = () => {
 
   const [projectOptions, setProjectOptions] = useState<{ value: string; label: string }[]>([])
   const [projectCode, setProjectCode] = useState<string | undefined>(undefined)
-  const [userOptions, setUserOptions] = useState<{ value: string; label: string }[]>([])
+  const [userOptions, setUserOptions] = useState<{ value: string; label: string; username?: string; name?: string }[]>([])
   const [preparedBy, setPreparedBy] = useState<string | undefined>(undefined)
 
   // Options for the "ชื่อโครงการ" Select: all projects.
@@ -75,17 +66,18 @@ const ICProjectListPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Options for the "ผู้จัดทำ" Select: users holding any of PREPARER_ROLE_CODES.
+  // Options for the "ผู้จัดทำ" Select: GET /ic/preparers (backend decides who may open the IC pages).
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/users/allUser`, { headers: authHeader })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
+        const list = await icService.getPreparers(accessToken ?? '')
         setUserOptions(
-          list
-            .filter((u: any) => (u.roles ?? []).some((r: any) => PREPARER_ROLE_CODES.includes(r.role_code)))
-            .map((u: any) => ({ value: String(u.id), label: u.full_name ?? u.fullName ?? u.username }))
+          list.map((u) => ({
+            value: String(u.id),
+            label: formatApproverOption(u.username, u.id),
+            username: u.username,
+            name: u.full_name,
+          }))
         )
       } catch {
         message.error('โหลดรายชื่อผู้จัดทำไม่สำเร็จ')
@@ -221,7 +213,12 @@ const ICProjectListPage: React.FC = () => {
               options={userOptions}
               value={preparedBy}
               onChange={setPreparedBy}
-              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+              notFoundContent={<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบรายชื่อผู้จัดทำ" />}
+              filterOption={(input, option) => {
+                const q = input.toLowerCase()
+                const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+              }}
               style={{ width: '100%', maxWidth: 560 }}
             />
           </div>

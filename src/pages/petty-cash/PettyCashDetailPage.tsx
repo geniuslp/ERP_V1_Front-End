@@ -199,7 +199,7 @@ const PettyCashDetailPage: React.FC = () => {
       title: 'โครงการ',
       key: 'project',
       width: 150,
-      render: (_: unknown, r: any) => r.project_name || r.project_code || '-',
+      render: (_: unknown, r: any) => [r.project_code, r.project_name].filter(Boolean).join(' ') || '-',
     },
     {
       title: 'รหัสวัสดุ / รายการ',
@@ -223,6 +223,17 @@ const PettyCashDetailPage: React.FC = () => {
     { title: 'จำนวน', dataIndex: 'qty', key: 'qty', width: 90, align: 'right' as const },
     { title: 'ราคา/หน่วย', dataIndex: 'unit_price', key: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => fmt(v) },
     { title: 'มูลค่าสุทธิ/แถว', dataIndex: 'line_net', key: 'line_net', width: 120, align: 'right' as const, render: (v: number) => fmt(v) },
+    {
+      title: 'ใบแจ้งหนี้',
+      key: 'invoice',
+      width: 150,
+      render: (_: unknown, r: any) => (
+        <div style={{ fontSize: 13 }}>
+          <div>เลขที่: {r.invoice_no || '-'}</div>
+          <div>วันที่: {r.invoice_date ? dayjs(r.invoice_date).format('DD/MM/YYYY') : '-'}</div>
+        </div>
+      ),
+    },
     { title: 'รายละเอียด', dataIndex: 'description', key: 'description', render: (v?: string) => v || '—' },
   ]
 
@@ -274,8 +285,11 @@ const PettyCashDetailPage: React.FC = () => {
           <Descriptions.Item label="เลขที่"><strong style={{ color: '#2563eb' }}>{pc?.pc_no}</strong></Descriptions.Item>
           <Descriptions.Item label="วันที่">{pc?.pc_date ? dayjs(pc.pc_date).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
           <Descriptions.Item label="โครงการ">
-            {pc?.project_codes && pc.project_codes.length > 0 ? pc.project_codes.join(', ') : '—'}
+            {pc?.project_codes && pc.project_codes.length > 0
+              ? pc.project_codes.join(', ')
+              : [pc?.project_code, pc?.project_name].filter(Boolean).join(' ') || '-'}
           </Descriptions.Item>
+          <Descriptions.Item label="แผนก">{pc?.dept_name || '-'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">{pc && <StatusBadge status={pc.status} />}</Descriptions.Item>
           <Descriptions.Item label="ผู้ขอเบิก">{pc?.requested_by_name || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{pc?.approver_name || '—'}</Descriptions.Item>

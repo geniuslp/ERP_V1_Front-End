@@ -50,6 +50,10 @@ const mapProject = (raw: any): Project => ({
   responsiblePersonName: raw.responsible_person_name,
   jobCodes:     raw.job_codes ?? [],
   budgetAmount: raw.budget_amount ?? 0,
+  voAmount:     raw.vo_amount ?? 0,
+  contractAmount: raw.contract_amount,
+  costAmount:   raw.cost_amount,
+  projectKind:  raw.project_kind,
   consultantName: raw.consultant_name,
   consultantPhone: raw.consultant_phone,
   startDate:    raw.start_date,
@@ -288,7 +292,7 @@ const ProjectListPage: React.FC = () => {
     if (!accessToken) return
     axios.get(`${BASE_URL}/customer`, {
       headers: authHeader,
-      params: { page: 1, page_size: 1000 },
+      params: { page: 1, page_size: 500 },
     })
       .then((res) => {
         const body = res.data?.data ?? res.data
@@ -430,6 +434,14 @@ const ProjectListPage: React.FC = () => {
       title: 'มูลค่าโครงการ',
       dataIndex: 'budgetAmount',
       key: 'budgetAmount',
+      width: '7%',
+      align: 'right' as const,
+      render: (val: number) => `${(val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+    },
+    {
+      title: 'มูลค่า VO',
+      dataIndex: 'voAmount',
+      key: 'voAmount',
       width: '7%',
       align: 'right' as const,
       render: (val: number) => `${(val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,

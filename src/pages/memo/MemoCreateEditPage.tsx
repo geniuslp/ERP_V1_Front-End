@@ -10,6 +10,7 @@ import {
   FilePdfOutlined, CloseCircleFilled, PrinterOutlined,
 } from '@ant-design/icons'
 import axios from 'axios'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
@@ -101,9 +102,9 @@ const MemoCreateEditPage: React.FC = () => {
   const [memoStatus, setMemoStatus] = useState('')
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
-  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string }[]>([])
+  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
-  const [requesters, setRequesters] = useState<{ value: number; label: string; dept?: string }[]>([])
+  const [requesters, setRequesters] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [requestersLoading, setRequestersLoading] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -200,8 +201,10 @@ const MemoCreateEditPage: React.FC = () => {
         // (e.g. { id, full_name, department }) until the real response is confirmed.
         setApprovers(list.map((u: any) => ({
           value: u.value ?? Number(u.id),
-          label: u.label ?? u.full_name ?? u.fullName ?? u.username,
+          label: formatApproverOption(u.username, u.value ?? u.id),
           dept: u.dept ?? u.department,
+          username: u.username,
+          name: u.full_name ?? u.label ?? u.fullName,
         })))
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'Failed to load approvers')
@@ -226,7 +229,9 @@ const MemoCreateEditPage: React.FC = () => {
         const list = Array.isArray(raw) ? raw : []
         setRequesters(list.map((u: any) => ({
           value: Number(u.id),
-          label: u.full_name ?? u.fullName ?? u.username,
+          label: formatApproverOption(u.username, u.id),
+          username: u.username,
+          name: u.full_name ?? u.fullName,
           dept: u.department,
         })))
       } catch (err: any) {
@@ -662,9 +667,11 @@ const MemoCreateEditPage: React.FC = () => {
                   placeholder="— เลือกผู้ขอ —"
                   loading={requestersLoading}
                   showSearch
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
+                  filterOption={(input, option) => {
+                    const q = input.toLowerCase()
+                    const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                    return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+                  }}
                   optionRender={(option) => (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span>{option.data.label}</span>
@@ -687,9 +694,11 @@ const MemoCreateEditPage: React.FC = () => {
                   placeholder="— เลือกผู้อนุมัติ —"
                   loading={approversLoading}
                   showSearch
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
+                  filterOption={(input, option) => {
+                    const q = input.toLowerCase()
+                    const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                    return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+                  }}
                   optionRender={(option) => (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span>{option.data.label}</span>

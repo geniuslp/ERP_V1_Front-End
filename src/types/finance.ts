@@ -11,6 +11,8 @@ export interface FinanceProject {
   project_name?: string | null
 }
 
+export type ApprovalStatus = 'PENDING_APPROVAL' | 'APPROVED'
+
 export type ReceivingStatus = 'FULLY_RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED'
 
 export interface FinancePaymentListItem {
@@ -21,6 +23,8 @@ export interface FinancePaymentListItem {
   project_name?: string | null
   net_amount: number
   status: string
+  // Document approval status shown on the finance list (filter param: status=PENDING_APPROVAL|APPROVED).
+  approval_status?: ApprovalStatus
   paid_amount: number
   remaining_to_pay: number
   // Distinct projects of the document: 1 for PO/WO, possibly several for petty cash (PC).
@@ -69,4 +73,32 @@ export interface RecordPaymentPayload {
   paid_date?: string
   paid_by: number
   remark?: string
+  // Save-plan-and-pay in one request: full current installments plus the selected installment_no list.
+  installments?: SaveInstallmentRow[]
+  installment_numbers?: number[]
+}
+
+export interface FinanceInstallment {
+  id: number
+  installment_no: number
+  percent: number
+  amount: number
+  description?: string | null
+  is_paid: boolean
+  paid_at?: string | null
+  paid_by_name?: string | null
+  payment_log_id?: number | null
+}
+
+export interface FinanceInstallmentsResult {
+  net_amount: number
+  installments_sum: number
+  installments: FinanceInstallment[]
+}
+
+export interface SaveInstallmentRow {
+  id?: number
+  percent: number
+  amount: number
+  description: string
 }

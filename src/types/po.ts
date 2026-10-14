@@ -69,6 +69,12 @@ export interface POListItem {
   // common 0-or-1-item case) since nothing on the backend enforces a strict
   // one-PO-to-one-PR relationship.
   pr_nos?: string[]
+  // purchase_request ids aligned index-for-index with pr_nos (GET /po list).
+  pr_ids?: number[]
+  pr_refs?: { pr_id: number; pr_no: string }[]
+  // Payment rollup from finance payments (GET /po).
+  paid_amount?: number
+  payment_status?: 'UNPAID' | 'PARTIAL' | 'PAID'
   // purchase_order.remarks — NOT confirmed present on GET /po (list) yet
   // (only seen on GET /po/:id so far, see PODetail.remarks above).
   remarks?: string | null

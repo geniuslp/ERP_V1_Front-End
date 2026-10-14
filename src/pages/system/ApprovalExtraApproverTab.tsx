@@ -4,6 +4,7 @@ import { Button, Table, Select, Input, Modal, Form, message, Tooltip } from 'ant
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import { approvalDelegationService } from '@/services/approvalDelegation.service'
 import { approvalConfigService } from '@/services/approvalConfig.service'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
@@ -82,7 +83,7 @@ const ApprovalExtraApproverTab: React.FC = () => {
   )
 
   const userOptions = useMemo(
-    () => users.map((u) => ({ value: u.id, label: `${u.full_name} (${u.username})` })),
+    () => users.map((u) => ({ value: u.id, label: formatApproverOption(u.username, u.id), username: u.username, name: u.full_name })),
     [users],
   )
 
@@ -215,9 +216,11 @@ const ApprovalExtraApproverTab: React.FC = () => {
               showSearch
               placeholder="เลือกผู้ใช้"
               options={userOptions}
-              filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
+              filterOption={(input, option) => {
+                const q = input.toLowerCase()
+                const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+              }}
             />
           </Form.Item>
 

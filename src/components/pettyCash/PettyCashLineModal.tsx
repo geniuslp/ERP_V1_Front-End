@@ -128,6 +128,8 @@ const PettyCashLineModal: React.FC<Props> = ({
       supplier_tax_id: l?.supplier_tax_id ?? '',
       remarks: l?.remarks ?? '',
       amount: l?.amount && l.amount > 0 ? l.amount : null,
+      invoice_no: l?.invoice_no ?? '',
+      invoice_date: toDayjs(l?.invoice_date),
       has_tax_invoice: l?.has_tax_invoice ?? false,
       tax_invoice_no: l?.tax_invoice_no ?? '',
       tax_invoice_date: toDayjs(l?.tax_invoice_date),
@@ -437,6 +439,8 @@ const PettyCashLineModal: React.FC<Props> = ({
       cost_subgroup_name: v.cost_subgroup_id ? (v.cost_subgroup_name ?? '') : '',
       remarks: v.remarks ?? '',
       amount: amt,
+      invoice_no: String(v.invoice_no ?? '').trim(),
+      invoice_date: fromDayjs(v.invoice_date),
       supplier_id: v.supplier_id ?? null,
       supplier_name: v.supplier_name ?? '',
       supplier_address: v.supplier_address ?? '',
@@ -629,13 +633,20 @@ const PettyCashLineModal: React.FC<Props> = ({
             </Form.Item>
           </Col>
         </Row>
-        {/* จำนวนเงิน (pre-VAT) sits above the sections only while the tax-invoice section is off;
-            with the switch on it is the first field inside that section. */}
-        {!hasInvoice && (
-          <Row gutter={16}>
-            <Col xs={24} lg={6} style={{ minWidth: 0 }}>{amountItem}</Col>
-          </Row>
-        )}
+        {/* Plain (non-tax) invoice + จำนวนเงิน (pre-VAT): always visible, above the tax-invoice toggle. */}
+        <Row gutter={16}>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="invoice_no" label="เลขที่ใบแจ้งหนี้" rules={[maxRunes(50, 'เลขที่ใบแจ้งหนี้')]}>
+              <Input maxLength={50} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="invoice_date" label="วันที่ใบแจ้งหนี้">
+              <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>{amountItem}</Col>
+        </Row>
 
         {/* Section 2 — tax invoice */}
         <div style={panelStyle}>
@@ -675,7 +686,6 @@ const PettyCashLineModal: React.FC<Props> = ({
                 </Col>
               </Row>
               <Row gutter={16}>
-                <Col xs={24} lg={6} style={{ minWidth: 0 }}>{amountItem}</Col>
                 <Col xs={24} lg={6} style={{ minWidth: 0 }}>
                   <Form.Item label="ภาษีมูลค่าเพิ่ม"><Input disabled value={`${vatRate}%`} /></Form.Item>
                 </Col>

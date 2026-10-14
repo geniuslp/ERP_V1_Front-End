@@ -15,6 +15,7 @@ import PRItemsTable, { type PRItemsTableHandle } from '@/components/common/PRIte
 import MemoSidebarPanel from '@/pages/pr/components/MemoSidebarPanel'
 import PRPrint, { type PRData } from '@/pages/pr/PRPrint'
 import axios from 'axios'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import type { User, Memo, PROrderType, CreatePRRequest } from '@/types'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
@@ -933,9 +934,9 @@ const PRCreatePage: React.FC = () => {
                     )}
                     options={users.map((u) => ({
                       value: Number(u.id),
-                      label: u.fullName || u.username,
-                      searchLabel: `${u.fullName || u.username} ${u.department ?? ''}`,
-                      name: u.fullName || u.username,
+                      label: formatApproverOption(u.username, u.id),
+                      searchLabel: `${u.username ?? ''} ${u.fullName ?? ''} ${u.department ?? ''}`,
+                      name: formatApproverOption(u.username, u.id),
                       dept: u.department,
                     }))}
                   />

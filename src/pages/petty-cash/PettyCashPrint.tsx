@@ -24,6 +24,8 @@ export interface PettyCashPrintLine {
   net: number
   vendor: string
   remark: string
+  invoiceNo: string
+  invoiceDate: string // DD/MM/YYYY or ''
   taxInvoiceNo: string
   taxInvoiceDate: string // DD/MM/YYYY or ''
   whtLabel: string
@@ -92,6 +94,8 @@ export const buildPettyCashPrintLines = (lines: NonNullable<PettyCashRequisition
       net: l.line_net ?? amount,
       vendor: l.supplier_name ?? '',
       remark: l.remarks ?? '',
+      invoiceNo: l.invoice_no ?? '',
+      invoiceDate: dmy(l.invoice_date),
       taxInvoiceNo: l.has_tax_invoice ? l.tax_invoice_no ?? '' : '',
       taxInvoiceDate: l.has_tax_invoice ? dmy(l.tax_invoice_date) : '',
       whtLabel: l.has_wht ? l.wht_income_label ?? '' : '',
@@ -120,19 +124,16 @@ const CSS = `
     font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Sarabun',sans-serif;}
   .pcp-box-first{border-bottom:1px solid #000;}
-  .pcp-info{display:grid;grid-template-columns:1fr 62mm;border:1px solid #000;border-top:none;
+  .pcp-info{display:grid;grid-template-columns:1fr 1fr;border:1px solid #000;border-top:none;
     font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.2;}
   .pcp-info > div{padding:3px 8px;}
-  .pcp-info > div:nth-child(even){border-left:1px solid #000;}
-  .pcp-info > div:nth-child(n+3){border-top:1px solid #000;}
+  .pcp-info > div:nth-child(even){border-left:1px solid #000;text-align:left;}
   .pcp-tbl{width:100%;border-collapse:collapse;table-layout:fixed;
     border-left:1px solid #000;border-right:1px solid #000;border-bottom:1px solid #000;}
   .pcp-tbl thead{display:table-header-group;}
   .pcp-tbl th{font-family:'Cordia New',sans-serif;font-weight:700;font-size:12pt;text-align:center;padding:2px 3px;height:7mm;
-    border-bottom:1px solid #000;border-right:1px solid #000;background:#fff;}
-  .pcp-tbl th:last-child{border-right:none;}
-  .pcp-tbl td{font-family:'Cordia New',sans-serif;font-size:12pt;padding:1px 5px;vertical-align:top;border:none;border-right:1px solid #000;line-height:1.15;overflow-wrap:anywhere;}
-  .pcp-tbl td:last-child{border-right:none;}
+    border-bottom:1px solid #000;border-right:none;background:#fff;}
+  .pcp-tbl td{font-family:'Cordia New',sans-serif;font-size:12pt;padding:1px 5px;vertical-align:top;border:none;line-height:1.15;overflow-wrap:anywhere;}
   .pcp-tbl tr.pcp-main td{padding-top:5px;}
   .pcp-tbl tr.pcp-last td{padding-bottom:5px;}
   .pcp-sub{font-size:11pt !important;color:#222;}
@@ -218,6 +219,7 @@ const LineRows = ({ line }: { line: PettyCashPrintLine }) => {
   const subs: string[] = []
   if (line.vendor) subs.push(`ผู้ขาย: ${line.vendor}`)
   if (line.remark) subs.push(`หมายเหตุ: ${line.remark}`)
+  if (line.invoiceNo || line.invoiceDate) subs.push(`ใบแจ้งหนี้เลขที่ ${line.invoiceNo || '-'}  วันที่ ${line.invoiceDate || '-'}`)
   if (line.taxInvoiceNo) subs.push(`ใบกำกับภาษีเลขที่ ${line.taxInvoiceNo}${line.taxInvoiceDate ? `  วันที่ ${line.taxInvoiceDate}` : ''}`)
   if (line.wht > 0) subs.push(`หัก ณ ที่จ่าย ${fmt(line.wht)} บาท${line.whtLabel ? ` (${line.whtLabel})` : ''}`)
   return (
@@ -234,7 +236,7 @@ const LineRows = ({ line }: { line: PettyCashPrintLine }) => {
       {subs.map((text, i) => (
         <tr key={i} className={i === subs.length - 1 ? 'pcp-last' : undefined}>
           <td /><td />
-          {/* Text stays inside the item column so the amount columns' vertical lines run unbroken. */}
+          {/* Text stays inside the item column (no vertical column lines). */}
           <td className="pcp-sub">{text}</td>
           <td /><td /><td /><td />
         </tr>
@@ -417,7 +419,7 @@ const PettyCashPrint: React.FC<Props> = ({ data, lines, onReady }) => {
             <Header pageNum={pageIdx + 1} totalPages={totalPages} />
             <InfoBox data={data} />
             {/* Items area fills everything between the header and the bottom block; the filler row
-                absorbs the leftover height so the frame / column lines run to the bottom. */}
+                absorbs the leftover height so the frame runs to the bottom. */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <table className="pcp-tbl" style={{ width: '100%', height: '100%' }}>
                 {COLS}

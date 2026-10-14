@@ -1,20 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Card, Table, Space, message, Input, Row, Col, Tag, Typography, Button, DatePicker, Select, Checkbox, Modal, Descriptions, Tooltip } from 'antd'
+import { Card, Table, Space, message, Input, Row, Col, Tag, Button, DatePicker, Select, Modal, Descriptions, Tooltip } from 'antd'
 import { SearchOutlined, ReloadOutlined, DownloadOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
+import { Link } from 'react-router-dom'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import * as XLSX from 'xlsx'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
-import { listPOs, exportPOs, getPODetail, setPODepositPaid } from '@/services/poService'
+import { listPOs, exportPOs, getPODetail } from '@/services/poService'
 import type { POListFilters } from '@/services/poService'
 import type { POListItem, PODetail, POLine } from '@/types/po'
 
 const { RangePicker } = DatePicker
-const { Text } = Typography
 
 const fmtMoney = (v?: number | null) =>
   v == null ? '-' : v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -27,12 +27,22 @@ const creditText = (v: POListItem['credit']) => {
   return typeof v === 'number' ? `${v} วัน` : String(v)
 }
 
-// Row tint — keyed on status_receive only; inline style via onRow (see DESIGN.md "Row tint").
-// Missing/NOT_SENT/SENT fall back to gray.
+// Row tint — keyed on payment_status; inline style via onRow (see DESIGN.md "Row tint").
+type PayStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
+const PAY_STYLE: Record<PayStatus, { bg: string; border: string; tag: string; label: string; legend: string }> = {
+  UNPAID: { bg: '#f5f5f5', border: '#8c8c8c', tag: 'default', label: 'ยังไม่จ่าย', legend: 'เทา = ยังไม่จ่าย' },
+  PARTIAL: { bg: '#fffbe6', border: '#faad14', tag: 'warning', label: 'จ่ายบางส่วน', legend: 'เหลือง = จ่ายบางส่วน (ยังต้องจ่ายเพิ่ม)' },
+  PAID: { bg: '#f6ffed', border: '#52c41a', tag: 'success', label: 'จ่ายครบ', legend: 'เขียว = จ่ายครบ' },
+}
+const payStatusOf = (r: POListItem): PayStatus => (r.payment_status as PayStatus) in PAY_STYLE ? (r.payment_status as PayStatus) : 'UNPAID'
 const getRowStyle = (r: POListItem): React.CSSProperties => {
-  if (r.status_receive === 'RECEIVED') return { background: '#f6ffed' }
-  if (r.status_receive === 'PARTIALLY_RECEIVED') return { background: '#fffbe6' }
-  return { background: '#f5f5f5', borderLeft: '3px solid #8c8c8c' }
+  const c = PAY_STYLE[payStatusOf(r)]
+  return { background: c.bg, borderLeft: `3px solid ${c.border}` }
+}
+
+const RECEIVE_TAG: Record<string, { color: string; label: string }> = {
+  RECEIVED: { color: 'success', label: 'รับครบ' },
+  PARTIALLY_RECEIVED: { color: 'warning', label: 'รับบางส่วน' },
 }
 
 // Local ResizableTitle pattern (same as POHistoryPage.tsx) — no shared component.
@@ -66,7 +76,7 @@ const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
 
 const DEFAULT_COL_WIDTHS: Record<string, number> = {
   no: 60, po_no: 150, pr_nos: 160, supplier_name: 200, pre_vat: 130,
-  net_amount: 130, credit: 100, project: 220, deposit_paid: 100, remarks: 200,
+  net_amount: 130, credit: 100, project: 220, pay_status: 160, receive_status: 120, remarks: 200,
 }
 
 interface DeptOption {
@@ -83,7 +93,6 @@ const POLineItemsPage: React.FC = () => {
   const [limit, setLimit] = useState(20)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [depositSaving, setDepositSaving] = useState<number | null>(null)
 
   const [deptOptions, setDeptOptions] = useState<DeptOption[]>([])
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS)
@@ -94,6 +103,7 @@ const POLineItemsPage: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
   const [deptInput, setDeptInput] = useState<string | undefined>(undefined)
   const [searchInput, setSearchInput] = useState('')
+  const [paymentInput, setPaymentInput] = useState<POListFilters['payment_status']>(undefined)
   const [filters, setFilters] = useState<POListFilters>({})
 
   const [detailOpen, setDetailOpen] = useState(false)
@@ -138,6 +148,7 @@ const POLineItemsPage: React.FC = () => {
       date_to: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
       dept_code: deptInput,
       search: searchInput.trim() || undefined,
+      payment_status: paymentInput,
     })
   }
 
@@ -145,6 +156,7 @@ const POLineItemsPage: React.FC = () => {
     setDateRange(null)
     setDeptInput(undefined)
     setSearchInput('')
+    setPaymentInput(undefined)
     setPage(1)
     setFilters({})
   }
@@ -160,18 +172,6 @@ const POLineItemsPage: React.FC = () => {
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
-    }
-  }
-
-  const handleDepositChange = async (r: POListItem, checked: boolean) => {
-    setDepositSaving(r.po_id)
-    try {
-      await setPODepositPaid(r.po_id, checked)
-      setItems((prev) => prev.map((x) => (x.po_id === r.po_id ? { ...x, deposit_paid: checked } : x)))
-    } catch (err: any) {
-      message.error(errText(err, 'บันทึกสถานะมัดจำไม่สำเร็จ'))
-    } finally {
-      setDepositSaving(null)
     }
   }
 
@@ -192,9 +192,9 @@ const POLineItemsPage: React.FC = () => {
         'ยอดสุทธิ': r.net_amount ?? 0,
         'เครดิต': r.credit == null ? '' : typeof r.credit === 'number' ? `${r.credit} วัน` : r.credit,
         'โครงการ': r.project_code ? (r.project_name ? `${r.project_code} - ${r.project_name}` : r.project_code) : '',
-        'มัดจำ': r.deposit_paid ? 'จ่ายแล้ว' : 'ยังไม่จ่าย',
         'หมายเหตุ': r.remarks ?? '',
         'สถานะ': r.status,
+        'สถานะจ่าย': PAY_STYLE[payStatusOf(r)].label,
         'สถานะรับของ': r.status_receive ?? '',
       }))
       const ws = XLSX.utils.json_to_sheet(sheetRows)
@@ -229,10 +229,14 @@ const POLineItemsPage: React.FC = () => {
       key: 'po_no',
       ...resizable('po_no'),
       render: (v: string, r) => (
-        <Text strong style={{ color: '#2563eb' }}>
+        <Link
+          to={`/po/approval/${r.po_id}`}
+          style={{ color: '#2563eb', fontWeight: 600 }}
+          onClick={(e) => e.stopPropagation()}
+        >
           {v}
           {(r.revision_round ?? 0) > 0 ? ` #R${r.revision_round}` : ''}
-        </Text>
+        </Link>
       ),
     },
     {
@@ -241,7 +245,25 @@ const POLineItemsPage: React.FC = () => {
       key: 'pr_nos',
       ellipsis: true,
       ...resizable('pr_nos'),
-      render: (v?: string[]) => (v && v.length > 0 ? v.join(', ') : '—'),
+      render: (v: string[] | undefined, r) => {
+        // Prefer pr_refs; fall back to pr_nos paired by index with pr_ids (same order on GET /po).
+        const refs = r.pr_refs?.length
+          ? r.pr_refs
+          : (v ?? []).map((no, i) => ({ pr_id: r.pr_ids?.[i] as number | undefined, pr_no: no }))
+        if (refs.length === 0) return '—'
+        return refs.map((ref, i) => (
+          <React.Fragment key={`${ref.pr_no}-${i}`}>
+            {i > 0 && ', '}
+            {ref.pr_id != null ? (
+              <Link to={`/pr/${ref.pr_id}`} style={{ color: '#2563eb', fontWeight: 600 }} onClick={(e) => e.stopPropagation()}>
+                {ref.pr_no}
+              </Link>
+            ) : (
+              ref.pr_no
+            )}
+          </React.Fragment>
+        ))
+      },
     },
     {
       title: 'ชื่อร้านค้า',
@@ -283,20 +305,27 @@ const POLineItemsPage: React.FC = () => {
       render: (_: unknown, r) => [r.project_code, r.project_name].filter(Boolean).join(' ') || '—',
     },
     {
-      title: 'จ่ายมัดจำ',
-      key: 'deposit_paid',
-      align: 'center',
-      ...resizable('deposit_paid'),
-      render: (_: unknown, r) => (
-        // Stop propagation so toggling doesn't also open the line-item modal.
-        <span onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            checked={!!r.deposit_paid}
-            disabled={depositSaving === r.po_id}
-            onChange={(e) => handleDepositChange(r, e.target.checked)}
-          />
-        </span>
-      ),
+      title: 'สถานะจ่าย',
+      key: 'pay_status',
+      ...resizable('pay_status'),
+      render: (_: unknown, r) => {
+        const st = payStatusOf(r)
+        return (
+          <Tag color={PAY_STYLE[st].tag} style={{ margin: 0 }}>
+            {PAY_STYLE[st].label}
+            {st === 'PARTIAL' ? ` ${fmtMoney(r.paid_amount ?? 0)} / ${fmtMoney(r.net_amount ?? 0)}` : ''}
+          </Tag>
+        )
+      },
+    },
+    {
+      title: 'สถานะรับของ',
+      key: 'receive_status',
+      ...resizable('receive_status'),
+      render: (_: unknown, r) => {
+        const t = RECEIVE_TAG[r.status_receive ?? '']
+        return <Tag color={t?.color ?? 'default'} style={{ margin: 0 }}>{t?.label ?? 'ยังไม่รับ'}</Tag>
+      },
     },
     {
       title: 'หมายเหตุ',
@@ -368,6 +397,20 @@ const POLineItemsPage: React.FC = () => {
               style={{ width: '100%' }}
             />
           </Col>
+          <Col xs={24} md={6}>
+            <Select
+              placeholder="สถานะจ่าย"
+              value={paymentInput}
+              onChange={(v) => setPaymentInput(v)}
+              allowClear
+              options={[
+                { value: 'UNPAID', label: 'ยังไม่จ่าย' },
+                { value: 'PARTIAL', label: 'จ่ายบางส่วน' },
+                { value: 'PAID', label: 'จ่ายครบ' },
+              ]}
+              style={{ width: '100%' }}
+            />
+          </Col>
           <Col xs={24} md={10}>
             <Input
               placeholder="ค้นหาเลขที่ PO หรือ PR"
@@ -394,6 +437,14 @@ const POLineItemsPage: React.FC = () => {
       </Card>
 
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
+        <Space size={20} wrap style={{ marginBottom: 12, fontSize: 12 }}>
+          {(Object.keys(PAY_STYLE) as PayStatus[]).map((k) => (
+            <span key={k}>
+              <span style={{ display: 'inline-block', width: 12, height: 12, background: PAY_STYLE[k].bg, borderLeft: `3px solid ${PAY_STYLE[k].border}`, marginRight: 6, verticalAlign: 'middle' }} />
+              {PAY_STYLE[k].legend}
+            </span>
+          ))}
+        </Space>
         <Table
           rowKey="po_id"
           loading={loading}

@@ -334,9 +334,21 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({
                     <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 12 }}>{memo.memoNo}</span>
                     <MemoStatusBadge status={memo.status} />
                   </div>
-                  <div style={{ fontSize: 11, color: '#60a5fa' }}>
-                    {memo.requestedBy} · {memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
-                  </div>
+                  {(() => {
+                    const projectText = [memo.projectCode, memo.projectName].filter(Boolean).join(' ') || '-'
+                    return (
+                      <div style={{ fontSize: 11, color: '#60a5fa', display: 'flex', minWidth: 0 }}>
+                        <Tooltip title={projectText}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                            {projectText}
+                          </span>
+                        </Tooltip>
+                        <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                          &nbsp;· {memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
+                        </span>
+                      </div>
+                    )
+                  })()}
                   {(memo as any).total_lines != null && (
                     <div style={{ fontSize: 11, color: '#16a34a', marginTop: 2 }}>
                       remaining {(memo as any).remaining_lines ?? 0} of {(memo as any).total_lines} items

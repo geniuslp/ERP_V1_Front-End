@@ -24,6 +24,12 @@ export interface Project {
   responsiblePersonName?: string
   jobCodes?: string[]
   budgetAmount: number
+  // "มูลค่า VO" — independent of budgetAmount (never summed or synced)
+  voAmount: number
+  contractAmount?: number
+  costAmount?: number
+  // "ประเภทโครงการ": NEW = โครงการใหม่, VO = งานเพิ่ม
+  projectKind?: 'NEW' | 'VO'
   consultantName?: string
   // "เบอร์ติดต่อของที่ปรึกษา" — freeform, no validation
   consultantPhone?: string

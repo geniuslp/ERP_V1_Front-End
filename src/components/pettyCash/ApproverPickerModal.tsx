@@ -3,6 +3,7 @@ import { Modal, Table, Input, Button, Tag, Space } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SearchOutlined } from '@ant-design/icons'
 import axios from 'axios'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 import { message } from 'antd'
 import { useAppSelector } from '@/store'
 
@@ -11,13 +12,14 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:808
 interface ApproverRow {
   key: number
   userId: number
+  username?: string
   code: string
   name: string
   roleNames: string
   active: boolean
 }
 
-export interface ChosenApprover { userId: number; code: string; name: string; roleNames: string }
+export interface ChosenApprover { userId: number; username?: string; code: string; name: string; roleNames: string }
 
 interface Props {
   open: boolean
@@ -64,6 +66,7 @@ const ApproverPickerModal: React.FC<Props> = ({ open, docType, initialSelectedId
         const list: ApproverRow[] = (Array.isArray(raw) ? raw : []).map((u: any) => ({
           key: Number(u.value ?? u.id),
           userId: Number(u.value ?? u.id),
+          username: u.username || undefined,
           code: u.employee_code || '-',
           name: u.full_name ?? u.label ?? u.fullName ?? u.username ?? '-',
           roleNames: Array.isArray(u.role_names)
@@ -87,13 +90,15 @@ const ApproverPickerModal: React.FC<Props> = ({ open, docType, initialSelectedId
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return q ? rows.filter((r) => r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)) : rows
+    return q
+      ? rows.filter((r) => r.code.toLowerCase().includes(q) || (r.username ?? '').toLowerCase().includes(q) || r.name.toLowerCase().includes(q))
+      : rows
   }, [rows, search])
 
   const columns: ColumnsType<ApproverRow> = [
     { title: 'No', key: 'no', width: 60, align: 'center', render: (_v, _r, i) => i + 1 },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 120 },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
+    { title: 'Name', dataIndex: 'name', key: 'name', render: (_v, r) => formatApproverOption(r.username, r.userId) },
     { title: 'บทบาท', dataIndex: 'roleNames', key: 'roleNames', width: 220 },
     {
       title: 'Active', key: 'active', width: 110, align: 'center',
@@ -122,7 +127,7 @@ const ApproverPickerModal: React.FC<Props> = ({ open, docType, initialSelectedId
           <Button onClick={onCancel} disabled={confirming}>ยกเลิก</Button>
           <Button type="primary" disabled={selected == null} loading={confirming} onClick={() => {
             const r = rows.find((x) => x.userId === selected)
-            if (r) onOk({ userId: r.userId, code: r.code, name: r.name, roleNames: r.roleNames })
+            if (r) onOk({ userId: r.userId, username: r.username, code: r.code, name: r.name, roleNames: r.roleNames })
           }}>
             ตกลง
           </Button>

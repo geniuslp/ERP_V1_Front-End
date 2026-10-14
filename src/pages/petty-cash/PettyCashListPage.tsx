@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Input, Row, Col, Select, DatePicker, Tag, Tooltip } from 'antd'
+import { Card, Table, Button, Space, message, Input, Row, Col, Select, DatePicker, Tooltip } from 'antd'
 import { PlusOutlined, EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -11,6 +11,7 @@ import { useAppSelector } from '@/store'
 import { pettyCashService } from '@/services/pettyCashService'
 import type { PettyCashRequisition } from '@/types/pettyCash'
 import axios from 'axios'
+import { formatMoney } from '@/utils/formatMoney'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 const CREATE_MENU_CODE = 'MENU_PETTY_CASH_CREATE'
@@ -101,52 +102,78 @@ const PettyCashListPage: React.FC = () => {
 
   const columns: ColumnsType<PettyCashRequisition> = [
     {
-      title: 'เลขที่',
+      title: 'ลำดับ',
+      key: 'no',
+      width: 60,
+      align: 'center',
+      render: (_: unknown, __: PettyCashRequisition, idx: number) => (page - 1) * pageSize + idx + 1,
+    },
+    {
+      title: 'เลขที่ใบเบิก',
       dataIndex: 'pc_no',
       key: 'pc_no',
+      width: 150,
       render: (v: string, r) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/petty-cash/${r.id}`)}>{v}</a>
       ),
     },
-    { title: 'วันที่', dataIndex: 'pc_date', key: 'pc_date', render: (v: string) => v?.slice(0, 10) ?? '-' },
     {
+      // On-screen convention: "{code} {name}", single space, no dash. Falls back to the line
+      // project codes for documents whose header has no project of its own.
       title: 'โครงการ',
       key: 'project',
-      width: 220,
+      ellipsis: { showTitle: false },
       render: (_: unknown, r) => {
-        const codes = r.project_codes ?? []
-        if (codes.length === 0) return '-'
-        const shown = codes.slice(0, 2)
-        const rest = codes.length - shown.length
-        return (
-          <Space size={4} wrap>
-            {shown.map((c) => <Tag key={c} style={{ margin: 0 }}>{c}</Tag>)}
-            {rest > 0 && (
-              <Tooltip title={codes.slice(2).join(', ')}>
-                <Tag style={{ margin: 0 }}>+{rest}</Tag>
-              </Tooltip>
-            )}
-          </Space>
-        )
+        const text = [r.project_code, r.project_name].filter(Boolean).join(' ') || (r.project_codes ?? []).join(', ') || '-'
+        return <Tooltip title={text}><span>{text}</span></Tooltip>
       },
     },
-    { title: 'ผู้ขอเบิก', dataIndex: 'requested_by_name', key: 'requested_by_name', render: (v?: string) => v || '-' },
+    {
+      title: 'ชื่อร้านค้า / บริษัท',
+      key: 'supplier_names',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r) => {
+        const raw = r.supplier_names
+        const text = (Array.isArray(raw) ? raw.filter(Boolean).join(', ') : raw) || '-'
+        return <Tooltip title={text}><span>{text}</span></Tooltip>
+      },
+    },
+    {
+      title: 'ยอดหัก ณ ที่จ่าย',
+      dataIndex: 'wht_total',
+      key: 'wht_total',
+      width: 140,
+      align: 'right',
+      render: (v?: number | string | null) => formatMoney(v),
+    },
     {
       title: 'มูลค่าสุทธิ',
-      dataIndex: 'net_amount',
-      key: 'net_amount',
+      dataIndex: 'net_value',
+      key: 'net_value',
+      width: 140,
       align: 'right',
-      render: (v: number, r) => `${v.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ${r.currency}`,
+      render: (v?: number | string | null) => formatMoney(v),
+    },
+    {
+      title: 'จำนวนเงิน',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 140,
+      align: 'right',
+      render: (v?: number | string | null) => formatMoney(v),
     },
     {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
+      width: 120,
+      align: 'center',
       render: (v: string) => <StatusBadge status={v} />,
     },
     {
       title: '',
       key: 'action',
+      width: 130,
       render: (_: unknown, r) => {
         const isOwner = user && String(r.requested_by) === String(user.id)
         const canEdit = isOwner && (r.status === 'DRAFT' || r.status === 'REJECTED')
@@ -242,6 +269,7 @@ const PettyCashListPage: React.FC = () => {
           loading={loading}
           dataSource={filtered}
           columns={columns}
+          tableLayout="fixed"
           size="small"
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{

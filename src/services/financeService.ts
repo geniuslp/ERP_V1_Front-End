@@ -6,6 +6,8 @@ import type {
   FinancePaymentLogEntry,
   RecordPaymentPayload,
   FinanceDocType,
+  FinanceInstallmentsResult,
+  SaveInstallmentRow,
 } from '@/types/finance'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -81,5 +83,20 @@ export const financeService = {
   recordPayment: async (token: string, payload: RecordPaymentPayload): Promise<FinancePaymentLogEntry> => {
     const res = await axios.post(`${BASE_URL}/finance/payments`, payload, { headers: authHeader(token) })
     return res.data?.data ?? res.data
+  },
+
+  getInstallments: async (token: string, docType: FinanceDocType, docId: string | number): Promise<FinanceInstallmentsResult> => {
+    const res = await axios.get(`${BASE_URL}/finance/payments/${docType}/${docId}/installments`, { headers: authHeader(token) })
+    const raw = res.data?.data ?? res.data
+    return {
+      net_amount: Number(raw?.net_amount ?? 0),
+      installments_sum: Number(raw?.installments_sum ?? 0),
+      installments: Array.isArray(raw?.installments) ? raw.installments : [],
+    }
+  },
+
+  // Full replace — rows are renumbered by the backend in request order.
+  saveInstallments: async (token: string, docType: FinanceDocType, docId: string | number, installments: SaveInstallmentRow[]): Promise<void> => {
+    await axios.put(`${BASE_URL}/finance/payments/${docType}/${docId}/installments`, { installments }, { headers: authHeader(token) })
   },
 }

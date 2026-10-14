@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Button, Space, Alert, Modal, Tag, message } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -7,6 +7,7 @@ import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
+import FinanceInstallmentsSection, { type SelectedInstallment, type InstallmentsSectionHandle } from '@/components/finance/FinanceInstallmentsSection'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { financeService } from '@/services/financeService'
@@ -64,6 +65,26 @@ const FinancePaymentDetailPage: React.FC = () => {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
   const [form] = Form.useForm()
+
+  const [selectedInst, setSelectedInst] = useState<SelectedInstallment[]>([])
+  const instRef = useRef<InstallmentsSectionHandle>(null)
+  const [instReloadKey, setInstReloadKey] = useState(0)
+  const selectedSum = Math.round(selectedInst.reduce((s, i) => s + i.amount, 0) * 100) / 100
+  const hasSelection = selectedInst.length > 0
+
+  const enteredAmount = Form.useWatch('amount_paid', form) as number | undefined
+
+  // Auto-fill with the selected sum (capped at the remaining balance) whenever the selection
+  // or a selected row's amount changes; the user can still overtype until the next change.
+  const selectionSig = selectedInst.map((i) => i.key).join('|')
+  useEffect(() => {
+    if (!hasSelection) return
+    const paid = docItem?.paid_amount ?? 0
+    const cap = docItem ? (docItem.remaining_to_pay ?? Math.max(docItem.net_amount - paid, 0)) : undefined
+    const v = cap != null ? Math.min(selectedSum, cap) : selectedSum
+    form.setFieldsValue({ amount_paid: Math.round(v * 100) / 100 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionSig, selectedSum])
 
   const fetchDoc = async () => {
     if (!docType || !docId) return
@@ -135,6 +156,11 @@ const FinancePaymentDetailPage: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
+      const plan = hasSelection ? instRef.current?.getPlan() : undefined
+      if (plan?.hasEmptyRow) {
+        message.warning('กรุณาระบุ % หรือจำนวนเงินให้ครบทุกงวด')
+        return
+      }
       const values = await form.validateFields()
       if (!docType || !docId) return
       setSubmitting(true)
@@ -145,9 +171,13 @@ const FinancePaymentDetailPage: React.FC = () => {
         paid_date: values.paid_date ? values.paid_date.format('YYYY-MM-DD') : undefined,
         paid_by: values.paid_by,
         remark: values.remark || undefined,
+        installments: plan?.installments,
+        installment_numbers: plan?.selectedNumbers,
       })
       message.success('บันทึกการจ่ายเงินสำเร็จ')
       form.resetFields()
+      setSelectedInst([])
+      setInstReloadKey((k) => k + 1)
       fetchLog()
       fetchDoc()
     } catch (err: any) {
@@ -393,6 +423,17 @@ const FinancePaymentDetailPage: React.FC = () => {
         </Card>
       )}
 
+      {docType && docId && (
+        <FinanceInstallmentsSection
+          ref={instRef}
+          accessToken={accessToken}
+          docType={docType}
+          docId={docId}
+          reloadKey={instReloadKey}
+          onSelectedChange={setSelectedInst}
+        />
+      )}
+
       <Card title="ประวัติการจ่ายเงิน" style={{ ...cardStyle, marginBottom: 20 }}>
         <Table
           rowKey="id"
@@ -422,11 +463,25 @@ const FinancePaymentDetailPage: React.FC = () => {
             <Form.Item
               name="amount_paid"
               label="จำนวนเงิน"
-              extra={docItem ? `คงเหลือ ${thb(remaining)} บาท` : undefined}
-              rules={[{ required: true, message: 'กรุณากรอกจำนวนเงิน' }]}
-              style={{ width: 220 }}
+              extra={
+                <>
+                  {docItem && <div>{`คงเหลือ ${thb(remaining)} บาท`}</div>}
+                  {hasSelection && (
+                    <div>{`ผลรวมงวดที่เลือก (งวดที่ ${selectedInst.map((i) => i.no).join(', ')}): ${thb(selectedSum)}`}</div>
+                  )}
+                  {hasSelection && enteredAmount != null && Math.abs(enteredAmount - selectedSum) > 0.01 && (
+                    <div style={{ color: '#d97706' }}>{`ยอดที่กรอก ${thb(enteredAmount)} ไม่เท่ากับงวดที่เลือก ${thb(selectedSum)}`}</div>
+                  )}
+                </>
+              }
+              rules={[
+                { required: true, message: 'กรุณากรอกจำนวนเงิน' },
+                { type: 'number', min: 0.01, message: 'จำนวนเงินต้องมากกว่า 0' },
+                ...(docItem ? [{ type: 'number' as const, max: remaining, message: `จำนวนเงินต้องไม่เกินยอดคงเหลือ ${thb(remaining)} บาท` }] : []),
+              ]}
+              style={{ width: 260 }}
             >
-              <InputNumber min={0.01} max={docItem ? remaining : undefined} step={0.01} style={{ width: '100%' }} formatter={(v) => `${v}`} />
+              <InputNumber step={0.01} precision={2} style={{ width: '100%' }} formatter={(v) => `${v}`} />
             </Form.Item>
             <Form.Item name="paid_date" label="วันที่จ่าย" style={{ width: 200 }}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
