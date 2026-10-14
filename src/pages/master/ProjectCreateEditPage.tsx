@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -32,21 +33,45 @@ const ProjectCreateEditPage: React.FC = () => {
   const isEdit = Boolean(id)
   const [form] = Form.useForm()
   const watchedCustomerId: number | undefined = Form.useWatch('customer_id', form)
-  // Create flow: project_code is a read-only preview from GET /master/projects/next-code. If that endpoint is
-  // unavailable the field falls back to a normal editable input so a project can still be created.
-  const [codeFallback, setCodeFallback] = useState(false)
-  const [codeLoading, setCodeLoading] = useState(false)
+  const projectKind: 'NEW' | 'VO' = Form.useWatch('project_kind', form) ?? 'NEW'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [customersLoading, setCustomersLoading] = useState(false)
+  // "ผู้รับผิดชอบหลัก" options: ALL active users (GET /users/options -> [{ id, username }]), loaded once.
+  const [userOptions, setUserOptions] = useState<{ value: number; label: string }[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
   // The old free-text "เจ้าของโครงการ" value (project_owner_name), preserved
   // for existing records but no longer editable via this form — kept out of
   // the Form's state so the customer_id dropdown fully replaces it as the
   // field the user interacts with, while the payload still passes it through
   // unchanged (per backend still accepting/storing it).
+  const selectedCustomer = customers.find((c) => c.cus_id === watchedCustomerId)
+  // Gregorian year in Asia/Bangkok, then the owner's customer_code (already in the dropdown data).
+  const bkkYear = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Bangkok', year: 'numeric', calendar: 'gregory' }).format(new Date())
+  const codePrefix = !isEdit && selectedCustomer?.customer_code ? `${bkkYear}-${selectedCustomer.customer_code}-` : ''
+  // Non-blocking preview of the real next code (GET /master/projects/next-code). Any failure just keeps the local prefix.
+  const [previewCode, setPreviewCode] = useState<string | undefined>()
+  useEffect(() => {
+    setPreviewCode(undefined)
+    if (isEdit || !accessToken || !watchedCustomerId) return
+    let stale = false
+    axios.get(`${BASE_URL}/master/projects/next-code`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { customer_id: watchedCustomerId },
+      timeout: 5000,
+    })
+      .then((res) => {
+        const d = res.data?.data ?? res.data
+        const code = typeof d === 'string' ? d : d?.project_code
+        if (!stale && code) setPreviewCode(String(code))
+      })
+      .catch(() => { /* fall back to the local prefix silently */ })
+    return () => { stale = true }
+  }, [watchedCustomerId, isEdit, accessToken])
+
   const [legacyProjectOwnerName, setLegacyProjectOwnerName] = useState<string | undefined>()
 
   // "เจ้าของโครงการ" dropdown — same source as CustomerPage.tsx (GET /customer),
@@ -78,33 +103,18 @@ const ProjectCreateEditPage: React.FC = () => {
   }, [accessToken])
 
   useEffect(() => {
-    if (isEdit || !accessToken) return
-    if (!watchedCustomerId) {
-      if (!codeFallback) form.setFieldsValue({ project_code: undefined })
-      return
-    }
+    if (!accessToken) return
     let cancelled = false
-    setCodeLoading(true)
-    axios.get(`${BASE_URL}/master/projects/next-code`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      params: { customer_id: watchedCustomerId },
-    })
+    setUsersLoading(true)
+    axios.get(`${BASE_URL}/users/options`, { headers: { Authorization: `Bearer ${accessToken}` } })
       .then((res) => {
-        if (cancelled) return
-        const d = res.data?.data ?? res.data
-        const code = typeof d === 'string' ? d : d?.project_code ?? d?.next_code ?? d?.code
-        if (!code) throw new Error('empty next-code response')
-        setCodeFallback(false)
-        form.setFieldsValue({ project_code: String(code) })
+        const list: { id: number; username: string }[] = res.data?.data ?? []
+        if (!cancelled) setUserOptions(list.map((u) => ({ value: Number(u.id), label: formatApproverOption(u.username, u.id) })))
       })
-      .catch(() => {
-        if (cancelled) return
-        setCodeFallback(true)
-        message.warning('ยังไม่สามารถสร้างรหัสโครงการอัตโนมัติได้ กรุณากรอกรหัสโครงการเอง')
-      })
-      .finally(() => { if (!cancelled) setCodeLoading(false) })
+      .catch((e) => message.error(e?.response?.data?.error || e?.response?.data?.message || 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ'))
+      .finally(() => { if (!cancelled) setUsersLoading(false) })
     return () => { cancelled = true }
-  }, [watchedCustomerId, isEdit, accessToken])
+  }, [accessToken])
 
   useEffect(() => {
     if (!isEdit) return
@@ -121,6 +131,7 @@ const ProjectCreateEditPage: React.FC = () => {
           project_name: p.project_name,
           location_code: p.location_code,
           responsible_person_name: p.responsible_person_name,
+          responsible_user_ids: (p.responsible_users ?? []).map((u: { id: number }) => Number(u.id)),
           customer_id: p.customer_id ?? undefined,
           job_codes: p.job_codes ?? [],
           budget_amount: p.budget_amount ?? 0,
@@ -149,15 +160,11 @@ const ProjectCreateEditPage: React.FC = () => {
     } catch {
       return
     }
-    if (!isEdit && !values.project_code) {
-      message.error('กรุณาเลือกเจ้าของโครงการเพื่อให้ระบบสร้างรหัสโครงการ')
-      return
-    }
-
     const [startDate, endDate] = values.date_range ?? [undefined, undefined]
 
     const payload = {
-      project_code:  values.project_code,
+      // Create: the server generates project_code, so it is never sent.
+      ...(isEdit ? { project_code: values.project_code } : {}),
       project_name:  values.project_name,
       // "ที่อยู่โครงการ" — location_code is now a free-text project address
       // (no longer validated/joined against the location master), per the
@@ -165,7 +172,8 @@ const ProjectCreateEditPage: React.FC = () => {
       // before, just relabeled/re-typed on the frontend.
       location_code: values.location_code || undefined,
       // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
-      responsible_person_name: values.responsible_person_name,
+      // The server derives the legacy responsible_person_name from the selected usernames.
+      responsible_user_ids: values.responsible_user_ids ?? [],
       // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
       // replacing the old project_owner_name free-text input.
       customer_id: values.customer_id ?? undefined,
@@ -174,8 +182,8 @@ const ProjectCreateEditPage: React.FC = () => {
       // from the payload if the backend still stores/reads it.
       project_owner_name: legacyProjectOwnerName,
       job_codes:     values.job_codes ?? [],
-      budget_amount: values.budget_amount ?? 0,
-      vo_amount:     values.vo_amount ?? 0,
+      budget_amount: values.project_kind === 'VO' ? 0 : values.budget_amount ?? 0,
+      vo_amount:     values.project_kind === 'VO' ? values.vo_amount ?? 0 : 0,
       contract_amount: values.contract_amount ?? 0,
       cost_amount:   values.cost_amount ?? 0,
       project_kind:  values.project_kind ?? 'NEW',
@@ -192,10 +200,12 @@ const ProjectCreateEditPage: React.FC = () => {
         })
         message.success('แก้ไขโครงการสำเร็จ')
       } else {
-        await axios.post(`${BASE_URL}/master/projects`, payload, {
+        const res = await axios.post(`${BASE_URL}/master/projects`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        message.success('เพิ่มโครงการสำเร็จ')
+        const created = res.data?.data ?? res.data
+        const code = created?.project_code
+        message.success(code ? `บันทึกแล้ว รหัสโครงการ ${code}` : 'เพิ่มโครงการสำเร็จ')
       }
       navigate('/master/projects')
     } catch (err: any) {
@@ -206,7 +216,8 @@ const ProjectCreateEditPage: React.FC = () => {
         // requisition"); show whichever comes back verbatim, same
         // field-level-error pattern CustomerPage.tsx uses for its own 409.
         const conflictMessage = err?.response?.data?.message || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
-        form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
+        if (isEdit) form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
+        else message.error(conflictMessage)
       } else {
         message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
       }
@@ -261,22 +272,30 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* Read-only: preview on create (after an owner is chosen), existing code on edit. */}
+              {/* Read-only. Edit: saved code. Add: locally computed prefix only — the server assigns the number on save. */}
               <Form.Item
                 label="รหัสโครงการ"
-                name="project_code"
-                rules={codeFallback && !isEdit ? [{ required: true, message: 'กรุณากรอกรหัสโครงการ' }] : []}
+                name={isEdit ? 'project_code' : undefined}
+                extra={!isEdit && codePrefix ? 'เลขนี้เป็นตัวอย่าง ระบบจะกำหนดเลขจริงเมื่อบันทึก' : undefined}
               >
                 <Input
-                  disabled={isEdit}
-                  readOnly={!isEdit && !codeFallback}
-                  placeholder={isEdit || codeFallback ? 'เช่น XM-400' : codeLoading ? 'กำลังสร้างรหัส...' : 'เลือกเจ้าของโครงการเพื่อแสดงรหัส'}
+                  className="project-code-input"
+                  disabled
+                  {...(isEdit ? {} : { value: previewCode ?? (codePrefix ? `${codePrefix} (ระบบกำหนดเลขให้เมื่อบันทึก)` : undefined) })}
+                  placeholder="เลือกเจ้าของโครงการก่อน"
                 />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
               <Form.Item label="ประเภทโครงการ" name="project_kind">
                 <Select
+                  onChange={(k: 'NEW' | 'VO') => {
+                    // Reset the field that is being hidden so no stale value is submitted.
+                    const hidden = k === 'VO' ? 'budget_amount' : 'vo_amount'
+                    const shown = k === 'VO' ? 'vo_amount' : 'budget_amount'
+                    form.setFieldsValue({ [hidden]: 0 })
+                    form.setFields([{ name: hidden, errors: [] }, { name: shown, errors: [] }])
+                  }}
                   options={[
                     { value: 'NEW', label: 'โครงการใหม่' },
                     { value: 'VO',  label: 'งานเพิ่ม (VO)' },
@@ -293,17 +312,28 @@ const ProjectCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item
                 label="ผู้รับผิดชอบหลัก"
-                name="responsible_person_name"
-                rules={[{ required: true, message: 'กรุณากรอกผู้รับผิดชอบหลัก' }]}
+                name="responsible_user_ids"
+                rules={[{ required: true, type: 'array', min: 1, message: 'กรุณาเลือกผู้รับผิดชอบหลัก' }]}
               >
-                <Input placeholder="ชื่อผู้รับผิดชอบหลัก" />
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  placeholder="เลือกผู้รับผิดชอบหลัก"
+                  loading={usersLoading}
+                  options={userOptions}
+                  optionFilterProp="label"
+                  notFoundContent={usersLoading ? 'กำลังโหลด...' : 'ไม่พบข้อมูล'}
+                />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
+              {/* One value field per project kind, same slot: NEW → มูลค่าโครงการ, VO → มูลค่า VO. */}
               <Form.Item
-                label="มูลค่าโครงการ"
-                name="budget_amount"
-                rules={[{ required: true, message: 'กรุณากรอกมูลค่าโครงการ' }]}
+                key={projectKind}
+                label={projectKind === 'VO' ? 'มูลค่า VO' : 'มูลค่าโครงการ'}
+                name={projectKind === 'VO' ? 'vo_amount' : 'budget_amount'}
+                rules={[{ required: true, message: projectKind === 'VO' ? 'กรุณากรอกมูลค่า VO' : 'กรุณากรอกมูลค่าโครงการ' }]}
               >
                 <InputNumber
                   style={{ width: '100%' }}
@@ -322,22 +352,6 @@ const ProjectCreateEditPage: React.FC = () => {
                   placeholder="— เลือกประเภทงาน —"
                   allowClear
                   options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item
-                label="มูลค่า VO"
-                name="vo_amount"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0 as number}
-                  step={1000}
-                  precision={2}
-                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
-                  placeholder="0.00"
                 />
               </Form.Item>
             </Col>
@@ -362,7 +376,6 @@ const ProjectCreateEditPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col md={12} xs={24} />
             <Col md={12} xs={24}>
               <Form.Item
                 label="มูลค่าต้นทุน"
@@ -379,7 +392,6 @@ const ProjectCreateEditPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col md={12} xs={24} />
             <Col md={12} xs={24}>
               <Form.Item label="สถานะ" name="status">
                 <Select

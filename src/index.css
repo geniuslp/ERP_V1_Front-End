@@ -329,3 +329,23 @@ body {
 .po-approval-table .ant-table-thead > tr > th::before {
   display: none;
 }
+
+/* ProjectCreateEditPage.tsx — read-only "รหัสโครงการ": stays disabled but is legible
+   (antd's disabled grey + Chrome/Safari's -webkit-text-fill-color fade would otherwise wash it out).
+   Scoped to this one input; text colour is antd's default colorText. */
+.project-code-input.ant-input,
+.project-code-input.ant-input[disabled],
+.project-code-input.ant-input-disabled {
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.88);
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.88);
+  border-color: #d9d9d9;
+  cursor: default;
+  font-weight: 500;
+}
+
+.project-code-input.ant-input[disabled]::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.45);
+  font-weight: 400;
+}

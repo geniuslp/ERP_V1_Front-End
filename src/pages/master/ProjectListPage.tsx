@@ -436,7 +436,9 @@ const ProjectListPage: React.FC = () => {
       key: 'budgetAmount',
       width: '7%',
       align: 'right' as const,
-      render: (val: number) => `${(val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+      // VO projects carry their value in vo_amount, so show that instead.
+      render: (val: number, record: Project) =>
+        `${((record.projectKind === 'VO' ? record.voAmount : val) ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'มูลค่า VO',
