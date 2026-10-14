@@ -7,9 +7,9 @@ import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import { financeService } from '@/services/financeService'
+import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
-import type { ApprovalStatus, FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
+import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
 
 // Same map+Tag convention as POStatusBadge.tsx's approvalMap/receiveMap —
 // distinct from POReceiveStatus (status_receive, NOT_SENT/SENT/PARTIALLY_
@@ -34,15 +34,9 @@ const STATUS_OPTIONS = [
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
 ]
 
-const APPROVAL_TAG: Record<ApprovalStatus, { color: string; label: string }> = {
-  PENDING_APPROVAL: { color: 'warning', label: 'รออนุมัติ' },
-  APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
-}
-
 const DOC_NO_COL_DEFAULT_WIDTH = 150
 const PROJECT_COL_DEFAULT_WIDTH = 320
 const NET_AMOUNT_COL_DEFAULT_WIDTH = 170
-const STATUS_COL_DEFAULT_WIDTH = 120
 const RECEIVING_COL_DEFAULT_WIDTH = 130
 const PAID_COL_DEFAULT_WIDTH = 150
 const REMAINING_COL_DEFAULT_WIDTH = 180
@@ -108,7 +102,6 @@ const FinancePaymentsPage: React.FC = () => {
   const [docNoColWidth, setDocNoColWidth] = useState(DOC_NO_COL_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COL_DEFAULT_WIDTH)
   const [netAmountColWidth, setNetAmountColWidth] = useState(NET_AMOUNT_COL_DEFAULT_WIDTH)
-  const [statusColWidth, setStatusColWidth] = useState(STATUS_COL_DEFAULT_WIDTH)
   const [receivingColWidth, setReceivingColWidth] = useState(RECEIVING_COL_DEFAULT_WIDTH)
   const [paidColWidth, setPaidColWidth] = useState(PAID_COL_DEFAULT_WIDTH)
   const [remainingColWidth, setRemainingColWidth] = useState(REMAINING_COL_DEFAULT_WIDTH)
@@ -195,16 +188,6 @@ const FinancePaymentsPage: React.FC = () => {
       render: (v: number) => <span style={{ whiteSpace: 'nowrap' }}>{thb(v)} บาท</span>,
     },
     {
-      title: 'สถานะ',
-      key: 'status',
-      width: statusColWidth,
-      onHeaderCell: () => ({ width: statusColWidth, onResize: handleResize(setStatusColWidth) }),
-      render: (_: unknown, r: FinancePaymentListItem) => {
-        const t = r.approval_status ? APPROVAL_TAG[r.approval_status] : undefined
-        return t ? <Tag color={t.color}>{t.label}</Tag> : '-'
-      },
-    },
-    {
       title: 'สถานะรับของ',
       dataIndex: 'receivingStatus',
       key: 'receivingStatus',
@@ -242,16 +225,24 @@ const FinancePaymentsPage: React.FC = () => {
       title: '',
       key: 'action',
       width: ACTION_COL_WIDTH,
-      render: (_: unknown, r: FinancePaymentListItem) => (
-        <Button
-          size="small"
-          type="primary"
-          icon={<DollarOutlined />}
-          onClick={() => navigate(`/finance/payments/${r.doc_type}/${r.id}`, { state: { docItem: r } })}
-        >
-          บันทึกการจ่ายเงิน
-        </Button>
-      ),
+      render: (_: unknown, r: FinancePaymentListItem) => {
+        const blocked = isRecordPaymentBlocked(r)
+        const btn = (
+          <Button
+            size="small"
+            type="primary"
+            icon={<DollarOutlined />}
+            disabled={blocked}
+            onClick={() => navigate(`/finance/payments/${r.doc_type}/${r.id}`, { state: { docItem: r } })}
+          >
+            บันทึกการจ่ายเงิน
+          </Button>
+        )
+        // A disabled button swallows mouse events, so the tooltip sits on a wrapper.
+        return blocked ? (
+          <Tooltip title={RECORD_PAYMENT_BLOCKED_TIP}><span style={{ display: 'inline-block' }}>{btn}</span></Tooltip>
+        ) : btn
+      },
     },
   ]
 
@@ -295,7 +286,7 @@ const FinancePaymentsPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           scroll={{
             x:
-              docNoColWidth + projectColWidth + netAmountColWidth + statusColWidth +
+              docNoColWidth + projectColWidth + netAmountColWidth +
               receivingColWidth + paidColWidth + remainingColWidth + ACTION_COL_WIDTH,
           }}
           dataSource={data}

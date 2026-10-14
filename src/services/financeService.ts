@@ -14,6 +14,11 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
 const authHeader = (token: string) => ({ Authorization: `Bearer ${token}` })
 
+export const RECORD_PAYMENT_BLOCKED_TIP = 'ยังไม่ได้รับของ ไม่สามารถบันทึกการจ่ายเงินได้'
+// can_record_payment from the backend wins; if it is missing, fall back to the receipt status.
+export const isRecordPaymentBlocked = (item?: Pick<FinancePaymentListItem, 'canRecordPayment' | 'receivingStatus'> | null) =>
+  !!item && (item.canRecordPayment !== undefined ? !item.canRecordPayment : item.receivingStatus === 'NOT_RECEIVED')
+
 // Same pagination envelope convention as workOrderService/poService:
 // { success, data: { data: [...], total, page, page_size } }, with a bare-array fallback.
 const unwrapListEnvelope = (resData: any): any[] => {
@@ -57,6 +62,7 @@ export const financeService = {
     const items = unwrapListEnvelope(res.data).map((raw: any) => ({
       ...raw,
       receivingStatus: raw.receiving_status ?? null,
+      canRecordPayment: raw.can_record_payment ?? undefined,
     })) as FinancePaymentListItem[]
     return { items, ...meta }
   },
@@ -71,7 +77,11 @@ export const financeService = {
   getOne: async (token: string, docType: FinanceDocType, docId: string | number): Promise<FinancePaymentListItem> => {
     const res = await axios.get(`${BASE_URL}/finance/payments/${docType}/${docId}`, { headers: authHeader(token) })
     const raw = res.data?.data ?? res.data
-    return { ...raw, receivingStatus: raw?.receiving_status ?? null } as FinancePaymentListItem
+    return {
+      ...raw,
+      receivingStatus: raw?.receiving_status ?? null,
+      canRecordPayment: raw?.can_record_payment ?? undefined,
+    } as FinancePaymentListItem
   },
 
   // Backend creates the linked negative reversal row itself (amount derived server-side).

@@ -32,6 +32,8 @@ export interface FinancePaymentListItem {
   projects?: FinanceProject[]
   // Live-computed from GRN vs PO lines — null for WO rows (doc_type === 'WO').
   receivingStatus: ReceivingStatus | null
+  // Backend's can_record_payment (false while nothing has been received); absent on older responses.
+  canRecordPayment?: boolean
 }
 
 export interface FinancePaymentListParams {

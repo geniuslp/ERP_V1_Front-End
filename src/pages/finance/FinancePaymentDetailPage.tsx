@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Button, Space, Alert, Modal, Tag, message } from 'antd'
+import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Button, Space, Alert, Modal, Tag, Tooltip, message } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
@@ -10,7 +10,7 @@ import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
 import FinanceInstallmentsSection, { type SelectedInstallment, type InstallmentsSectionHandle } from '@/components/finance/FinanceInstallmentsSection'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-import { financeService } from '@/services/financeService'
+import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
@@ -506,17 +506,22 @@ const FinancePaymentDetailPage: React.FC = () => {
           </div>
 
           <Space>
-            <PermissionButton
-              menuCode="MENU_FINANCE_PAYMENTS"
-              action="write"
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={submitting}
-              onClick={handleSubmit}
-              style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}
-            >
-              บันทึกการจ่ายเงิน
-            </PermissionButton>
+            <Tooltip title={isRecordPaymentBlocked(docItem) ? RECORD_PAYMENT_BLOCKED_TIP : undefined}>
+              <span style={{ display: 'inline-block' }}>
+                <PermissionButton
+                  menuCode="MENU_FINANCE_PAYMENTS"
+                  action="write"
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={submitting}
+                  disabled={isRecordPaymentBlocked(docItem)}
+                  onClick={handleSubmit}
+                  style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}
+                >
+                  บันทึกการจ่ายเงิน
+                </PermissionButton>
+              </span>
+            </Tooltip>
             <Button onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
           </Space>
         </Form>
