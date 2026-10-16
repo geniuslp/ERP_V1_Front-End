@@ -2,8 +2,10 @@ export interface Customer {
   cus_id: number
   customer_code: string
   customer_name: string
+  tax_id?: string | null
   contact?: string | null
   tel?: string | null
+  contact_phone?: string | null
   address?: string | null
   remarks?: string | null
   credit_term?: string | null
@@ -16,8 +18,9 @@ export interface Customer {
 export interface CustomerPayload {
   customer_code: string
   customer_name: string
+  tax_id: string | null
   contact: string | null
-  tel: string | null
+  contact_phone: string | null
   address: string | null
   remarks: string | null
   credit_term: string | null
@@ -38,9 +41,16 @@ export interface CustomerListResult {
   total: number
 }
 
+// Optional columns are omitted (not sent as '') when the Excel cell is empty.
 export interface CustomerImportRow {
   customer_code: string
   customer_name: string
+  tax_id?: string
+  contact?: string
+  contact_phone?: string
+  address?: string
+  credit_term?: string
+  remarks?: string
 }
 
 export interface CustomerImportResult {

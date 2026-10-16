@@ -10,12 +10,6 @@ import { customerService } from '@/services/customerService'
 import type { Customer, CustomerPayload, CustomerStatusFilter } from '@/types/customer'
 import CustomerImportModal from '@/components/customer/CustomerImportModal'
 import { useAppSelector } from '@/store'
-import { PAYMENT_TERM_OPTIONS } from '@/constants/paymentTerms'
-
-// Customer form reuses Supplier's shared option list verbatim, just excluding
-// "เงินสด" at render time (per explicit instruction — the shared source
-// itself is not altered, so "เงินสด" stays available on the Supplier page).
-const CUSTOMER_CREDIT_TERM_OPTIONS = PAYMENT_TERM_OPTIONS.filter((o) => o.value !== 'เงินสด')
 
 // Backend keys customers by cus_id (GET/PUT/DELETE /customer/:id) — key the table row on it.
 type CustomerRecord = Customer & { key: number }
@@ -116,7 +110,9 @@ const CustomerPage: React.FC = () => {
   const openEdit = (record: CustomerRecord) => {
     setEditing(record)
     form.resetFields()
-    form.setFieldsValue(record)
+    // เบอร์โทร is contact_phone now; legacy rows only have the old `tel` value, so
+    // prefill from it — saving then writes contact_phone (tel itself is left as is).
+    form.setFieldsValue({ ...record, contact_phone: record.contact_phone ?? record.tel })
     setOpen(true)
   }
 
@@ -129,8 +125,9 @@ const CustomerPage: React.FC = () => {
     const payload: CustomerPayload = {
       customer_code: String(values.customer_code).trim(),
       customer_name: String(values.customer_name).trim(),
+      tax_id: orNull(values.tax_id),
       contact: orNull(values.contact),
-      tel: orNull(values.tel),
+      contact_phone: orNull(values.contact_phone),
       address: orNull(values.address),
       remarks: orNull(values.remarks),
       credit_term: orNull(values.credit_term),
@@ -190,19 +187,23 @@ const CustomerPage: React.FC = () => {
       render: (v: string) => <Text strong style={{ fontSize: 14, color: '#1e3a8a' }}>{v}</Text>,
     },
     {
+      title: 'เลขประจำตัวผู้เสียภาษี', dataIndex: 'tax_id', width: 160,
+      render: (v?: string | null) => <EllipsisText value={v} />,
+    },
+    {
       title: 'ผู้ติดต่อ', dataIndex: 'contact', width: 180,
       render: (v?: string | null) => <EllipsisText value={v} />,
     },
     {
-      title: 'เบอร์โทร', dataIndex: 'tel', width: 130,
-      render: (v?: string | null) => <EllipsisText value={v} />,
+      title: 'เบอร์โทร', dataIndex: 'contact_phone', width: 130,
+      render: (_: unknown, r: CustomerRecord) => <EllipsisText value={r.contact_phone ?? r.tel} />,
     },
     {
       title: 'ที่อยู่', dataIndex: 'address', width: 220,
       render: (v?: string | null) => <EllipsisText value={v} />,
     },
     {
-      title: 'เครดิต (วัน)', dataIndex: 'credit_term', width: 110, align: 'center' as const,
+      title: 'เครดิต', dataIndex: 'credit_term', width: 110, align: 'center' as const,
       render: (v?: string | null) => (v ? v : <span style={{ color: '#9ca3af' }}>—</span>),
     },
     {
@@ -285,7 +286,7 @@ const CustomerPage: React.FC = () => {
           dataSource={data}
           columns={columns}
           size="small"
-          scroll={{ x: 1300 }}
+          scroll={{ x: 1460 }}
           pagination={{
             current: currentPage,
             pageSize,
@@ -330,10 +331,13 @@ const CustomerPage: React.FC = () => {
           >
             <Input placeholder="ชื่อบริษัท / ลูกค้า" maxLength={255} style={{ borderRadius: 8 }} />
           </Form.Item>
+          <Form.Item name="tax_id" label="เลขประจำตัวผู้เสียภาษี" rules={[{ max: 20, message: 'เลขประจำตัวผู้เสียภาษียาวเกิน 20 ตัวอักษร' }]}>
+            <Input placeholder="เลขประจำตัวผู้เสียภาษี" maxLength={20} style={{ borderRadius: 8 }} />
+          </Form.Item>
           <Form.Item name="contact" label="ผู้ติดต่อ">
             <Input.TextArea rows={2} placeholder="ชื่อผู้ติดต่อ" style={{ borderRadius: 8 }} />
           </Form.Item>
-          <Form.Item name="tel" label="เบอร์โทร" rules={[{ max: 50, message: 'เบอร์โทรยาวเกิน 50 ตัวอักษร' }]}>
+          <Form.Item name="contact_phone" label="เบอร์โทร" rules={[{ max: 50, message: 'เบอร์โทรยาวเกิน 50 ตัวอักษร' }]}>
             <Input placeholder="เบอร์โทร" maxLength={50} style={{ borderRadius: 8 }} />
           </Form.Item>
           <Form.Item name="address" label="ที่อยู่">
@@ -342,8 +346,8 @@ const CustomerPage: React.FC = () => {
           <Form.Item name="remarks" label="หมายเหตุ">
             <Input.TextArea rows={3} placeholder="หมายเหตุ" style={{ borderRadius: 8 }} />
           </Form.Item>
-          <Form.Item name="credit_term" label="เครดิต (วัน)">
-            <Select placeholder="เลือกเครดิต" options={CUSTOMER_CREDIT_TERM_OPTIONS} allowClear />
+          <Form.Item name="credit_term" label="เครดิต" rules={[{ max: 50, message: 'เครดิตยาวเกิน 50 ตัวอักษร' }]}>
+            <Input placeholder="เช่น 30 วัน, เงินสด" maxLength={50} style={{ borderRadius: 8 }} />
           </Form.Item>
           {editing && (
             <Form.Item name="is_active" label="สถานะการใช้งาน" valuePropName="checked">

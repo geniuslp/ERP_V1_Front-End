@@ -17,7 +17,7 @@ import WOPaymentConditionsSection, {
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
-import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
+import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
 import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 
@@ -28,19 +28,6 @@ import { numberToThaiText } from '@/utils/thaiBahtText'
 // กับ advance_deduct_pct ("หักคืนเงินล่วงหน้า") อยู่ จึงคงไว้ — RETENTION_PCT_OPTIONS
 // เคยใช้กับ retention_pct เพียงจุดเดียว ตัดออกไปพร้อมกัน.
 const ADVANCE_PCT_OPTIONS = [5, 10, 15, 20, 30, 50].map((v) => ({ value: v, label: `${v}%` }))
-const CONTRACT_DESCRIPTION_OPTIONS = Object.entries(WO_CONTRACT_DESCRIPTION_LABEL).map(([value, label]) => ({ value, label }))
-
-// สำนักงาน / สาขา — plain array so adding a 5th/6th branch later is a one-line
-// change here, no scattered conditionals elsewhere. Flag back if there are more
-// branch codes to add — this is the list as given.
-const BRANCH_OPTIONS: { value: string; label: string }[] = [
-  { value: 'HO', label: 'สำนักงานใหญ่' },
-  { value: 'FAC-S', label: 'สำนักงานศาลายา' },
-  { value: 'FAC-P', label: 'สำนักงานปราจีนบุรี' },
-  { value: 'BO', label: 'สำนักงานบางบ่อ' },
-]
-const BRANCH_LABEL: Record<string, string> = Object.fromEntries(BRANCH_OPTIONS.map((o) => [o.value, o.label]))
-const composeEmployerName = (branch: string) => `บริษัท จีเนียส เอนจิเนียริง (${BRANCH_LABEL[branch]}) จำกัด`
 
 const MENU_CODE = 'MENU_WO_CREATE'
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -54,12 +41,24 @@ const cardStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = { color: '#374151', fontSize: 13 }
 
+// Grid-based field sizing (antd 24-col grid): every normal field sits in
+// <Col {...FIELD_SPAN}> (4 per row on md+, 2 on sm, 1 on xs); wide fields use a
+// multiple of the same unit (12 on md+), full-row items use span 24.
+const FIELD_SPAN = { xs: 24, sm: 12, md: 6 }
+const FIELD_SPAN_WIDE = { xs: 24, sm: 24, md: 12 }
+// Fields fill their column exactly; the column decides the width.
+const fieldStyle: React.CSSProperties = { width: '100%', borderRadius: 8 }
+
 interface SupplierOption {
-  supplier_code: string
+  id: number
   supplier_name: string
-  contact_person?: string
-  address?: string
-  phone?: string
+}
+
+interface ProjectOption {
+  value: string
+  label: string
+  // Owner display = customer_name, fall back to legacy owner_name, else ''.
+  owner: string
 }
 
 const WorkOrderCreatePage: React.FC = () => {
@@ -81,17 +80,11 @@ const WorkOrderCreatePage: React.FC = () => {
     setContractAmountText(v ? numberToThaiText(v) : '')
   }
 
-  // สำนักงาน / สาขา — frontend-only convenience state, not a Form field (so it
-  // never leaks into buildPayload's `form.getFieldsValue()` spread and isn't
-  // submitted to the backend). Only drives auto-filling employer_name, which
-  // stays the actual submitted/schema field. employer_name becomes read-only
-  // once derived this way — flagging that default per the task; happy to make
-  // it an editable override instead if that's not the right call.
-  const [employerBranch, setEmployerBranch] = useState<string | undefined>(undefined)
-  const handleBranchChange = (branch: string) => {
-    setEmployerBranch(branch)
-    form.setFieldValue('employer_name', composeEmployerName(branch))
-  }
+  // Stored work_system values outside P/E/S (legacy data) — kept as selectable
+  // options so the multi-select shows them as tags and a save doesn't wipe them.
+  const [legacyWorkSystem, setLegacyWorkSystem] = useState<string[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
 
   // Cost-code line items — full editable table (WOItemsTable), mirroring PO's
   // POItemsTable + TaxSidebarPanel exactly (per explicit instruction to reuse
@@ -124,7 +117,7 @@ const WorkOrderCreatePage: React.FC = () => {
         })
         const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
         setSuppliers(list.map((s: any) => ({
-          supplier_code: s.supplier_code,
+          id: s.id,
           supplier_name: s.supplier_name,
         })))
       } catch (err: any) {
@@ -136,20 +129,56 @@ const WorkOrderCreatePage: React.FC = () => {
     fetchSuppliers()
   }, [accessToken])
 
-  // Auto-fills contact_person / supplier_address / supplier_phone from the supplier
-  // master when picked — same pattern as POCreatePage's handleSupplierChange. Fields
-  // stay plain <Input> afterward so the user can override.
-  const handleSupplierChange = async (code: string) => {
+  useEffect(() => {
+    const fetchProjects = async () => {
+      setProjectsLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/projects`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        setProjects(list.filter((p: any) => p.project_code).map((p: any) => ({
+          value: p.project_code,
+          label: `${p.project_code} ${p.project_name ?? p.name ?? ''}`.trim(),
+          owner: p.customer_name || p.owner_name || '',
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลโครงการไม่สำเร็จ')
+      } finally {
+        setProjectsLoading(false)
+      }
+    }
+    fetchProjects()
+  }, [accessToken])
+
+  // Project picked → owner name goes into employer_name. No owner data → cleared
+  // to '' (the field stays editable either way).
+  const handleProjectChange = (code?: string) => {
     if (!code) return
+    const p = projects.find((o) => o.value === code)
+    form.setFieldValue('employer_name', p?.owner ?? '')
+  }
+
+  // Picking a supplier auto-fills supplier_name + signatory/address/phone from the
+  // supplier master (fields stay editable afterward). Mapping: contact_person ←
+  // sales_person, supplier_address ← address, supplier_phone ← sales_person_phone
+  // (falls back to office_phone). `?? null`, not undefined: setFieldsValue ignores
+  // undefined, which would leave the previous supplier's values on screen.
+  const handleSupplierChange = async (supplierId: number) => {
+    const picked = suppliers.find((s) => s.id === supplierId)
+    form.setFieldValue('supplier_name', picked?.supplier_name ?? null)
+    if (!supplierId) return
     try {
-      const res = await axios.get(`${BASE_URL}/master/suppliers/${code}`, {
+      const res = await axios.get(`${BASE_URL}/master/suppliers/${supplierId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       const raw = res.data?.data ?? res.data
       form.setFieldsValue({
-        contact_person: raw.contact_person ?? raw.sales_person ?? undefined,
-        supplier_address: raw.address ?? undefined,
-        supplier_phone: raw.phone ?? raw.office_phone ?? undefined,
+        supplier_name: raw?.supplier_name ?? picked?.supplier_name ?? null,
+        contact_person: raw?.sales_person ?? null,
+        supplier_address: raw?.address ?? null,
+        supplier_phone: raw?.sales_person_phone ?? raw?.office_phone ?? null,
       })
     } catch {
       // Non-fatal — contact fields just stay whatever they were / blank.
@@ -162,8 +191,11 @@ const WorkOrderCreatePage: React.FC = () => {
       setLoading(true)
       try {
         const wo = await workOrderService.get(accessToken, id)
+        const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
+        setLegacyWorkSystem(storedSystems.filter((v) => !(v in WO_WORK_SYSTEM_LABEL)))
         form.setFieldsValue({
           ...wo,
+          work_system: Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : []),
           wo_date: wo.wo_date ? dayjs(wo.wo_date) : undefined,
           start_date: wo.start_date ? dayjs(wo.start_date) : undefined,
           end_date: wo.end_date ? dayjs(wo.end_date) : undefined,
@@ -186,14 +218,6 @@ const WorkOrderCreatePage: React.FC = () => {
         setDiscType(wo.discount_type === 'amt' ? 'amt' : 'pct')
         setUseVat(Boolean(wo.use_vat))
         setUseWht(Boolean(wo.use_wht))
-        // employer_branch doesn't exist on the backend — best-effort reverse
-        // match against the composed template so the dropdown reflects an
-        // existing record's branch when possible; older/manually-edited
-        // employer_name values that don't match any template just leave the
-        // dropdown empty (the read-only employer_name field still shows the
-        // real stored value regardless).
-        const matchedBranch = BRANCH_OPTIONS.find((o) => composeEmployerName(o.value) === wo.employer_name)?.value
-        setEmployerBranch(matchedBranch)
         updateContractAmountText(wo.contract_amount ?? null)
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
@@ -241,19 +265,19 @@ const WorkOrderCreatePage: React.FC = () => {
     // tables), but edit-mode's initial form.setFieldsValue({ ...wo }) still seeds them
     // into the antd form store from the loaded record — getFieldsValue() would silently
     // resurrect and resubmit those stale values without this explicit strip.
-    const { advance_pct, advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note, ...v } = form.getFieldsValue()
+    // supplier_code / project_name are response-only: work_order has no supplier_code
+    // (send supplier_id only), and edit-mode's ...wo seed puts both into the store.
+    const {
+      advance_pct, advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note,
+      supplier_code, project_name,
+      ...v
+    } = form.getFieldsValue()
     return {
       ...v,
       wo_date: v.wo_date ? dayjs(v.wo_date).format('YYYY-MM-DD') : undefined,
       start_date: v.start_date ? dayjs(v.start_date).format('YYYY-MM-DD') : undefined,
       end_date: v.end_date ? dayjs(v.end_date).format('YYYY-MM-DD') : undefined,
       status: submitForApproval ? 'PENDING_APPROVAL' : 'DRAFT',
-
-      // Backend requires supplier_name non-empty (CreateWorkOrderRequest.SupplierName),
-      // but the form only has a Form.Item for supplier_code (the Select's value) — there
-      // is no supplier_name Form field, so `...v` above never carries it. Explicit
-      // override, same reason as the `lines` override below.
-      supplier_name: suppliers.find((s) => s.supplier_code === v.supplier_code)?.supplier_name,
 
       // ── Tax (flat — mirrors POCreatePage's buildPayload exactly) ──
       use_discount: useDisc,
@@ -405,102 +429,97 @@ const WorkOrderCreatePage: React.FC = () => {
         layout="vertical"
         initialValues={{
           contract_type: 'LABOR_MATERIAL',
-          work_system: 'P',
+          work_system: ['P'],
           vat_rate: 7,
           wht_rate: 3,
         }}
       >
+        <Form.Item name="supplier_name" hidden><Input /></Form.Item>
+
         <Card title="เอกสาร" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={8}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>เลขที่ WO</span>} name="wo_no">
-                <Input disabled placeholder="ระบบสร้างอัตโนมัติ" />
+                <Input style={fieldStyle} disabled placeholder="ระบบสร้างอัตโนมัติ" />
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>วันที่</span>} name="wo_date" rules={[{ required: true, message: 'กรุณาระบุวันที่' }]}>
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label={<span style={labelStyle}>เลขที่อ้างอิง</span>} name="ref_no">
-                <Input />
+                <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
-        <Card title="สำนักงาน / สาขา" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>สำนักงาน / สาขา</span>}>
+        {/* 1. เจ้าของโครงการ — 12 + 12 */}
+        <Card title="1. เจ้าของโครงการ (ผู้ว่าจ้าง)" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>โครงการ</span>} name="project_code">
                 <Select
-                  placeholder="เลือกสำนักงาน / สาขา"
-                  options={BRANCH_OPTIONS}
-                  value={employerBranch}
-                  onChange={handleBranchChange}
+                  style={fieldStyle}
+                  popupMatchSelectWidth={false}
+                  showSearch
+                  allowClear
+                  loading={projectsLoading}
+                  placeholder="เลือกโครงการ"
+                  optionFilterProp="label"
+                  options={projects}
+                  onChange={handleProjectChange}
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={<span style={labelStyle}>ขอบเขตงาน / โครงการ</span>}
-                name="project_scope_text"
-                extra={
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                    ยังเป็นช่องกรอกอิสระ — จะเปลี่ยนเป็น dropdown ที่กรองตามผู้ว่าจ้างที่เลือก
-                    เมื่อ "ผู้ว่าจ้าง" ผูกกับ master บริษัทในเครือแล้ว
-                  </span>
-                }
-              >
-                <Input placeholder="ชื่อโครงการ / ขอบเขตงาน" />
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>ชื่อเจ้าของโครงการ</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาระบุเจ้าของโครงการ' }]}>
+                <Input style={fieldStyle} placeholder="แสดงจากโครงการที่เลือก — แก้ไขได้" />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
-        <Card title="ผู้ว่าจ้าง / ผู้รับจ้าง" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>ผู้ว่าจ้าง</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาเลือกสำนักงาน / สาขา' }]}>
-                <Input disabled placeholder="เลือกสำนักงาน / สาขาด้านบนก่อน" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>ผู้รับจ้าง</span>} name="supplier_code" rules={[{ required: true, message: 'กรุณาเลือกผู้รับจ้าง' }]}>
+        {/* 2. ผู้รับจ้าง / ผู้ให้เช่า — row 1: 12 + 6 + 6, row 2: 12 */}
+        <Card title="2. ผู้รับจ้าง / ผู้ให้เช่า" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>บริษัท</span>} name="supplier_id" rules={[{ required: true, message: 'กรุณาเลือกบริษัทผู้รับจ้าง / ผู้ให้เช่า' }]}>
                 <Select
+                  style={fieldStyle}
+                  popupMatchSelectWidth={false}
                   showSearch
                   loading={suppliersLoading}
-                  placeholder="เลือกผู้รับจ้าง"
-                  filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  options={suppliers.map((s) => ({ value: s.supplier_code, label: s.supplier_name }))}
+                  placeholder="เลือกบริษัท"
+                  optionFilterProp="label"
+                  options={suppliers.map((s) => ({ value: s.id, label: s.supplier_name }))}
                   onChange={handleSupplierChange}
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>ผู้ควบคุมงาน (Contact person)</span>} name="contact_person">
-                <Input />
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>ผู้ลงนาม</span>} name="contact_person">
+                <Input style={fieldStyle} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={16}>
-              <Form.Item label={<span style={labelStyle}>ที่อยู่ผู้รับจ้าง</span>} name="supplier_address">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>โทรศัพท์</span>} name="supplier_phone">
-                <Input />
+                <Input style={fieldStyle} />
+              </Form.Item>
+            </Col>
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>ที่อยู่ตามหนังสือรับรอง</span>} name="supplier_address">
+                <Input style={fieldStyle} />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
-        <Card title="ประเภทสัญญา" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>ลักษณะสัญญา</span>} name="contract_type">
+        {/* 3. ประเภทสัญญา — 6 */}
+        <Card title="3. สัญญานี้เป็นสัญญาประเภท" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>ประเภทสัญญา</span>} name="contract_type" style={{ marginBottom: 0 }}>
                 <Select
+                  style={fieldStyle}
+                  popupMatchSelectWidth={false}
                   options={[
                     { value: 'LABOR_MATERIAL', label: 'ทั้งค่าแรง และค่าของ' },
                     { value: 'LABOR_ONLY', label: 'ค่าแรงอย่างเดียว' },
@@ -508,133 +527,155 @@ const WorkOrderCreatePage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={<span style={labelStyle}>งานระบบ</span>} name="work_system">
-                <Select options={Object.entries(WO_WORK_SYSTEM_LABEL).map(([value, label]) => ({ value, label }))} />
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
+          </Row>
+        </Card>
+
+        {/* 4. งานระบบ — 12 (multi-select tags need the room) */}
+        <Card title="4. งานระบบ" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN_WIDE}>
               <Form.Item
-                label={<span style={labelStyle}>ลักษณะของสัญญา</span>}
-                name="contract_description"
-                extra={<span style={{ fontSize: 11, color: '#94a3b8' }}>รายการเริ่มต้น — ยังไม่ยืนยันกับการใช้งานจริง แจ้งกลับหากต้องปรับ/เพิ่มรายการ</span>}
+                label={<span style={labelStyle}>งานระบบ</span>}
+                name="work_system"
+                rules={[{ required: true, type: 'array', min: 1, message: 'กรุณาเลือกงานระบบอย่างน้อย 1 รายการ' }]}
+                style={{ marginBottom: 0 }}
               >
-                <Select allowClear options={CONTRACT_DESCRIPTION_OPTIONS} placeholder="เลือกลักษณะของสัญญา" />
+                <Select
+                  style={fieldStyle}
+                  popupMatchSelectWidth={false}
+                  mode="multiple"
+                  placeholder="เลือกงานระบบ"
+                  options={[
+                    ...Object.entries(WO_WORK_SYSTEM_LABEL).map(([value, label]) => ({ value, label })),
+                    ...legacyWorkSystem.map((v) => ({ value: v, label: `${v} (ค่าเดิม)` })),
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
-        <Card title="มูลค่าสัญญา" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={8}>
+        {/* 5. ลักษณะของสัญญา — 12 */}
+        <Card title="5. ลักษณะของสัญญา" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>ลักษณะของสัญญา</span>} name="contract_description" style={{ marginBottom: 0 }}>
+                <Input style={fieldStyle} placeholder="เช่น RENOVATION FAC-S 1 & 2" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 6. มูลค่าสัญญา (ไม่รวม VAT) — 6 + 6 + 6 */}
+        <Card title="6. มูลค่าสัญญา (ไม่รวม VAT)" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN}>
               <Form.Item
-                label={<span style={labelStyle}>มูลค่าสัญญา (บาท)</span>}
+                label={<span style={labelStyle}>มูลค่าสัญญาไม่รวม VAT (บาท)</span>}
                 name="contract_amount"
                 rules={[{ required: true, message: 'กรุณาระบุมูลค่าสัญญา' }]}
                 extra={contractAmountText && <span style={{ fontSize: 12, color: '#2563eb' }}>({contractAmountText})</span>}
               >
                 <InputNumber
-                  style={{ width: '100%' }}
+                  style={fieldStyle}
                   min={0}
+                  precision={2}
                   formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
                   onChange={(v) => updateContractAmountText(v as number | null)}
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>อัตรา VAT (%)</span>} name="vat_rate">
-                <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                <InputNumber style={fieldStyle} min={0} max={100} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={8}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>อัตราหัก ณ ที่จ่าย (%)</span>} name="wht_rate">
-                <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                <InputNumber style={fieldStyle} min={0} max={100} />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
+        {/* 7. เงื่อนไขการจ่ายเงิน — WOPaymentConditionsSection is plain React state,
+            so it can sit between Form cards without being a Form field itself.
+            handleSave bundles the follow-up POST /work-order/:woId/payment-conditions
+            after the main create/update succeeds. Its internal tables are untouched. */}
+        <WOPaymentConditionsSection
+          installments={installments}
+          onInstallmentsChange={setInstallments}
+          retentions={retentions}
+          onRetentionsChange={setRetentions}
+          penalties={penalties}
+          onPenaltiesChange={setPenalties}
+        />
+
+        {/* advance_deduct_pct: 6, other_deduction_note: 24 */}
         <Card title="เงื่อนไขการจ่ายเงิน (อื่นๆ)" style={cardStyle}>
-          {/* เงินล่วงหน้า/จำนวนเงินงวดสัญญา/เงินประกันผลงาน (%)/หมายเหตุการจ่ายตาม
-              ความคืบหน้างาน ย้ายไปเป็นรายการแบบตารางในบล็อก "เงื่อนไขการจ่ายเงิน"
-              (WOPaymentConditionsSection: งวดงาน/เงินประกัน/ค่าปรับ) ด้านล่างแล้ว —
-              เหลือเฉพาะ 2 ช่องนี้ที่ยังไม่มีคู่ในตารางใหม่. */}
-          <Row gutter={16}>
-            <Col xs={24} md={6}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN}>
               <Form.Item label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>} name="advance_deduct_pct">
-                <Select allowClear style={{ width: '100%' }} options={ADVANCE_PCT_OPTIONS} />
+                <Select allowClear style={fieldStyle} options={ADVANCE_PCT_OPTIONS} />
               </Form.Item>
             </Col>
-            <Col xs={24} md={18}>
-              <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
-                <Input.TextArea rows={2} placeholder="ไม่มี" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title="ระยะเวลาสัญญา" style={cardStyle}>
-          <Row gutter={16}>
-            <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" onChange={recalcEndDate} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
-                <InputNumber style={{ width: '100%' }} min={0} onChange={recalcEndDate} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label={<span style={labelStyle}>วันที่สิ้นสุด</span>} name="end_date">
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              {/* ค่าปรับ (%/วัน) ย้ายไปเป็นรายการแบบตารางใน WOPaymentConditionsSection
-                  แล้ว (sub-block "ค่าปรับ" — % ต่อวัน ต่อแต่ละรายการ) */}
-              <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
-                <InputNumber style={{ width: '100%' }} min={0} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title="อื่นๆ" style={cardStyle}>
-          <Row gutter={16}>
             <Col xs={24}>
-              <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms">
-                <Input.TextArea rows={3} />
+              <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
+                <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 8. ระยะเวลาสัญญา — 6 + 6 + 6 + 6 */}
+        <Card title="8. ระยะเวลาสัญญา" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
+                <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={recalcEndDate} />
+              </Form.Item>
+            </Col>
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
+                <InputNumber style={fieldStyle} min={0} onChange={recalcEndDate} />
+              </Form.Item>
+            </Col>
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>วันที่สิ้นสุด</span>} name="end_date">
+                <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
+              </Form.Item>
+            </Col>
+            <Col {...FIELD_SPAN}>
+              <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
+                <InputNumber style={fieldStyle} min={0} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 9. อ้างอิงสัญญา — 12 */}
+        <Card title="9. อ้างอิงสัญญา" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col {...FIELD_SPAN_WIDE}>
+              <Form.Item label={<span style={labelStyle}>เลขที่อ้างอิง</span>} name="ref_no" style={{ marginBottom: 0 }}>
+                <Input style={fieldStyle} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 10. เงื่อนไขอื่นๆ — 24 */}
+        <Card title="10. เงื่อนไขอื่นๆ" style={cardStyle}>
+          <Row gutter={[16, 0]}>
+            <Col xs={24}>
+              <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms" style={{ marginBottom: 0 }}>
+                <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} />
               </Form.Item>
             </Col>
           </Row>
         </Card>
       </Form>
-
-      {/* Detailed payment conditions (installments/retention/penalty) — a separate
-          resource keyed by wo_id (work_order_payment_installment/retention/penalty
-          tables), so it lives outside the antd <Form>. Fully editable from page
-          load even with no WO id yet (rows are plain React state here, same
-          pattern as `items`); handleSave bundles a follow-up
-          POST /work-order/:woId/payment-conditions right after the main WO
-          create/update call succeeds and a real id is known. This now fully
-          replaces advance_pct/advance_amount/retention_pct/penalty_pct_per_day/
-          progress_payment_note as far as this form goes (removed above, still
-          present as work_order columns/backend fields — just no longer read or
-          written from here). "เงื่อนไขการจ่ายเงิน (อื่นๆ)" above it was renamed
-          from the old identically-titled "เงื่อนไขการจ่ายเงิน" card and now only
-          holds the 2 remaining header-level fields (advance_deduct_pct,
-          other_deduction_note) that have no equivalent in the new tables. */}
-      <WOPaymentConditionsSection
-        installments={installments}
-        onInstallmentsChange={setInstallments}
-        retentions={retentions}
-        onRetentionsChange={setRetentions}
-        penalties={penalties}
-        onPenaltiesChange={setPenalties}
-      />
 
       {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
           create page uses (table + collapsible tax sidebar side by side),

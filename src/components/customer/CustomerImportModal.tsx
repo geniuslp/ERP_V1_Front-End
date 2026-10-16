@@ -5,6 +5,9 @@ import { InboxOutlined, DownloadOutlined, WarningOutlined } from '@ant-design/ic
 import * as XLSX from 'xlsx'
 import { useAppSelector } from '@/store'
 import { customerService } from '@/services/customerService'
+import {
+  CUSTOMER_EXCEL_COLUMNS, CUSTOMER_EXCEL_HEADERS, type CustomerExcelField,
+} from '@/constants/customerExcel'
 import type { CustomerImportRowError } from '@/types/customer'
 
 const { Text } = Typography
@@ -13,23 +16,18 @@ const MAX_BYTES = 2 * 1024 * 1024
 const MAX_ROWS = 2000
 const MAX_CODE = 20
 const MAX_NAME = 255
-const TEMPLATE_HEADERS = ['รหัสลูกค้า', 'ชื่อลูกค้า']
+const MAX_TAX_ID = 20
+const MAX_CREDIT = 50
 
-const CODE_HEADERS = ['รหัสลูกค้า', 'customer code', 'customer_code']
-const NAME_HEADERS = ['ชื่อลูกค้า', 'customer name', 'customer_name']
-const norm = (v: unknown) => String(v ?? '').trim().toLowerCase()
-
-interface PreviewRow {
+type PreviewRow = Record<CustomerExcelField, string> & {
   key: number
   row: number // spreadsheet row number (header = 1)
-  code: string
-  name: string
-  problem?: string
+  problems: string[]
 }
 
 const downloadTemplate = () => {
-  const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS])
-  ws['!cols'] = [{ wch: 20 }, { wch: 50 }]
+  const ws = XLSX.utils.aoa_to_sheet([CUSTOMER_EXCEL_HEADERS])
+  ws['!cols'] = CUSTOMER_EXCEL_COLUMNS.map((c) => ({ wch: c.width }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Customer')
   XLSX.writeFile(wb, 'customer_import_template.xlsx')
@@ -40,47 +38,69 @@ const GENERIC_ERROR = 'ข้อมูลที่กรอกไม่ถูก
 const looksLikeRawDbError = (t: string) => /SQLSTATE|violates|foreign key constraint|duplicate key|null value in column|pq:/i.test(t)
 const safeText = (t: string) => (looksLikeRawDbError(t) ? GENERIC_ERROR : t)
 
+// Plain decimal text for a JS number — never scientific notation (String(1e21) would be).
+const numberToPlain = (n: number) =>
+  n.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 20 })
+
+// Cell → trimmed string (also used for เลขประจำตัวผู้เสียภาษี: a 13-digit General-format
+// number comes out as its full digits, never 1.23457E+12). Text cells are taken verbatim (leading zeros survive). Numeric
+// cells with a custom number format (e.g. 0000000000) use Excel's formatted text so those
+// zeros survive; plain numeric cells become a full-digit string. Leading zeros that Excel
+// already discarded (General-format number) can't be recovered — format the column as Text.
+const cellText = (cell?: XLSX.CellObject): string => {
+  if (!cell || cell.v === undefined || cell.v === null) return ''
+  if (cell.t === 'n') {
+    if (cell.z && cell.z !== 'General' && cell.w) return cell.w.trim()
+    return numberToPlain(cell.v as number)
+  }
+  if (cell.t === 's') return String(cell.v).trim()
+  return String(cell.w ?? cell.v).trim()
+}
+
 // Parse the first sheet; returns rows or throws an Error with a user-facing message.
 const parseFile = async (file: File): Promise<PreviewRow[]> => {
   const buf = await file.arrayBuffer()
-  const wb = XLSX.read(buf, { type: 'array' })
+  const wb = XLSX.read(buf, { type: 'array', cellNF: true, cellText: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
-  if (!ws) throw new Error('ไม่พบข้อมูลในไฟล์')
-  const rawRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: true })
-  if (rawRows.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์')
+  if (!ws || !ws['!ref']) throw new Error('ไม่พบข้อมูลในไฟล์')
+  const range = XLSX.utils.decode_range(ws['!ref'])
 
-  const header = rawRows[0].map(norm)
-  const codeIdx = header.findIndex((h) => CODE_HEADERS.includes(h))
-  const nameIdx = header.findIndex((h) => NAME_HEADERS.includes(h))
-  const missing: string[] = []
-  if (codeIdx < 0) missing.push('"รหัสลูกค้า" (Customer Code)')
-  if (nameIdx < 0) missing.push('"ชื่อลูกค้า" (Customer Name)')
-  if (missing.length > 0) throw new Error(`ไม่พบหัวคอลัมน์ที่จำเป็น: ${missing.join(', ')}`)
+  // Header row = first row of the sheet; match header text literally (trimmed only).
+  const colByField = new Map<CustomerExcelField, number>()
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const text = cellText(ws[XLSX.utils.encode_cell({ r: range.s.r, c })])
+    const col = CUSTOMER_EXCEL_COLUMNS.find((x) => x.header === text || x.aliases?.includes(text))
+    if (col && !colByField.has(col.field)) colByField.set(col.field, c)
+  }
+  const missing = CUSTOMER_EXCEL_COLUMNS.filter((c) => c.required && !colByField.has(c.field))
+  if (missing.length > 0) {
+    throw new Error(`ไม่พบหัวคอลัมน์ที่จำเป็น: ${missing.map((c) => `"${c.header}"`).join(', ')} (ดาวน์โหลดแม่แบบเพื่อดูหัวคอลัมน์ที่ถูกต้อง)`)
+  }
 
-  // Data rows; spreadsheet row numbers are recovered from the sheet range because blank rows are skipped.
-  const startRow = (XLSX.utils.decode_range(ws['!ref'] ?? 'A1').s.r) + 1
   const rows: PreviewRow[] = []
-  rawRows.forEach((r, i) => {
-    if (i === 0) return
-    const code = String(r[codeIdx] ?? '').trim()
-    const name = String(r[nameIdx] ?? '').trim()
-    if (!code && !name) return // wholly blank row
-    rows.push({ key: rows.length, row: startRow + i, code, name })
-  })
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    const values = {} as Record<CustomerExcelField, string>
+    CUSTOMER_EXCEL_COLUMNS.forEach((col) => {
+      const c = colByField.get(col.field)
+      values[col.field] = c === undefined ? '' : cellText(ws[XLSX.utils.encode_cell({ r, c })])
+    })
+    if (Object.values(values).every((v) => !v)) continue // wholly blank row
+    rows.push({ ...values, key: rows.length, row: r + 1, problems: [] })
+  }
   if (rows.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์')
   if (rows.length > MAX_ROWS) throw new Error(`ไฟล์มีมากกว่า ${MAX_ROWS.toLocaleString()} แถว (พบ ${rows.length.toLocaleString()} แถว)`)
 
-  // Client-side checks.
+  // Client-side checks — only code and name are required.
   const seen = new Map<string, number>()
-  rows.forEach((r) => { if (r.code) seen.set(r.code, (seen.get(r.code) ?? 0) + 1) })
+  rows.forEach((r) => { if (r.customer_code) seen.set(r.customer_code.toLowerCase(), (seen.get(r.customer_code.toLowerCase()) ?? 0) + 1) })
   rows.forEach((r) => {
-    const reasons: string[] = []
-    if (!r.code) reasons.push('รหัสลูกค้าว่าง')
-    else if ([...r.code].length > MAX_CODE) reasons.push(`รหัสลูกค้ายาวเกิน ${MAX_CODE} ตัวอักษร`)
-    else if ((seen.get(r.code) ?? 0) > 1) reasons.push('รหัสลูกค้าซ้ำในไฟล์')
-    if (!r.name) reasons.push('ชื่อลูกค้าว่าง')
-    else if ([...r.name].length > MAX_NAME) reasons.push(`ชื่อลูกค้ายาวเกิน ${MAX_NAME} ตัวอักษร`)
-    if (reasons.length > 0) r.problem = reasons.join(', ')
+    if (!r.customer_code) r.problems.push('ต้องระบุรหัสลูกค้า')
+    else if ([...r.customer_code].length > MAX_CODE) r.problems.push(`รหัสลูกค้ายาวเกิน ${MAX_CODE} ตัวอักษร`)
+    else if ((seen.get(r.customer_code.toLowerCase()) ?? 0) > 1) r.problems.push('รหัสลูกค้าซ้ำในไฟล์')
+    if (!r.customer_name) r.problems.push('ต้องระบุชื่อลูกค้า')
+    else if ([...r.customer_name].length > MAX_NAME) r.problems.push(`ชื่อลูกค้ายาวเกิน ${MAX_NAME} ตัวอักษร`)
+    if ([...r.credit_term].length > MAX_CREDIT) r.problems.push(`เครดิตยาวเกิน ${MAX_CREDIT} ตัวอักษร`)
+    if ([...r.tax_id].length > MAX_TAX_ID) r.problems.push(`เลขประจำตัวผู้เสียภาษียาวเกิน ${MAX_TAX_ID} ตัวอักษร`)
   })
   return rows
 }
@@ -104,16 +124,24 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
   }
   const close = () => { reset(); onClose() }
 
-  const serverByRow = useMemo(() => {
+  // Backend `row` = 1-based position in the submitted rows array, which is exactly
+  // index + 1 into `rows` (blank rows were already dropped client-side) — NOT the
+  // spreadsheet row. Keyed by that position, shown with the spreadsheet row number.
+  const serverByKey = useMemo(() => {
     const m = new Map<number, string>()
     serverErrors.forEach((e) => {
-      const prev = m.get(e.row)
-      m.set(e.row, prev ? `${prev}, ${e.message}` : e.message)
+      const key = e.row - 1
+      const prev = m.get(key)
+      m.set(key, prev ? `${prev}, ${e.message}` : e.message)
     })
     return m
   }, [serverErrors])
 
-  const problemCount = rows.filter((r) => r.problem).length
+  const clientErrors = useMemo(
+    () => rows.flatMap((r) => r.problems.map((p) => `แถวที่ ${r.row}: ${p}`)),
+    [rows],
+  )
+  const problemCount = rows.filter((r) => r.problems.length > 0).length
 
   const handleBefore: UploadProps['beforeUpload'] = (file) => {
     reset()
@@ -131,11 +159,21 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
     setSubmitting(true)
     setServerErrors([])
     try {
+      const opt = (v: string) => (v ? v : undefined)
       const res = await customerService.importRows(
         accessToken,
-        rows.map((r) => ({ customer_code: r.code, customer_name: r.name })),
+        rows.map((r) => ({
+          customer_code: r.customer_code,
+          customer_name: r.customer_name,
+          tax_id: opt(r.tax_id),
+          contact: opt(r.contact),
+          contact_phone: opt(r.contact_phone),
+          address: opt(r.address),
+          credit_term: opt(r.credit_term),
+          remarks: opt(r.remarks),
+        })),
       )
-      message.success(`เพิ่มใหม่ ${res.created} รายการ / แก้ชื่อ ${res.updated} รายการ / ไม่เปลี่ยนแปลง ${res.unchanged} รายการ`)
+      message.success(`เพิ่มใหม่ ${res.created} รายการ / อัปเดต ${res.updated} รายการ / ไม่เปลี่ยนแปลง ${res.unchanged} รายการ`)
       close()
       onDone()
     } catch (err: any) {
@@ -151,13 +189,15 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
     }
   }
 
+  const sheetRowOf = (position: number) => rows[position - 1]?.row ?? position
+
   return (
     <Modal
       open={open}
       title={<span style={{ fontFamily: 'Sarabun, sans-serif', fontWeight: 700, color: '#1e3a8a' }}>นำเข้า Excel — ลูกค้า</span>}
       onCancel={close}
       destroyOnClose
-      width={720}
+      width={960}
       footer={[
         <Button key="cancel" onClick={close} style={{ borderRadius: 8 }}>ยกเลิก</Button>,
         <Button
@@ -196,10 +236,25 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
         </p>
       </Upload.Dragger>
       <Text style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#6b7280' }}>
-        ช่องอื่น (ผู้ติดต่อ, เบอร์โทร, ที่อยู่, หมายเหตุ) ไปแก้ไขทีหลังได้ในหน้ารายการ
+        จำเป็นต้องมีเฉพาะ "รหัสลูกค้า" และ "ชื่อลูกค้า" — คอลัมน์อื่นเว้นว่างได้
+        (เบอร์โทรที่ขึ้นต้นด้วย 0 ควรตั้งรูปแบบคอลัมน์เป็น Text ก่อนกรอก)
       </Text>
 
       {fileError && <Alert type="error" showIcon message={fileError} style={{ marginTop: 12, borderRadius: 8 }} />}
+
+      {clientErrors.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginTop: 12, borderRadius: 8 }}
+          message={`พบข้อผิดพลาด ${clientErrors.length} จุด — กรุณาแก้ไขไฟล์แล้วอัปโหลดใหม่`}
+          description={
+            <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflowY: 'auto' }}>
+              {clientErrors.map((t, i) => <li key={i}>{t}</li>)}
+            </ul>
+          }
+        />
+      )}
 
       {serverErrors.length > 0 && (
         <Alert
@@ -210,7 +265,7 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
           description={
             <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 140, overflowY: 'auto' }}>
               {serverErrors.map((e, i) => (
-                <li key={i}>แถว {e.row}{e.field ? ` (${e.field})` : ''}: {e.message}</li>
+                <li key={i}>แถวที่ {sheetRowOf(e.row)}{e.field ? ` (${e.field})` : ''}: {e.message}</li>
               ))}
             </ul>
           }
@@ -228,18 +283,24 @@ const CustomerImportModal: React.FC<Props> = ({ open, onClose, onDone }) => {
             size="small"
             rowKey="key"
             dataSource={rows}
+            scroll={{ x: 1250 }}
             pagination={rows.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
-            onRow={(r) => ({ style: (r.problem || serverByRow.has(r.row)) ? { background: '#fef2f2' } : undefined })}
+            onRow={(r) => ({ style: (r.problems.length > 0 || serverByKey.has(r.key)) ? { background: '#fef2f2' } : undefined })}
             columns={[
               { title: 'แถว', dataIndex: 'row', width: 60, align: 'center' },
-              { title: 'รหัสลูกค้า', dataIndex: 'code', width: 150, render: (v: string) => v || <span style={{ color: '#f87171' }}>—</span> },
-              { title: 'ชื่อลูกค้า', dataIndex: 'name', render: (v: string) => v || <span style={{ color: '#f87171' }}>—</span> },
+              ...CUSTOMER_EXCEL_COLUMNS.map((c) => ({
+                title: c.header,
+                dataIndex: c.field,
+                width: c.field === 'customer_name' || c.field === 'address' ? 180 : c.field === 'tax_id' ? 150 : 120,
+                ellipsis: true,
+                render: (v: string) => v || <span style={{ color: c.required ? '#f87171' : '#9ca3af' }}>—</span>,
+              })),
               {
                 title: 'ปัญหา',
                 key: 'problem',
-                width: 220,
+                width: 200,
                 render: (_: unknown, r: PreviewRow) => {
-                  const t = r.problem || serverByRow.get(r.row)
+                  const t = r.problems.join(', ') || serverByKey.get(r.key)
                   return t ? <span style={{ color: '#dc2626', fontSize: 12 }}>{t}</span> : null
                 },
               },

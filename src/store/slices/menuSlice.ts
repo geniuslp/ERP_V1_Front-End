@@ -9,10 +9,13 @@ interface MenuState {
 
 const defaultMenus: MenuConfig[] = [
   { id: 'dashboard', key: 'dashboard', label: 'Dashboard', icon: 'DashboardOutlined', path: '/', parentId: null, order: 0, isActive: true },
-  { id: 'pr', key: 'pr', label: 'ใบขอซื้อ (PR)', icon: 'FileTextOutlined', parentId: null, order: 2, isActive: true, children: [
+  { id: 'pr', key: 'pr', label: 'Office Service System (OF)', icon: 'FileTextOutlined', parentId: null, order: 2, isActive: true, children: [
     { id: 'pr-create', key: 'pr-create', label: 'สร้างใบขอซื้อ', path: '/pr/create', parentId: 'pr', order: 0, isActive: true },
     { id: 'pr-status', key: 'pr-status', label: 'ตรวจสอบสถานะ', path: '/pr/status', parentId: 'pr', order: 1, isActive: false },
     { id: 'pr-history', key: 'pr-history', label: 'ประวัติใบขอซื้อ', path: '/pr/history', parentId: 'pr', order: 2, isActive: true },
+    { id: 'petty-cash-list', key: 'petty-cash-list', label: 'เบิกเงินสดย่อย', path: '/petty-cash', parentId: 'pr', order: 3, isActive: true },
+    { id: 'petty-cash-create', key: 'petty-cash-create', label: 'สร้างใบเบิกเงินสดย่อย', path: '/petty-cash/create', parentId: 'pr', order: 4, isActive: true },
+    { id: 'petty-cash-approval', key: 'petty-cash-approval', label: 'อนุมัติเบิกเงินสดย่อย', path: '/petty-cash/approval', parentId: 'pr', order: 5, isActive: true },
   ]},
   { id: 'memo', key: 'memo', label: 'ใบบันทึกขอซื้อ (Memo)', icon: 'FileTextOutlined', parentId: null, order: 1, isActive: true, children: [
     { id: 'memo-create', key: 'memo-create', label: 'สร้างใบบันทึกขอซื้อ (Memo)', path: '/memo/create', parentId: 'memo', order: 0, isActive: true },

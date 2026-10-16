@@ -57,7 +57,7 @@ export interface WOListItem {
   wo_no: string
   wo_date: string
   employer_name: string
-  supplier_code: string
+  supplier_code?: string | null
   supplier_name?: string
   contract_amount: number
   status: WOStatus
@@ -73,16 +73,21 @@ export interface WorkOrder {
   ref_no?: string
 
   employer_name: string
+  project_code?: string | null
+  project_name?: string | null
   project_scope_text?: string
-  supplier_code: string
+  // work_order has no supplier_code anymore — responses return it as null and
+  // requests must send supplier_id only (never supplier_code).
+  supplier_code?: string | null
+  supplier_id?: number | null
   supplier_name?: string
   contact_person?: string
   supplier_address?: string
   supplier_phone?: string
 
   contract_type: WOContractType
-  work_system: WOWorkSystem
-  contract_description?: WOContractDescriptionType | string
+  work_system: WOWorkSystem[]
+  contract_description?: string | null
 
   contract_amount: number
   vat_rate: number
@@ -193,5 +198,5 @@ export interface WOListResult {
 export type WorkOrderPayload = Omit<
   WorkOrder,
   'id' | 'status' | 'approver_id' | 'approver_name' | 'approved_at' | 'rejected_reason' |
-  'created_by_name' | 'created_at' | 'updated_at' | 'supplier_name'
+  'created_by_name' | 'created_at' | 'updated_at' | 'supplier_name' | 'supplier_code' | 'project_name'
 >

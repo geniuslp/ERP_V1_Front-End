@@ -7,7 +7,7 @@ import {
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
-  DollarOutlined, WalletOutlined, CalculatorOutlined, RollbackOutlined,
+  DollarOutlined, CalculatorOutlined, RollbackOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -38,7 +38,6 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_STOCK: <AppstoreOutlined />,
   MENU_SYSTEM: <SettingOutlined />,
   MENU_FINANCE: <DollarOutlined />,
-  MENU_PETTY_CASH: <WalletOutlined />,
   MENU_PROJECT_OVERVIEW: <FundOutlined />,
   MENU_IC: <DatabaseOutlined />,
 }
