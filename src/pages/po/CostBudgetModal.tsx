@@ -15,7 +15,18 @@ export interface CostBudgetDetailLine {
   pu_bal: number
   ac_cost: number
   ac_bal: number
+  // Flat ordered list from the API: MAJOR, then each group's HEAD followed by its ITEMs.
+  row_type: CostBudgetRowType
 }
+
+export type CostBudgetRowType = 'MAJOR' | 'HEAD' | 'ITEM'
+
+// MAJOR/HEAD rows are not selectable and have no purchases, so no drill-down is offered on them.
+const isItemRow = (r: CostBudgetDetailLine) => r.row_type === 'ITEM'
+
+// Row tint via onRow inline style (DESIGN.md "Row tint", option 1).
+const ROW_BG: Partial<Record<CostBudgetRowType, string>> = { MAJOR: '#f5f3ff', HEAD: '#eff6ff' }
+const INDENT: Record<CostBudgetRowType, number> = { MAJOR: 0, HEAD: 16, ITEM: 32 }
 
 export interface CostBudgetDetailTotals {
   budget: number
@@ -173,27 +184,44 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
     )
   }
 
+  // Running number for ITEM rows only, from the full API list (stable; MAJOR/HEAD get none).
+  const itemNo = new Map<number, number>()
+  ;(data?.rows ?? []).filter(isItemRow).forEach((r, i) => itemNo.set(r.subgroup_id, i + 1))
+
   const bal = (v: number) => <span style={{ color: v < 0 ? '#dc2626' : undefined }}>{thb(v)}</span>
 
   const columns: ColumnsType<CostBudgetDetailLine> = [
-    { title: 'No.', key: 'no', width: 60, align: 'center', render: (_: unknown, __: unknown, i: number) => i + 1 },
+    { title: 'No.', key: 'no', width: 60, align: 'center', render: (_: unknown, r) => itemNo.get(r.subgroup_id) ?? '' },
     {
       title: 'CostCode',
       dataIndex: 'cost_code',
       key: 'cost_code',
       width: 140,
-      render: (v: string, r) => (
+      render: (v: string, r) => !isItemRow(r) ? (
+        <span style={{ paddingLeft: INDENT[r.row_type], fontWeight: 700, whiteSpace: 'nowrap' }}>
+          <Tag color={r.row_type === 'MAJOR' ? '#7c3aed' : '#1d4ed8'} style={{ marginInlineEnd: 6 }}>
+            {r.row_type === 'MAJOR' ? 'Major' : 'Head'}
+          </Tag>
+          {formatCostCodeDisplay(v)}
+        </span>
+      ) : (
         <Popover
           mouseEnterDelay={0.2}
           destroyTooltipOnHide
           onOpenChange={(open) => open && loadPurchases(r.subgroup_id)}
           content={renderPopover(r.subgroup_id)}
         >
-          <span style={{ color: '#2563eb', cursor: 'help' }}>{formatCostCodeDisplay(v)}</span>
+          <span style={{ paddingLeft: INDENT.ITEM, color: '#2563eb', cursor: 'help' }}>{formatCostCodeDisplay(v)}</span>
         </Popover>
       ),
     },
-    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    {
+      title: 'Description',
+      dataIndex: 'description',
+      key: 'description',
+      ellipsis: true,
+      render: (v: string, r) => (isItemRow(r) ? v : <span style={{ fontWeight: 700 }}>{v}</span>),
+    },
     { title: 'Budget', dataIndex: 'budget', key: 'budget', align: 'right', render: (v: number) => thb(v) },
     { title: 'PuCost', dataIndex: 'pu_cost', key: 'pu_cost', align: 'right', render: (v: number) => thb(v) },
     { title: 'PuBal', dataIndex: 'pu_bal', key: 'pu_bal', align: 'right', render: bal },
@@ -257,6 +285,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
         <Table
           className="cb-table"
           rowKey="subgroup_id"
+          onRow={(r) => (ROW_BG[r.row_type] ? { style: { background: ROW_BG[r.row_type] } } : {})}
           size="small"
           pagination={false}
           columns={columns}

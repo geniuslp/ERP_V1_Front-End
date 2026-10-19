@@ -32,7 +32,16 @@ interface SubgroupRow {
   is_active: boolean
   // Head rows are hidden from PR/PO pickers; only returned here via include_head=true.
   is_head?: boolean
+  // Major rows sit above Head rows (Major -> Head -> normal); also hidden from
+  // pickers and returned here only via include_head=true.
+  is_major?: boolean
 }
+
+// Display order: Head rows first, then normal rows (stable within each). Major rows
+// are never shown in the table — they render in the header block.
+const rankRow = (r: SubgroupRow) => (r.is_head ? 0 : 1)
+const sortSubgroups = (rows: SubgroupRow[]) =>
+  rows.map((r, i) => ({ r, i })).sort((a, b) => rankRow(a.r) - rankRow(b.r) || a.i - b.i).map((x) => x.r)
 
 interface Props {
   open: boolean
@@ -100,23 +109,6 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const [editSubgroupSaving, setEditSubgroupSaving] = useState(false)
   const [editSubgroupForm] = Form.useForm()
 
-  const fetchGroups = useCallback(async (jid: number) => {
-    setLoading(true)
-    try {
-      const res = await axios.get(`${BASE_URL}/master/cost-code/groups`, {
-        params: { job_id: jid },
-        headers: authHeader,
-      })
-      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
-      setGroups(Array.isArray(list) ? list : [])
-    } catch {
-      message.error('โหลดข้อมูล Group ไม่สำเร็จ')
-      setGroups([])
-    } finally {
-      setLoading(false)
-    }
-  }, [accessToken])
-
   const fetchSubgroups = useCallback(async (groupId: number) => {
     setSubgroupsLoading((p) => ({ ...p, [groupId]: true }))
     try {
@@ -129,18 +121,40 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
       const rows: SubgroupRow[] = (Array.isArray(list) ? list : []).map((r: any) => ({
         ...r,
         is_head: typeof r.is_head === 'boolean' ? r.is_head : typeof r.isHead === 'boolean' ? r.isHead : undefined,
+        is_major: typeof r.is_major === 'boolean' ? r.is_major : undefined,
       }))
       if (import.meta.env.DEV && rows.length > 0 && rows.every((r) => r.is_head === undefined)) {
         // eslint-disable-next-line no-console
         console.warn('[cost-code] /subgroups rows carry no is_head key — keys:', Object.keys(list[0] ?? {}))
       }
-      setSubgroupsByGroup((p) => ({ ...p, [groupId]: rows }))
+      setSubgroupsByGroup((p) => ({ ...p, [groupId]: sortSubgroups(rows) }))
     } catch {
       message.error('โหลดข้อมูล Subgroup ไม่สำเร็จ')
     } finally {
       setSubgroupsLoading((p) => ({ ...p, [groupId]: false }))
     }
   }, [accessToken])
+
+  const fetchGroups = useCallback(async (jid: number) => {
+    setLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/master/cost-code/groups`, {
+        params: { job_id: jid },
+        headers: authHeader,
+      })
+      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+      const arr: GroupRow[] = Array.isArray(list) ? list : []
+      setGroups(arr)
+      // Major lives in group '00'; load it eagerly so the header block can show it.
+      const g00 = arr.find((g) => g.group_code === '00')
+      if (g00) fetchSubgroups(g00.id)
+    } catch {
+      message.error('โหลดข้อมูล Group ไม่สำเร็จ')
+      setGroups([])
+    } finally {
+      setLoading(false)
+    }
+  }, [accessToken, fetchSubgroups])
 
   // Reset per-open state and pick the default active subject tab (the first
   // entry, same as the old hardcoded [0] behavior) whenever the modal opens
@@ -209,6 +223,19 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
     }
     resolve()
   }, [open, jobType, accessToken, activeSubjectCode, fetchGroups])
+
+  // Major (group '00' / subgroup '000', one per job) is shown in a header block, never
+  // as a table row. Group '00' stays in the table only if it also has non-Major subgroups.
+  const group00 = groups.find((g) => g.group_code === '00')
+  const majorRow = group00 ? (subgroupsByGroup[group00.id] ?? []).find((r) => r.is_major) : undefined
+  const majorCode = majorRow && group00
+    ? `${activeSubjectCode ?? ''}${jobType?.filterJobCode ?? ''}${group00.group_code}${majorRow.subgroup_code}`
+    : ''
+  const visibleGroups = groups.filter((g) => {
+    if (g.group_code !== '00') return true
+    const rows = subgroupsByGroup[g.id]
+    return !rows || rows.some((r) => !r.is_major)
+  })
 
   const subjectTabItems = useMemo(
     () => subjectCodes.map((code) => ({
@@ -392,7 +419,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
     const targetId = updated?.subgroup_id ?? d.subgroup_id ?? subgroupId
     setSubgroupsByGroup((p) => ({
       ...p,
-      [groupId]: (p[groupId] ?? []).map((r) => (r.id === targetId ? { ...r, is_head: isHead } : r)),
+      [groupId]: sortSubgroups((p[groupId] ?? []).map((r) => (r.id === targetId ? { ...r, is_head: isHead } : r))),
     }))
     if (isHead) {
       const parts: string[] = []
@@ -472,10 +499,20 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
                 เพิ่ม Group
               </Button>
             </div>
+            {majorRow && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '10px 16px',
+                background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+              }}>
+                <Tag color="#7c3aed" style={{ margin: 0, fontWeight: 600 }}>Major</Tag>
+                <Text strong style={{ color: '#1e3a8a' }}>{majorCode}</Text>
+                <Text>{majorRow.subgroup_name}</Text>
+              </div>
+            )}
             <Table
               rowKey="id"
               loading={loading}
-              dataSource={groups}
+              dataSource={visibleGroups}
               columns={groupColumns}
               pagination={false}
               size="small"
@@ -486,7 +523,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
                   <Table
                     rowKey="id"
                     loading={!!subgroupsLoading[record.id]}
-                    dataSource={subgroupsByGroup[record.id] ?? []}
+                    dataSource={(subgroupsByGroup[record.id] ?? []).filter((r) => !r.is_major)}
                     columns={subgroupColumns}
                     onRow={(r: SubgroupRow) => (r.is_head ? { style: { background: '#eff6ff' } } : {})}
                     pagination={false}

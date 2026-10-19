@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
-  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, message, Spin,
+  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin,
 } from 'antd'
-import { SaveOutlined, SendOutlined } from '@ant-design/icons'
+import { SaveOutlined, SendOutlined, CloseOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -17,9 +17,18 @@ import WOPaymentConditionsSection, {
 import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
-import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
+import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_TYPE_OPTIONS, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
 import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
+import { WAREHOUSE_PROJECT_CODES } from '@/constants/warehouseProjects'
+import { useJobTypes } from '@/hooks/useJobTypeNames'
+
+// "เจ้าของโครงการ (ผู้ว่าจ้าง)" — only the head-office option is offered; sent as employer_name.
+const EMPLOYER_HEAD_OFFICE = 'บริษัท จีเนียส เอนจิเนียริ่ง (สำนักงานใหญ่) จำกัด'
+
+// project_choice (form-only field) holds either an existing project_code or, for typed free
+// text, PROJECT_TEXT_PREFIX + the text. buildPayload turns it into project_code XOR project_name_text.
+const PROJECT_TEXT_PREFIX = '__text__:'
 
 // เงินล่วงหน้า/เงินประกันผลงาน/ค่าปรับ ย้ายไปเป็นรายการแบบตารางที่ทำซ้ำได้ใน
 // WOPaymentConditionsSection แล้ว (งวดงาน/เงินประกัน/ค่าปรับ) — ตัด advance_pct,
@@ -27,7 +36,8 @@ import { numberToThaiText } from '@/utils/thaiBahtText'
 // ออกจากฟอร์มนี้ (ยังไม่แตะ column เดิมใน DB/backend). ADVANCE_PCT_OPTIONS ยังใช้
 // กับ advance_deduct_pct ("หักคืนเงินล่วงหน้า") อยู่ จึงคงไว้ — RETENTION_PCT_OPTIONS
 // เคยใช้กับ retention_pct เพียงจุดเดียว ตัดออกไปพร้อมกัน.
-const ADVANCE_PCT_OPTIONS = [5, 10, 15, 20, 30, 50].map((v) => ({ value: v, label: `${v}%` }))
+const ADVANCE_PCT_VALUES = [5, 10, 15, 20, 30]
+const ADVANCE_PCT_OPTIONS = ADVANCE_PCT_VALUES.map((v) => ({ value: v, label: `${v}%` }))
 
 const MENU_CODE = 'MENU_WO_CREATE'
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -57,8 +67,7 @@ interface SupplierOption {
 interface ProjectOption {
   value: string
   label: string
-  // Owner display = customer_name, fall back to legacy owner_name, else ''.
-  owner: string
+  name: string
 }
 
 const WorkOrderCreatePage: React.FC = () => {
@@ -71,6 +80,13 @@ const WorkOrderCreatePage: React.FC = () => {
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
 
+  // Two tabs share this one Form instance (tab panes stay mounted via forceRender). In create
+  // mode the WO id only exists after the first Tab 1 save; it is kept here instead of navigating
+  // away, and Tab 2 stays disabled until then.
+  const [activeTab, setActiveTab] = useState<'header' | 'items'>('header')
+  const [createdId, setCreatedId] = useState<number | string | undefined>(undefined)
+  const woId: number | string | undefined = id ?? createdId
+
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
 
@@ -80,11 +96,51 @@ const WorkOrderCreatePage: React.FC = () => {
     setContractAmountText(v ? numberToThaiText(v) : '')
   }
 
-  // Stored work_system values outside P/E/S (legacy data) — kept as selectable
-  // options so the multi-select shows them as tags and a save doesn't wipe them.
+  // Stored work_system values that aren't M-codes (legacy P/E/S) — kept as selectable
+  // options so the multi-select still shows them as tags for old documents.
   const [legacyWorkSystem, setLegacyWorkSystem] = useState<string[]>([])
+  const jobTypes = useJobTypes()
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
+  const [projectSearch, setProjectSearch] = useState('')
+  const projectChoice: string | undefined = Form.useWatch('project_choice', form)
+  const employerName: string | undefined = Form.useWatch('employer_name', form)
+
+  // Project-change guard. Select.onChange only fires on user interaction (not on edit-mode
+  // setFieldsValue or on the revert below), so the initial load and a revert never re-trigger
+  // it. prevProjectRef still holds the OLD value while onChange runs (it is synced in the
+  // effect after the render), and confirmOpenRef stops a second modal stacking up.
+  const prevProjectRef = useRef<string | undefined>(undefined)
+  const confirmOpenRef = useRef(false)
+  useEffect(() => { prevProjectRef.current = projectChoice }, [projectChoice])
+  const handleProjectChange = (next?: string) => {
+    const prev = prevProjectRef.current
+    if (next === prev || !items.some((it) => it.cost_code)) return
+    if (confirmOpenRef.current) return
+    confirmOpenRef.current = true
+    Modal.confirm({
+      title: 'เปลี่ยนโปรเจกต์?',
+      content: 'รายการ Cost Code ที่เลือกไว้จะถูกล้างทั้งหมด',
+      okText: 'ยืนยัน',
+      cancelText: 'ยกเลิก',
+      onOk: () => { confirmOpenRef.current = false; setItems([]) },
+      onCancel: () => { confirmOpenRef.current = false; form.setFieldValue('project_choice', prev) },
+    })
+  }
+  // Contract value (ไม่รวม VAT) is the base for the 7.1 / 7.3 percentage amounts.
+  const watchedContractAmount: number | undefined = Form.useWatch('contract_amount', form)
+  const watchedAdvancePct: number | undefined = Form.useWatch('advance_deduct_pct', form)
+  const advanceAmount = ((Number(watchedContractAmount) || 0) * (Number(watchedAdvancePct) || 0)) / 100
+
+  // Default wht_rate by contract_type, from GET /work-order/wht-defaults (backend is the
+  // source of truth). Until it loads / if it fails, 3 is used — the pre-existing line default.
+  const [whtDefaults, setWhtDefaults] = useState<Record<string, number>>({})
+  const contractType: string | undefined = Form.useWatch('contract_type', form)
+  const defaultWhtRate = (contractType && whtDefaults[contractType]) || 3
+
+  // Last signer value this page filled in from sales_person — lets a later supplier change
+  // replace its own auto-fill but never anything the user typed or a saved value.
+  const lastAutoSigner = useRef<string | null>(null)
 
   // Cost-code line items — full editable table (WOItemsTable), mirroring PO's
   // POItemsTable + TaxSidebarPanel exactly (per explicit instruction to reuse
@@ -141,7 +197,7 @@ const WorkOrderCreatePage: React.FC = () => {
         setProjects(list.filter((p: any) => p.project_code).map((p: any) => ({
           value: p.project_code,
           label: `${p.project_code} ${p.project_name ?? p.name ?? ''}`.trim(),
-          owner: p.customer_name || p.owner_name || '',
+          name: p.project_name ?? p.name ?? '',
         })))
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลโครงการไม่สำเร็จ')
@@ -152,12 +208,41 @@ const WorkOrderCreatePage: React.FC = () => {
     fetchProjects()
   }, [accessToken])
 
-  // Project picked → owner name goes into employer_name. No owner data → cleared
-  // to '' (the field stays editable either way).
-  const handleProjectChange = (code?: string) => {
-    if (!code) return
-    const p = projects.find((o) => o.value === code)
-    form.setFieldValue('employer_name', p?.owner ?? '')
+  useEffect(() => {
+    if (!accessToken) return
+    axios.get(`${BASE_URL}/work-order/wht-defaults`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => {
+        const body = res.data?.data ?? res.data
+        const list: { contract_type: string; default_wht_rate: number }[] = Array.isArray(body?.contract_types) ? body.contract_types : []
+        setWhtDefaults(Object.fromEntries(list.map((c) => [c.contract_type, Number(c.default_wht_rate)])))
+      })
+      .catch(() => { /* keep the line-level fallback */ })
+  }, [accessToken])
+
+  // Header "อัตราหัก ณ ที่จ่าย": follows the contract_type default only while the user has not
+  // edited it. Line rates need no rewrite — untouched lines read defaultWhtRate directly and
+  // lines with an explicit rate (user-picked or saved) are never changed.
+  const applyHeaderWhtDefault = (type: string | undefined, defaults: Record<string, number>) => {
+    if (!type || defaults[type] === undefined || form.isFieldTouched('wht_rate')) return
+    form.setFieldValue('wht_rate', defaults[type])
+  }
+  useEffect(() => {
+    if (!isEdit) applyHeaderWhtDefault(form.getFieldValue('contract_type'), whtDefaults)
+  }, [whtDefaults])
+
+  // Project options: warehouse projects are excluded (except one already selected on an old
+  // document); the typed text / current free-text value is offered as its own option.
+  const currentProjectCode = projectChoice && !projectChoice.startsWith(PROJECT_TEXT_PREFIX) ? projectChoice : undefined
+  const projectOptions: { value: string; label: string }[] = projects.filter(
+    (p) => !WAREHOUSE_PROJECT_CODES.includes(p.value) || p.value === currentProjectCode,
+  )
+  const typedText = projectSearch.trim()
+  const textOptions: { value: string; label: string }[] = []
+  if (projectChoice?.startsWith(PROJECT_TEXT_PREFIX)) {
+    textOptions.push({ value: projectChoice, label: projectChoice.slice(PROJECT_TEXT_PREFIX.length) })
+  }
+  if (typedText && !projects.some((p) => p.label === typedText) && !textOptions.some((o) => o.value === PROJECT_TEXT_PREFIX + typedText)) {
+    textOptions.push({ value: PROJECT_TEXT_PREFIX + typedText, label: typedText })
   }
 
   // Picking a supplier auto-fills supplier_name + signatory/address/phone from the
@@ -174,9 +259,16 @@ const WorkOrderCreatePage: React.FC = () => {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
       const raw = res.data?.data ?? res.data
+      // Signer: prefill from sales_person only when empty or still holding our own previous
+      // auto-fill — never over typed or saved text.
+      const salesPerson: string | null = raw?.sales_person ?? null
+      const currentSigner: string | undefined = form.getFieldValue('contact_person')
+      if (!currentSigner || currentSigner === lastAutoSigner.current) {
+        form.setFieldValue('contact_person', salesPerson)
+        lastAutoSigner.current = salesPerson
+      }
       form.setFieldsValue({
         supplier_name: raw?.supplier_name ?? picked?.supplier_name ?? null,
-        contact_person: raw?.sales_person ?? null,
         supplier_address: raw?.address ?? null,
         supplier_phone: raw?.sales_person_phone ?? raw?.office_phone ?? null,
       })
@@ -192,9 +284,16 @@ const WorkOrderCreatePage: React.FC = () => {
       try {
         const wo = await workOrderService.get(accessToken, id)
         const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
-        setLegacyWorkSystem(storedSystems.filter((v) => !(v in WO_WORK_SYSTEM_LABEL)))
+        setLegacyWorkSystem(storedSystems.filter((v) => !v.startsWith('M')))
         form.setFieldsValue({
           ...wo,
+          project_choice: wo.project_code
+            ? wo.project_code
+            : wo.project_name_text ? PROJECT_TEXT_PREFIX + wo.project_name_text : undefined,
+          // Old rows may hold a dropdown code (e.g. RENOVATION): shown as its Thai text.
+          contract_description: wo.contract_description
+            ? (WO_CONTRACT_DESCRIPTION_LABEL[wo.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? wo.contract_description)
+            : wo.contract_description,
           work_system: Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : []),
           wo_date: wo.wo_date ? dayjs(wo.wo_date) : undefined,
           start_date: wo.start_date ? dayjs(wo.start_date) : undefined,
@@ -259,7 +358,18 @@ const WorkOrderCreatePage: React.FC = () => {
   // mirrored here since the WO backend contract only lists POST / and PUT /:id, no
   // dedicated submit route. Flag for backend confirmation that `status` in the WO
   // create/update body is the intended trigger, same as PO.
-  const buildPayload = (submitForApproval: boolean): WorkOrderPayload & { status: string } => {
+  // Exactly one of project_code / project_name_text (the other is explicitly cleared so an
+  // edit-mode seed from the loaded record can't send both).
+  const resolveProject = (choice?: string) => {
+    if (!choice) return { project_code: undefined, project_name_text: undefined, project_name: undefined }
+    if (choice.startsWith(PROJECT_TEXT_PREFIX)) {
+      return { project_code: undefined, project_name_text: choice.slice(PROJECT_TEXT_PREFIX.length).trim(), project_name: undefined }
+    }
+    return { project_code: choice, project_name_text: undefined, project_name: projects.find((p) => p.value === choice)?.name }
+  }
+
+  // includeLines=false omits the `lines` key entirely (never `[]`: an empty array deletes all lines).
+  const buildPayload = (submitForApproval: boolean, includeLines: boolean): WorkOrderPayload & { status: string } => {
     // advance_pct/advance_amount/retention_pct/penalty_pct_per_day/progress_payment_note
     // no longer have Form.Items (replaced by WOPaymentConditionsSection's repeatable
     // tables), but edit-mode's initial form.setFieldsValue({ ...wo }) still seeds them
@@ -269,11 +379,15 @@ const WorkOrderCreatePage: React.FC = () => {
     // (send supplier_id only), and edit-mode's ...wo seed puts both into the store.
     const {
       advance_pct, advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note,
-      supplier_code, project_name,
+      supplier_code, project_name, project_choice,
+      // Edit-mode's ...wo seed also put the raw loaded `lines` into the form store; always strip
+      // it here and re-add from `items` only when includeLines is set.
+      lines: _seededLines,
       ...v
     } = form.getFieldsValue()
-    return {
+    const header = {
       ...v,
+      ...resolveProject(project_choice),
       wo_date: v.wo_date ? dayjs(v.wo_date).format('YYYY-MM-DD') : undefined,
       start_date: v.start_date ? dayjs(v.start_date).format('YYYY-MM-DD') : undefined,
       end_date: v.end_date ? dayjs(v.end_date).format('YYYY-MM-DD') : undefined,
@@ -284,11 +398,11 @@ const WorkOrderCreatePage: React.FC = () => {
       discount_type: discType,
       use_vat: useVat,
       use_wht: useWht,
-
-      // ── Lines ── explicit override (not just relying on the `...v` spread)
-      // since edit-mode's initial form.setFieldsValue({ ...wo }) call put the
-      // fetched record's raw `lines` straight into the antd form store too —
-      // this is the source of truth instead.
+    }
+    if (!includeLines) return header
+    return {
+      ...header,
+      // ── Lines ── `items` is the source of truth (see the strip above).
       lines: items.map((item, i): WorkOrderLine => ({
         line_no: i + 1,
         cost_code: item.cost_code,
@@ -299,54 +413,88 @@ const WorkOrderCreatePage: React.FC = () => {
         // shape) — see WorkOrderLine's doc comment in types/workOrder.ts.
         disc: item.disc ?? 0,
         disc_type: item.disc_type ?? discType,
-        wht_rate: useWht ? (item.wht_rate ?? 3) : null,
+        wht_rate: useWht ? (item.wht_rate ?? defaultWhtRate) : null,
       })),
     }
   }
 
-  const handleSave = async (submitForApproval: boolean) => {
+  // Sequential follow-up save of the 3 payment-condition tables (needs a real WO id).
+  // Returns false (after showing the distinct error) when only this second call fails.
+  const savePaymentConditions = async (savedId: number | string): Promise<boolean> => {
+    try {
+      await workOrderService.updatePaymentConditions(
+        accessToken,
+        savedId,
+        buildPaymentConditionsPayload(installments, retentions, penalties),
+      )
+      return true
+    } catch {
+      message.error('บันทึกหนังสือสั่งจ้างสำเร็จ แต่บันทึกเงื่อนไขการจ่ายเงินไม่สำเร็จ กรุณาลองบันทึกเงื่อนไขการจ่ายเงินอีกครั้ง')
+      return false
+    }
+  }
+
+  const saveErrorMessage = (err: any) =>
+    err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึกไม่สำเร็จ'
+
+  const validateHeader = async (): Promise<boolean> => {
     try {
       await form.validateFields()
+      return true
     } catch {
       message.warning('กรุณากรอกข้อมูลให้ครบถ้วน')
+      return false
+    }
+  }
+
+  // Tab 1 — "บันทึกและไปต่อ": full header, `lines` omitted. Create on first save, PUT afterwards;
+  // stays on the page and moves to Tab 2.
+  const handleSaveHeader = async () => {
+    if (!(await validateHeader())) return
+    setSaving(true)
+    try {
+      const payload = buildPayload(false, false)
+      const wo = woId !== undefined
+        ? await workOrderService.update(accessToken, woId, payload)
+        : await workOrderService.create(accessToken, payload)
+      const savedId = (wo?.id ?? woId) as number | string
+      if (woId === undefined) {
+        setCreatedId(savedId)
+        // Keep the generated number in the form so later full-header saves don't blank it.
+        if (wo?.wo_no) form.setFieldValue('wo_no', wo.wo_no)
+      }
+      if (await savePaymentConditions(savedId)) message.success('บันทึกข้อมูลหนังสือสั่งจ้างสำเร็จ')
+      setActiveTab('items')
+    } catch (err: any) {
+      message.error(saveErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Tab 2 — "บันทึกร่าง" / "ส่งอนุมัติ": PUT the full payload including `lines` from the table.
+  const handleSaveWithLines = async (submitForApproval: boolean) => {
+    if (woId === undefined) return
+    if (items.length === 0) {
+      message.warning(submitForApproval
+        ? 'กรุณาเพิ่มรายการอย่างน้อย 1 รายการก่อนส่งขออนุมัติ'
+        : 'กรุณาเพิ่มรายการอย่างน้อย 1 รายการก่อนบันทึก')
       return
     }
-    // items is plain React state, not a Form field, so its own "at least 1
-    // line" requirement (same as the old cost_codes multi-select's rule)
-    // needs a manual check here rather than a Form.Item validator.
-    if (items.length === 0) {
-      message.warning('กรุณาเพิ่มรายการ Cost Code อย่างน้อย 1 รายการ')
+    if (!(await validateHeader())) {
+      setActiveTab('header')
       return
     }
     setSaving(true)
     try {
-      const payload = buildPayload(submitForApproval)
-      const wo = isEdit
-        ? await workOrderService.update(accessToken, id!, payload)
-        : await workOrderService.create(accessToken, payload)
-
-      // Bundled follow-up save — payment conditions reference wo_id and can't be
-      // created before the WO itself has one, so this can only happen right here,
-      // after the create/update call above has succeeded and a real id is known
-      // (newly-created id in create mode, the existing id in edit mode). This is
-      // a second sequential API call under the hood, but reads as one save to the
-      // user: same success message, same navigate-away, unless it fails on its
-      // own — see the catch below for why that's reported separately rather than
-      // treated as one atomic failure (the WO itself did save).
-      try {
-        await workOrderService.updatePaymentConditions(
-          accessToken,
-          wo.id,
-          buildPaymentConditionsPayload(installments, retentions, penalties),
-        )
-        message.success(isEdit ? 'บันทึกการแก้ไขสำเร็จ' : 'บันทึกร่างสำเร็จ')
-      } catch (conditionsErr: any) {
-        message.error('บันทึกหนังสือสั่งจ้างสำเร็จ แต่บันทึกเงื่อนไขการจ่ายเงินไม่สำเร็จ กรุณาลองบันทึกเงื่อนไขการจ่ายเงินอีกครั้ง')
+      const wo = await workOrderService.update(accessToken, woId, buildPayload(submitForApproval, true))
+      const savedId = (wo?.id ?? woId) as number | string
+      if (await savePaymentConditions(savedId)) {
+        message.success(submitForApproval ? 'ส่งอนุมัติสำเร็จ' : 'บันทึกร่างสำเร็จ')
       }
-
-      navigate(`/work-order/${wo.id}`)
+      navigate(`/work-order/${savedId}`)
     } catch (err: any) {
-      message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
+      message.error(saveErrorMessage(err))
     } finally {
       setSaving(false)
     }
@@ -360,363 +508,469 @@ const WorkOrderCreatePage: React.FC = () => {
     )
   }
 
+  const barStyle: React.CSSProperties = {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12,
+    marginTop: 16, paddingTop: 16, borderTop: '0.5px solid #dbeafe',
+  }
+  const groupStyle: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12 }
+  const primaryStyle: React.CSSProperties = {
+    background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
+  }
+  // TODO: this button is temporarily shown unconditionally (on both
+  // blank new forms and existing records) purely to unblock visual
+  // review of the print button + template picker + both print
+  // templates. Restore the real gate — only show once an existing
+  // record is loaded, i.e. `isEdit && id` — in a follow-up once the
+  // visual design is confirmed. When there's no saved `id` yet, it
+  // prints/previews straight from the current in-memory form state
+  // (formData) instead of fetching — no save-first requirement for
+  // now (see WorkOrderPrintTrigger's handleConfirm).
+  const printTrigger = (
+        <WorkOrderPrintTrigger
+          id={id}
+          getFormData={() => ({
+            ...form.getFieldsValue(true),
+            ...resolveProject(form.getFieldValue('project_choice')),
+            // items/tax flags are plain React state now (not Form fields,
+            // see buildPayload), so the unsaved-preview path needs them
+            // merged in explicitly — form.getFieldsValue() alone won't see them.
+            use_discount: useDisc,
+            discount_type: discType,
+            use_vat: useVat,
+            use_wht: useWht,
+            lines: items.map((item, i): WorkOrderLine => ({
+              line_no: i + 1,
+              cost_code: item.cost_code,
+              description: item.description || undefined,
+              qty: item.qty,
+              unit_price: item.unit_price,
+              disc: item.disc ?? 0,
+              disc_type: item.disc_type ?? discType,
+              wht_rate: useWht ? (item.wht_rate ?? defaultWhtRate) : null,
+            })),
+          })}
+        />
+  )
+  // Existing cancel/back action of this page (previously a bare "ยกเลิก" row at the bottom).
+  const cancelButton = (
+    <Button icon={<CloseOutlined />} style={{ borderRadius: 8 }} onClick={() => navigate('/work-order/list')}>
+      ยกเลิก
+    </Button>
+  )
+
   return (
     <div>
       <PageHeader
         title={isEdit ? 'แก้ไขหนังสือสั่งจ้าง (WO)' : 'สร้างหนังสือสั่งจ้าง (WO)'}
         subtitle="กรอกข้อมูลหนังสือสั่งจ้างเพื่อบันทึกหรือส่งอนุมัติ"
         breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: isEdit ? 'แก้ไข' : 'สร้าง' }]}
-        extra={
-          <div style={{ display: 'flex', gap: 8 }}>
-            {/* TODO: this button is temporarily shown unconditionally (on both
-                blank new forms and existing records) purely to unblock visual
-                review of the print button + template picker + both print
-                templates. Restore the real gate — only show once an existing
-                record is loaded, i.e. `isEdit && id` — in a follow-up once the
-                visual design is confirmed. When there's no saved `id` yet, it
-                prints/previews straight from the current in-memory form state
-                (formData) instead of fetching — no save-first requirement for
-                now (see WorkOrderPrintTrigger's handleConfirm). */}
-            <WorkOrderPrintTrigger
-              id={id}
-              getFormData={() => ({
-                ...form.getFieldsValue(true),
-                // items/tax flags are plain React state now (not Form fields,
-                // see buildPayload), so the unsaved-preview path needs them
-                // merged in explicitly — form.getFieldsValue() alone won't see them.
-                use_discount: useDisc,
-                discount_type: discType,
-                use_vat: useVat,
-                use_wht: useWht,
-                lines: items.map((item, i): WorkOrderLine => ({
-                  line_no: i + 1,
-                  cost_code: item.cost_code,
-                  description: item.description || undefined,
-                  qty: item.qty,
-                  unit_price: item.unit_price,
-                  disc: item.disc ?? 0,
-                  disc_type: item.disc_type ?? discType,
-                  wht_rate: useWht ? (item.wht_rate ?? 3) : null,
-                })),
-              })}
-            />
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="write"
-              icon={<SaveOutlined />}
-              loading={saving}
-              onClick={() => handleSave(false)}
-            >
-              บันทึกร่าง
-            </PermissionButton>
-            <PermissionButton
-              menuCode={MENU_CODE}
-              action="write"
-              type="primary"
-              icon={<SendOutlined />}
-              loading={saving}
-              onClick={() => handleSave(true)}
-              style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none', boxShadow: '0 4px 16px rgba(37,99,235,0.4)' }}
-            >
-              ส่งอนุมัติ
-            </PermissionButton>
-          </div>
-        }
       />
 
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          contract_type: 'LABOR_MATERIAL',
-          work_system: ['P'],
-          vat_rate: 7,
-          wht_rate: 3,
-        }}
-      >
-        <Form.Item name="supplier_name" hidden><Input /></Form.Item>
-
-        <Card title="เอกสาร" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>เลขที่ WO</span>} name="wo_no">
-                <Input style={fieldStyle} disabled placeholder="ระบบสร้างอัตโนมัติ" />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>วันที่</span>} name="wo_date" rules={[{ required: true, message: 'กรุณาระบุวันที่' }]}>
-                <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 1. เจ้าของโครงการ — 12 + 12 */}
-        <Card title="1. เจ้าของโครงการ (ผู้ว่าจ้าง)" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>โครงการ</span>} name="project_code">
-                <Select
-                  style={fieldStyle}
-                  popupMatchSelectWidth={false}
-                  showSearch
-                  allowClear
-                  loading={projectsLoading}
-                  placeholder="เลือกโครงการ"
-                  optionFilterProp="label"
-                  options={projects}
-                  onChange={handleProjectChange}
-                />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>ชื่อเจ้าของโครงการ</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาระบุเจ้าของโครงการ' }]}>
-                <Input style={fieldStyle} placeholder="แสดงจากโครงการที่เลือก — แก้ไขได้" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 2. ผู้รับจ้าง / ผู้ให้เช่า — row 1: 12 + 6 + 6, row 2: 12 */}
-        <Card title="2. ผู้รับจ้าง / ผู้ให้เช่า" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>บริษัท</span>} name="supplier_id" rules={[{ required: true, message: 'กรุณาเลือกบริษัทผู้รับจ้าง / ผู้ให้เช่า' }]}>
-                <Select
-                  style={fieldStyle}
-                  popupMatchSelectWidth={false}
-                  showSearch
-                  loading={suppliersLoading}
-                  placeholder="เลือกบริษัท"
-                  optionFilterProp="label"
-                  options={suppliers.map((s) => ({ value: s.id, label: s.supplier_name }))}
-                  onChange={handleSupplierChange}
-                />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>ผู้ลงนาม</span>} name="contact_person">
-                <Input style={fieldStyle} />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>โทรศัพท์</span>} name="supplier_phone">
-                <Input style={fieldStyle} />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>ที่อยู่ตามหนังสือรับรอง</span>} name="supplier_address">
-                <Input style={fieldStyle} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 3. ประเภทสัญญา — 6 */}
-        <Card title="3. สัญญานี้เป็นสัญญาประเภท" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>ประเภทสัญญา</span>} name="contract_type" style={{ marginBottom: 0 }}>
-                <Select
-                  style={fieldStyle}
-                  popupMatchSelectWidth={false}
-                  options={[
-                    { value: 'LABOR_MATERIAL', label: 'ทั้งค่าแรง และค่าของ' },
-                    { value: 'LABOR_ONLY', label: 'ค่าแรงอย่างเดียว' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 4. งานระบบ — 12 (multi-select tags need the room) */}
-        <Card title="4. งานระบบ" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item
-                label={<span style={labelStyle}>งานระบบ</span>}
-                name="work_system"
-                rules={[{ required: true, type: 'array', min: 1, message: 'กรุณาเลือกงานระบบอย่างน้อย 1 รายการ' }]}
-                style={{ marginBottom: 0 }}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as 'header' | 'items')}
+        items={[
+          {
+            key: 'header',
+            label: 'สร้างหนังสือสั่งจ้าง (WO)',
+            forceRender: true,
+            children: (
+              <>
+              <Form
+                form={form}
+                layout="vertical"
+                initialValues={{
+                  employer_name: EMPLOYER_HEAD_OFFICE,
+                  contract_type: 'LABOR_MATERIAL',
+                  vat_rate: 7,
+                  wht_rate: 3,
+                }}
               >
-                <Select
-                  style={fieldStyle}
-                  popupMatchSelectWidth={false}
-                  mode="multiple"
-                  placeholder="เลือกงานระบบ"
-                  options={[
-                    ...Object.entries(WO_WORK_SYSTEM_LABEL).map(([value, label]) => ({ value, label })),
-                    ...legacyWorkSystem.map((v) => ({ value: v, label: `${v} (ค่าเดิม)` })),
-                  ]}
+                <Form.Item name="supplier_name" hidden><Input /></Form.Item>
+
+                <Card title="เอกสาร" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>เลขที่ WO</span>} name="wo_no">
+                        <Input style={fieldStyle} disabled placeholder="ระบบสร้างอัตโนมัติ" />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>วันที่</span>} name="wo_date" rules={[{ required: true, message: 'กรุณาระบุวันที่' }]}>
+                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 1. เจ้าของโครงการ — 12 + 12 */}
+                <Card title="1. เจ้าของโครงการ (ผู้ว่าจ้าง)" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item label={<span style={labelStyle}>เจ้าของโครงการ (ผู้ว่าจ้าง)</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาระบุเจ้าของโครงการ' }]}>
+                        <Select
+                          style={fieldStyle}
+                          popupMatchSelectWidth={false}
+                          placeholder="เลือกเจ้าของโครงการ"
+                          options={[
+                            { value: EMPLOYER_HEAD_OFFICE, label: EMPLOYER_HEAD_OFFICE },
+                            // An old document's stored employer stays visible instead of a blank Select.
+                            ...(employerName && employerName !== EMPLOYER_HEAD_OFFICE ? [{ value: employerName, label: employerName }] : []),
+                          ]}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item
+                        label={<span style={labelStyle}>โครงการ</span>}
+                        name="project_choice"
+                        rules={[{ required: true, message: 'กรุณาเลือกโครงการหรือพิมพ์ชื่อโครงการ' }]}
+                      >
+                        <Select
+                          style={fieldStyle}
+                          popupMatchSelectWidth={false}
+                          showSearch
+                          allowClear
+                          loading={projectsLoading}
+                          placeholder="เลือกโครงการ หรือพิมพ์ชื่อโครงการเอง"
+                          options={[...projectOptions, ...textOptions]}
+                          filterOption={(input, option) =>
+                            String(option?.value ?? '').startsWith(PROJECT_TEXT_PREFIX) ||
+                            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                          onSearch={setProjectSearch}
+                          onChange={handleProjectChange}
+                          onSelect={() => setProjectSearch('')}
+                          onBlur={() => setProjectSearch('')}
+                          notFoundContent={projectsLoading ? 'กำลังโหลด...' : 'พิมพ์ชื่อโครงการเพื่อใช้เป็นข้อความ'}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 2. ผู้รับจ้าง / ผู้ให้เช่า — row 1: 12 + 6 + 6, row 2: 12 */}
+                <Card title="2. ผู้รับจ้าง / ผู้ให้เช่า" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item label={<span style={labelStyle}>บริษัท</span>} name="supplier_id" rules={[{ required: true, message: 'กรุณาเลือกบริษัทผู้รับจ้าง / ผู้ให้เช่า' }]}>
+                        <Select
+                          style={fieldStyle}
+                          popupMatchSelectWidth={false}
+                          showSearch
+                          loading={suppliersLoading}
+                          placeholder="เลือกบริษัท"
+                          optionFilterProp="label"
+                          options={suppliers.map((s) => ({ value: s.id, label: s.supplier_name }))}
+                          onChange={handleSupplierChange}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>ผู้ลงนาม</span>} name="contact_person">
+                        <Input style={fieldStyle} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>โทรศัพท์</span>} name="supplier_phone">
+                        <Input style={fieldStyle} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item label={<span style={labelStyle}>ที่อยู่ตามหนังสือรับรอง</span>} name="supplier_address">
+                        <Input style={fieldStyle} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 3. ประเภทสัญญา — 6 */}
+                <Card title="3. สัญญานี้เป็นสัญญาประเภท" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>ประเภทสัญญา</span>} name="contract_type" style={{ marginBottom: 0 }}>
+                        <Select
+                          style={fieldStyle}
+                          popupMatchSelectWidth={false}
+                          options={WO_CONTRACT_TYPE_OPTIONS}
+                          onChange={(v: string) => applyHeaderWhtDefault(v, whtDefaults)}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 4. งานระบบ — 12 (multi-select tags need the room) */}
+                <Card title="4. งานระบบ" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item
+                        label={<span style={labelStyle}>งานระบบ</span>}
+                        name="work_system"
+                        rules={[{ required: true, type: 'array', min: 1, message: 'กรุณาเลือกงานระบบอย่างน้อย 1 รายการ' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Select
+                          style={fieldStyle}
+                          popupMatchSelectWidth={false}
+                          mode="multiple"
+                          placeholder="เลือกงานระบบ"
+                          options={[
+                            ...jobTypes
+                              .filter((j) => j.job_code.startsWith('M'))
+                              .map((j) => ({ value: j.job_code, label: `${j.job_code} - ${j.job_name}` })),
+                            ...legacyWorkSystem.map((v) => ({ value: v, label: `${WO_WORK_SYSTEM_LABEL[v] ?? v} (ค่าเดิม)` })),
+                          ]}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 5. ลักษณะของสัญญา — 12 */}
+                <Card title="5. ลักษณะของสัญญา" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item label={<span style={labelStyle}>ลักษณะของสัญญา</span>} name="contract_description" style={{ marginBottom: 0 }}>
+                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={2000} showCount placeholder="เช่น RENOVATION FAC-S 1 & 2" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 6. มูลค่าสัญญา (ไม่รวม VAT) — 6 + 6 + 6 */}
+                <Card title="6. มูลค่าสัญญา (ไม่รวม VAT)" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item
+                        label={<span style={labelStyle}>มูลค่าสัญญาไม่รวม VAT (บาท)</span>}
+                        name="contract_amount"
+                        rules={[{ required: true, message: 'กรุณาระบุมูลค่าสัญญา' }]}
+                        extra={contractAmountText && <span style={{ fontSize: 12, color: '#2563eb' }}>({contractAmountText})</span>}
+                      >
+                        <InputNumber
+                          style={fieldStyle}
+                          min={0}
+                          precision={2}
+                          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                          parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
+                          onChange={(v) => updateContractAmountText(v as number | null)}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>อัตรา VAT (%)</span>} name="vat_rate">
+                        <InputNumber style={fieldStyle} min={0} max={100} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>อัตราหัก ณ ที่จ่าย (%)</span>} name="wht_rate">
+                        <InputNumber style={fieldStyle} min={0} max={100} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 7. เงื่อนไขการจ่ายเงิน — WOPaymentConditionsSection is plain React state,
+                    so it can sit between Form cards without being a Form field itself.
+                    handleSave bundles the follow-up POST /work-order/:woId/payment-conditions
+                    after the main create/update succeeds. Its internal tables are untouched. */}
+                <WOPaymentConditionsSection
+                  installments={installments}
+                  onInstallmentsChange={setInstallments}
+                  retentions={retentions}
+                  onRetentionsChange={setRetentions}
+                  penalties={penalties}
+                  onPenaltiesChange={setPenalties}
+                  contractAmount={watchedContractAmount}
+                  // 7.1 เงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
+                  advanceSlot={
+                    <Row gutter={[16, 0]}>
+                      <Col {...FIELD_SPAN}>
+                        <Form.Item label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>} name="advance_deduct_pct" style={{ marginBottom: 0 }}>
+                          <Select
+                            allowClear
+                            style={fieldStyle}
+                            options={[
+                              ...ADVANCE_PCT_OPTIONS,
+                              // Saved value outside the offered list (e.g. 50) stays selectable so it isn't shown blank.
+                              ...(watchedAdvancePct != null && !ADVANCE_PCT_VALUES.includes(Number(watchedAdvancePct))
+                                ? [{ value: watchedAdvancePct, label: `${watchedAdvancePct}%` }]
+                                : []),
+                            ]}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col {...FIELD_SPAN}>
+                        <Form.Item label={<span style={labelStyle}>จำนวนเงิน (บาท)</span>} style={{ marginBottom: 0 }}>
+                          <Input
+                            style={fieldStyle}
+                            readOnly
+                            value={advanceAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  }
                 />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
 
-        {/* 5. ลักษณะของสัญญา — 12 */}
-        <Card title="5. ลักษณะของสัญญา" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>ลักษณะของสัญญา</span>} name="contract_description" style={{ marginBottom: 0 }}>
-                <Input style={fieldStyle} placeholder="เช่น RENOVATION FAC-S 1 & 2" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
+                {/* other_deduction_note: 24 (advance_deduct_pct moved into card 7 as 7.1) */}
+                <Card title="เงื่อนไขการจ่ายเงิน (อื่นๆ)" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
+                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
 
-        {/* 6. มูลค่าสัญญา (ไม่รวม VAT) — 6 + 6 + 6 */}
-        <Card title="6. มูลค่าสัญญา (ไม่รวม VAT)" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN}>
-              <Form.Item
-                label={<span style={labelStyle}>มูลค่าสัญญาไม่รวม VAT (บาท)</span>}
-                name="contract_amount"
-                rules={[{ required: true, message: 'กรุณาระบุมูลค่าสัญญา' }]}
-                extra={contractAmountText && <span style={{ fontSize: 12, color: '#2563eb' }}>({contractAmountText})</span>}
+                {/* 8. ระยะเวลาสัญญา — 6 + 6 + 6 + 6 */}
+                <Card title="8. ระยะเวลาสัญญา" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
+                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={recalcEndDate} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
+                        <InputNumber style={fieldStyle} min={0} onChange={recalcEndDate} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>วันที่สิ้นสุด</span>} name="end_date">
+                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
+                        <InputNumber style={fieldStyle} min={0} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 9. อ้างอิงสัญญา — 12 */}
+                <Card title="9. อ้างอิงสัญญา" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item label={<span style={labelStyle}>เลขที่อ้างอิง</span>} name="ref_no" style={{ marginBottom: 0 }}>
+                        <Input style={fieldStyle} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 10. เงื่อนไขอื่นๆ — 24 */}
+                <Card title="10. เงื่อนไขอื่นๆ" style={cardStyle}>
+                  <Row gutter={[16, 0]}>
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms" style={{ marginBottom: 0 }}>
+                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  {/* Action bar — footer of this card: print on the left; cancel / continue on the right. */}
+                  <div style={barStyle}>
+                    <div style={groupStyle}>{printTrigger}</div>
+                    <div style={{ ...groupStyle, justifyContent: 'flex-end' }}>
+                      {cancelButton}
+                      <PermissionButton
+                        menuCode={MENU_CODE}
+                        action="write"
+                        type="primary"
+                        icon={<ArrowRightOutlined />}
+                        loading={saving}
+                        onClick={handleSaveHeader}
+                        style={primaryStyle}
+                      >
+                        บันทึกและไปต่อ
+                      </PermissionButton>
+                    </div>
+                  </div>
+                </Card>
+              </Form>
+              </>
+            ),
+          },
+          {
+            key: 'items',
+            label: 'รายละเอียดหนังสือสั่งจ้าง',
+            disabled: !isEdit && createdId === undefined,
+            forceRender: true,
+            children: (
+              <>
+              {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
+                  create page uses (table + collapsible tax sidebar side by side),
+                  reused exactly rather than rebuilt. Lives outside the antd <Form>
+                  since `items` is plain React state, same pattern as POCreatePage. */}
+              <Card
+                title={<span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>รายการ Cost Code</span>}
+                style={cardStyle}
+                styles={{ body: { padding: 0 } }}
               >
-                <InputNumber
-                  style={fieldStyle}
-                  min={0}
-                  precision={2}
-                  formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
-                  onChange={(v) => updateContractAmountText(v as number | null)}
-                />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>อัตรา VAT (%)</span>} name="vat_rate">
-                <InputNumber style={fieldStyle} min={0} max={100} />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>อัตราหัก ณ ที่จ่าย (%)</span>} name="wht_rate">
-                <InputNumber style={fieldStyle} min={0} max={100} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 7. เงื่อนไขการจ่ายเงิน — WOPaymentConditionsSection is plain React state,
-            so it can sit between Form cards without being a Form field itself.
-            handleSave bundles the follow-up POST /work-order/:woId/payment-conditions
-            after the main create/update succeeds. Its internal tables are untouched. */}
-        <WOPaymentConditionsSection
-          installments={installments}
-          onInstallmentsChange={setInstallments}
-          retentions={retentions}
-          onRetentionsChange={setRetentions}
-          penalties={penalties}
-          onPenaltiesChange={setPenalties}
-        />
-
-        {/* advance_deduct_pct: 6, other_deduction_note: 24 */}
-        <Card title="เงื่อนไขการจ่ายเงิน (อื่นๆ)" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>} name="advance_deduct_pct">
-                <Select allowClear style={fieldStyle} options={ADVANCE_PCT_OPTIONS} />
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
-                <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 8. ระยะเวลาสัญญา — 6 + 6 + 6 + 6 */}
-        <Card title="8. ระยะเวลาสัญญา" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
-                <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={recalcEndDate} />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
-                <InputNumber style={fieldStyle} min={0} onChange={recalcEndDate} />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>วันที่สิ้นสุด</span>} name="end_date">
-                <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col {...FIELD_SPAN}>
-              <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
-                <InputNumber style={fieldStyle} min={0} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 9. อ้างอิงสัญญา — 12 */}
-        <Card title="9. อ้างอิงสัญญา" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col {...FIELD_SPAN_WIDE}>
-              <Form.Item label={<span style={labelStyle}>เลขที่อ้างอิง</span>} name="ref_no" style={{ marginBottom: 0 }}>
-                <Input style={fieldStyle} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 10. เงื่อนไขอื่นๆ — 24 */}
-        <Card title="10. เงื่อนไขอื่นๆ" style={cardStyle}>
-          <Row gutter={[16, 0]}>
-            <Col xs={24}>
-              <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms" style={{ marginBottom: 0 }}>
-                <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-      </Form>
-
-      {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
-          create page uses (table + collapsible tax sidebar side by side),
-          reused exactly rather than rebuilt. Lives outside the antd <Form>
-          since `items` is plain React state, same pattern as POCreatePage. */}
-      <Card
-        title={<span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>รายการ Cost Code</span>}
-        style={cardStyle}
-        styles={{ body: { padding: 0 } }}
-      >
-        <div style={{ display: 'flex', overflow: 'hidden' }}>
-          <div style={{ flex: 1, minWidth: 0, padding: 24 }}>
-            <WOItemsTable
-              items={items}
-              onChange={setItems}
-              taxOpen={taxOpen}
-              onTaxToggle={() => setTaxOpen((v) => !v)}
-              useDisc={useDisc}
-              discType={discType}
-              useVat={useVat}
-              useWht={useWht}
-            />
-          </div>
-          <TaxSidebarPanel
-            open={taxOpen}
-            onClose={() => setTaxOpen(false)}
-            useDisc={useDisc}
-            onUseDiscChange={setUseDisc}
-            discType={discType}
-            onDiscTypeChange={setDiscType}
-            useVat={useVat}
-            onUseVatChange={setUseVat}
-            useWht={useWht}
-            onUseWhtChange={setUseWht}
-          />
-        </div>
-      </Card>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <Button onClick={() => navigate('/work-order/list')}>ยกเลิก</Button>
-      </div>
+                <div style={{ display: 'flex', overflow: 'hidden' }}>
+                  <div style={{ flex: 1, minWidth: 0, padding: 24 }}>
+                    <WOItemsTable
+                      items={items}
+                      onChange={setItems}
+                      taxOpen={taxOpen}
+                      onTaxToggle={() => setTaxOpen((v) => !v)}
+                      useDisc={useDisc}
+                      discType={discType}
+                      useVat={useVat}
+                      useWht={useWht}
+                      defaultWhtRate={defaultWhtRate}
+                    />
+                  </div>
+                  <TaxSidebarPanel
+                    open={taxOpen}
+                    onClose={() => setTaxOpen(false)}
+                    useDisc={useDisc}
+                    onUseDiscChange={setUseDisc}
+                    discType={discType}
+                    onDiscTypeChange={setDiscType}
+                    useVat={useVat}
+                    onUseVatChange={setUseVat}
+                    useWht={useWht}
+                    onUseWhtChange={setUseWht}
+                  />
+                </div>
+                {/* Action bar — footer of this card: print on the left; back / save draft / submit on the right. */}
+                <div style={{ ...barStyle, margin: '16px 24px 0', paddingBottom: 24 }}>
+                  <div style={groupStyle}>{printTrigger}</div>
+                  <div style={{ ...groupStyle, justifyContent: 'flex-end' }}>
+                    <Button icon={<ArrowLeftOutlined />} style={{ borderRadius: 8 }} onClick={() => setActiveTab('header')}>
+                      ย้อนกลับ
+                    </Button>
+                    <PermissionButton
+                      menuCode={MENU_CODE}
+                      action="write"
+                      icon={<SaveOutlined />}
+                      loading={saving}
+                      onClick={() => handleSaveWithLines(false)}
+                    >
+                      บันทึกร่าง
+                    </PermissionButton>
+                    <PermissionButton
+                      menuCode={MENU_CODE}
+                      action="write"
+                      type="primary"
+                      icon={<SendOutlined />}
+                      loading={saving}
+                      onClick={() => handleSaveWithLines(true)}
+                      style={primaryStyle}
+                    >
+                      ส่งอนุมัติ
+                    </PermissionButton>
+                  </div>
+                </div>
+              </Card>
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

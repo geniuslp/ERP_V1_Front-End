@@ -31,6 +31,7 @@ export interface MemoData {
   memoNo: string
   department: string       // memo.department
   projectName: string      // memo.project_code / project_name
+  jobLabel?: string        // memo.job_code + name, "{code} — {name}"; empty for old memos
   requestedBy: string      // memo.requested_by_name
   note: string             // memo.note
   // "กำหนดส่งของหน้างาน" — required/target date for on-site delivery.
@@ -202,6 +203,7 @@ const MemoHeader = ({ data, pageNum, totalPages }: { data: MemoData; pageNum: nu
 const MemoInfoBox = ({ data }: { data: MemoData }) => (
   <div className="memo-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
     <div><b>โครงการ :</b>&nbsp;{data.projectName}</div>
+    {data.jobLabel && <div><b>ประเภทงาน (Job) :</b>&nbsp;{data.jobLabel}</div>}
     <div><b>สถานที่ส่งของ :</b>&nbsp;{data.deliveryLocation}</div>
     <div><b>หน่วยงาน :</b>&nbsp;{data.department}</div>
     <div style={{ display: 'flex', gap: 4 }}>

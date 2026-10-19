@@ -8,7 +8,8 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
-import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
+import { WO_CONTRACT_TYPE_LABEL, WO_CONTRACT_DESCRIPTION_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
+import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 import type { WorkOrder, WorkOrderLine } from '@/types/workOrder'
 import { calcDisc } from '@/utils/poCalc'
 import { formatCostCodeDisplay } from '@/utils/costCode'
@@ -35,6 +36,7 @@ const WorkOrderDetailPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectForm] = Form.useForm()
+  const jobNames = useJobTypeNames()
 
   const fetchDetail = async () => {
     if (!id) return
@@ -159,7 +161,7 @@ const WorkOrderDetailPage: React.FC = () => {
           <Descriptions.Item label="วันที่">{dateFmt(wo.wo_date)}</Descriptions.Item>
           <Descriptions.Item label="เลขที่อ้างอิง">{wo.ref_no || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้ว่าจ้าง">{wo.employer_name}</Descriptions.Item>
-          <Descriptions.Item label="ขอบเขตงาน / โครงการ" span={2}>{wo.project_scope_text || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ขอบเขตงาน / โครงการ" span={2}>{formatWOProject(wo) || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้รับจ้าง">{wo.supplier_name || wo.supplier_code}</Descriptions.Item>
           <Descriptions.Item label="ผู้ควบคุมงาน">{wo.contact_person || '—'}</Descriptions.Item>
           <Descriptions.Item label="ที่อยู่ผู้รับจ้าง">{wo.supplier_address || '—'}</Descriptions.Item>
@@ -169,9 +171,9 @@ const WorkOrderDetailPage: React.FC = () => {
 
       <Card title="ประเภทสัญญา / มูลค่า" style={cardStyle}>
         <Descriptions bordered column={2} size="small">
-          <Descriptions.Item label="ลักษณะสัญญา">{wo.contract_type === 'LABOR_ONLY' ? 'ค่าแรงอย่างเดียว' : 'ทั้งค่าแรงและค่าของ'}</Descriptions.Item>
-          <Descriptions.Item label="งานระบบ">{WO_WORK_SYSTEM_LABEL[wo.work_system] || wo.work_system}</Descriptions.Item>
-          <Descriptions.Item label="รายละเอียดสัญญา" span={2}>{wo.contract_description || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ลักษณะสัญญา">{WO_CONTRACT_TYPE_LABEL[wo.contract_type] ?? wo.contract_type}</Descriptions.Item>
+          <Descriptions.Item label="งานระบบ">{formatWorkSystem(wo.work_system, jobNames) || '—'}</Descriptions.Item>
+          <Descriptions.Item label="รายละเอียดสัญญา" span={2}>{wo.contract_description ? (WO_CONTRACT_DESCRIPTION_LABEL[wo.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? wo.contract_description) : '—'}</Descriptions.Item>
           <Descriptions.Item label="มูลค่าสัญญา">{money(wo.contract_amount)} บาท</Descriptions.Item>
           <Descriptions.Item label="VAT / หัก ณ ที่จ่าย">{wo.vat_rate}% / {wo.wht_rate}%</Descriptions.Item>
         </Descriptions>

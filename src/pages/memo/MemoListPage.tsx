@@ -37,6 +37,7 @@ const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ??
 
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
 const PROJECT_COLUMN_DEFAULT_WIDTH = 240
+const JOB_COLUMN_DEFAULT_WIDTH = 100
 const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
 const APPROVER_COLUMN_DEFAULT_WIDTH = 140
 const APPROVED_AT_COLUMN_DEFAULT_WIDTH = 150
@@ -92,6 +93,7 @@ const mapMemo = (m: any): Memo => ({
   approverName: m.approver_name     ?? m.approverName ?? undefined,
   projectCode:  m.project_code    ?? m.projectCode    ?? undefined,
   projectName:  m.project_name    ?? m.projectName    ?? undefined,
+  jobCode:      m.job_code        ?? m.jobCode        ?? null,
   supplierName: m.supplier_code   ?? m.supplier_name ?? m.supplierName  ?? undefined,
   status:       m.status          ?? 'DRAFT',
   createdAt:    m.created_at      ?? m.createdAt     ?? '',
@@ -112,6 +114,10 @@ const MemoListPage: React.FC = () => {
   // pattern as POStatusPage.tsx / PRStatusPage.tsx, not persisted (resets on refresh).
   const [memoNoColWidth, setMemoNoColWidth] = useState(MEMO_NO_COLUMN_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
+  const [jobColWidth, setJobColWidth] = useState(JOB_COLUMN_DEFAULT_WIDTH)
+  const handleJobColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setJobColWidth(data.size.width)
+  }
   const [requestedByColWidth, setRequestedByColWidth] = useState(REQUESTED_BY_COLUMN_DEFAULT_WIDTH)
   const [approverColWidth, setApproverColWidth] = useState(APPROVER_COLUMN_DEFAULT_WIDTH)
   const [approvedAtColWidth, setApprovedAtColWidth] = useState(APPROVED_AT_COLUMN_DEFAULT_WIDTH)
@@ -230,6 +236,17 @@ const MemoListPage: React.FC = () => {
         const label = [record.projectCode, record.projectName].filter(Boolean).join(' ')
         return label || <span style={{ color: '#9ca3af' }}>—</span>
       },
+    },
+    {
+      title: 'Job',
+      dataIndex: 'jobCode',
+      key: 'jobCode',
+      width: jobColWidth,
+      onHeaderCell: () => ({
+        width: jobColWidth,
+        onResize: handleJobColResize,
+      }),
+      render: (val?: string | null) => val || '-',
     },
     {
       title: 'ผู้สร้าง',
@@ -404,7 +421,7 @@ const MemoListPage: React.FC = () => {
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
           dataSource={data}
-          scroll={{ x: 1300 }}
+          scroll={{ x: 1400 }}
           rowClassName={(record) => getRowClassName(record.status)}
           pagination={{
             pageSize: 10,

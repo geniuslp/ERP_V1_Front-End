@@ -79,6 +79,7 @@ interface MemoDetail {
   // PR's requiredDate vs prDate.
   siteDeliveryDate?: string
   projectName?: string
+  jobCode?: string | null
   note?: string
   createdAt: string
   // GET /memo/:id's requester_signature/approval_signature — both null unless
@@ -155,6 +156,7 @@ const mapMemo = (raw: any): MemoDetail => {
     // response before relying on it populating in the print layout.
     siteDeliveryDate: raw.site_delivery_date,
     projectName:   raw.project_code,
+    jobCode:       raw.job_code ?? null,
     note:          raw.note,
     createdAt:     raw.created_at     ?? '',
     requesterSignature: raw.requester_signature ? {
@@ -191,6 +193,18 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const [cancelReason, setCancelReason] = useState('')
   const [printData, setPrintData] = useState<MemoData | null>(null)
   const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  // GET /master/job-types -> job_code -> job_name, for the Job label (non-critical).
+  const [jobNames, setJobNames] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    axios.get(`${BASE_URL}/master/job-types`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => {
+        const body = res.data?.data ?? res.data
+        const list: { job_code: string; job_name: string }[] = Array.isArray(body) ? body : []
+        setJobNames(Object.fromEntries(list.map((j) => [j.job_code, j.job_name])))
+      })
+      .catch(() => { /* falls back to the bare job code */ })
+  }, [])
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -328,6 +342,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       memoNo: memo.memoNo,
       department: departmentLabel,
       projectName: projectLabel,
+      jobLabel: memo.jobCode ? (jobNames[memo.jobCode] ? `${memo.jobCode} — ${jobNames[memo.jobCode]}` : memo.jobCode) : '',
       requestedBy: memo.requestedBy,
       note: memo.note ?? '',
       siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',
@@ -444,6 +459,9 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             {memo?.projectName
               ? (projects.find((p) => p.value === memo.projectName)?.label.replace(' — ', ' ') ?? memo.projectName)
               : '—'}
+          </Descriptions.Item>
+          <Descriptions.Item label="ประเภทงาน (Job)">
+            {memo?.jobCode ? [memo.jobCode, jobNames[memo.jobCode]].filter(Boolean).join(' ') : '—'}
           </Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {memo && <MemoStatusBadge status={memo.status} />}

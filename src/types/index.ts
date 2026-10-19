@@ -187,6 +187,8 @@ export interface Memo {
   title?: string | null
   projectName?: string
   projectCode?: string
+  // memo.job_code — one of the project's job_codes; null for old memos.
+  jobCode?: string | null
   requestedBy: string
   requestedById: string
   approverName?: string

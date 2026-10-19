@@ -100,7 +100,10 @@ const MemoCreateEditPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
   const [memoStatus, setMemoStatus] = useState('')
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
+  // GET /master/job-types -> job_code -> job_name (labels only; options come from the project's job_codes).
+  const [jobNames, setJobNames] = useState<Record<string, string>>({})
+  const watchedProject: string | undefined = Form.useWatch('project_code', form)
   const [projectsLoading, setProjectsLoading] = useState(false)
   const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
@@ -124,10 +127,12 @@ const MemoCreateEditPage: React.FC = () => {
       const lines = raw.lines ?? raw.items ?? []
       const projectLabel = projects.find((p) => p.value === raw.project_code)?.label ?? raw.project_code ?? ''
       const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === raw.department)?.label ?? raw.department ?? ''
+      const jobLabel = raw.job_code ? (jobNames[raw.job_code] ? `${raw.job_code} — ${jobNames[raw.job_code]}` : raw.job_code) : ''
       setPrintData({
         memoNo: raw.memo_no ?? '',
         department: departmentLabel,
         projectName: projectLabel,
+        jobLabel,
         requestedBy: raw.requested_by_name ?? '',
         note: raw.note ?? '',
         siteDeliveryDate: raw.site_delivery_date ? dayjs(raw.site_delivery_date).format('DD/MM/YYYY') : '',
@@ -174,6 +179,7 @@ const MemoCreateEditPage: React.FC = () => {
           label: p.project_code
             ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
             : (p.project_name ?? p.name ?? String(p.id)),
+          jobCodes: Array.isArray(p.job_codes) ? p.job_codes : [],
         })))
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'Failed to load projects')
@@ -182,6 +188,16 @@ const MemoCreateEditPage: React.FC = () => {
       }
     }
     fetchProjects()
+  }, [])
+
+  useEffect(() => {
+    axios.get(`${BASE_URL}/master/job-types`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => {
+        const body = res.data?.data ?? res.data
+        const list: { job_code: string; job_name: string }[] = Array.isArray(body) ? body : []
+        setJobNames(Object.fromEntries(list.map((j) => [j.job_code, j.job_name])))
+      })
+      .catch(() => { /* options fall back to the bare job code */ })
   }, [])
 
   useEffect(() => {
@@ -272,6 +288,7 @@ const MemoCreateEditPage: React.FC = () => {
       form.setFieldsValue({
         requested_by: memo.requested_by ?? memo.requestedBy,
         project_code: memo.project_code ?? memo.projectCode,
+        job_code:     memo.job_code ?? memo.jobCode ?? undefined,
         approver_id:  memo.approver_id ?? memo.approverId,
         department:   memo.department,
         delivery_location: memo.delivery_location ?? memo.deliveryLocation,
@@ -438,6 +455,7 @@ const MemoCreateEditPage: React.FC = () => {
       const payload: any = {
         requested_by: values.requested_by,
         project_code: values.project_code ?? undefined,
+        job_code:     values.job_code ?? undefined,
         approver_id:  values.approver_id,
         department:   values.department   ?? undefined,
         delivery_location: values.delivery_location ?? undefined,
@@ -654,6 +672,21 @@ const MemoCreateEditPage: React.FC = () => {
                     String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
                   options={projects}
+                  onChange={() => form.setFieldValue('job_code', undefined)}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="ประเภทงาน (Job)" name="job_code" rules={[{ required: true, message: 'กรุณาเลือกประเภทงาน (Job)' }]}>
+                <Select
+                  placeholder="— เลือกประเภทงาน —"
+                  disabled={!watchedProject}
+                  showSearch
+                  optionFilterProp="label"
+                  options={(projects.find((p) => p.value === watchedProject)?.jobCodes ?? []).map((code) => ({
+                    value: code,
+                    label: jobNames[code] ? `${code} - ${jobNames[code]}` : code,
+                  }))}
                 />
               </Form.Item>
             </Col>

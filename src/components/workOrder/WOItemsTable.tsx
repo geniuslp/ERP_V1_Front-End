@@ -29,6 +29,8 @@ interface WOItemsTableProps {
   discType?: 'pct' | 'amt'
   useVat?: boolean
   useWht?: boolean
+  // Rate shown/used for lines whose wht_rate the user never set (from GET /work-order/wht-defaults by contract_type).
+  defaultWhtRate?: number
 }
 
 // Mirrors POItemsTable.tsx's structure/behavior (same editable-table +
@@ -44,6 +46,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
   useDisc = false, discType = 'pct',
   useVat = false,
   useWht = false,
+  defaultWhtRate = 3,
 }) => {
   const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
 
@@ -149,7 +152,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
         <Select
           size="small"
           style={{ width: '100%' }}
-          value={r.wht_rate ?? 3}
+          value={r.wht_rate ?? defaultWhtRate}
           options={[
             { label: '1%', value: 1 },
             { label: '3%', value: 3 },
@@ -170,7 +173,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
         const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
-        const rate = (r.wht_rate ?? 3) / 100
+        const rate = (r.wht_rate ?? defaultWhtRate) / 100
         const wht = (lineAmt - discAmt) * rate
         return <span style={{ color: '#dc2626', fontSize: 12 }}>-{wht.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
       },
@@ -189,7 +192,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const afterDisc = lineAmt - discAmt
         const vat = useVat ? afterDisc * 0.07 : 0
-        const wht = useWht ? afterDisc * ((r.wht_rate ?? 3) / 100) : 0
+        const wht = useWht ? afterDisc * ((r.wht_rate ?? defaultWhtRate) / 100) : 0
         const net = afterDisc + vat - wht
         return <span style={{ fontWeight: 500, color: '#1e40af' }}>{net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
       },
@@ -222,15 +225,18 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
     {
       title: 'รายละเอียด',
       key: 'description',
+      // No fixed width: this column absorbs the spare table width; min 240px, then the table scrolls.
+      onHeaderCell: () => ({ style: { minWidth: 240, textAlign: 'left' as const } }),
+      onCell: () => ({ style: { minWidth: 240 } }),
       render: (_: unknown, r: WOLineItem) => (
-        <Space size={6}>
-          <Input
-            size="small"
-            value={r.description ?? ''}
-            placeholder="รายละเอียด"
-            onChange={(e) => updateItem(r.key, 'description', e.target.value)}
-          />
-        </Space>
+        <Input
+          size="small"
+          style={{ width: '100%', textOverflow: 'ellipsis' }}
+          value={r.description ?? ''}
+          title={r.description || undefined}
+          placeholder="รายละเอียด"
+          onChange={(e) => updateItem(r.key, 'description', e.target.value)}
+        />
       ),
     },
     {
@@ -315,7 +321,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
             const af = lineAmt - d
             totalDisc += d
             totalVat += useVat ? af * 0.07 : 0
-            totalWht += useWht ? af * ((r.wht_rate ?? 3) / 100) : 0
+            totalWht += useWht ? af * ((r.wht_rate ?? defaultWhtRate) / 100) : 0
           })
           const net = subtotal - totalDisc + totalVat - totalWht
           const totalColSpan = baseColCount + 1 + taxColumns.length + 1

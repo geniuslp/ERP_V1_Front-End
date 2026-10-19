@@ -1,4 +1,4 @@
-# ERP Frontend — Claude Code Context (FRONTEND: erp-web)
+# ERP Frontend — Claude Code Context (FRONTEND: erp-frontend)
 
 > ⚠️ ไฟล์นี้เป็นไฟล์ใหม่ — เดิมมีแค่ `DESIGN.md` (design system) ไม่มี `CLAUDE.md` แยกสำหรับ frontend
 > อ่าน `DESIGN.md` ควบคู่เสมอก่อนแก้ UI ทุกครั้ง — ไฟล์นี้เน้น "โครงสร้าง/วิธีทำงาน" ส่วน DESIGN.md เน้น "หน้าตา"
@@ -675,6 +675,113 @@ that might suggest a different name.
 - Lists: `PRHistoryPage`/`POHistoryPage` have an order-type column + filter (`?order_type=`).
   `PRStatusPage`/`POStatusPage` (retired) got no column/filter. PO create's PR sidebar shows each
   PR's type tag. IC pages untouched and don't reference the new types.
+
+## 🧭 Session learnings (2026-10-19) — Group Cost Code Major block, project job shares, Memo job, Work Order form rework [Frontend]
+
+> Everything below was checked by reading the working tree (uncommitted changes at the time of
+> writing). **All of it is typechecked/read-only verified, NOT verified in the browser.** Backend
+> contracts for job shares, memo job and the Work Order changes are **NOT verified with real
+> requests** — treat any "backend returns X" below as the contract the frontend was written
+> against, not as observed behavior.
+
+**Repo name.** The repo/package is `erp-frontend` (`package.json` `name`), not `erp-web`. (The H1 of
+this file said `erp-web` before this session; fixed.)
+
+**Master > Group Cost Code (`src/pages/master/CostCodeJobTypeModal.tsx`).**
+- Subgroups are loaded with `include_head=true` (admin page only; pickers never pass it), so Major and
+  Head rows are returned here but stay hidden from PR/PO pickers. `is_major` is read alongside `is_head`.
+- **Major** (group `00` / subgroup `000`, one per job) renders as a separate block above the table
+  (purple "Major" tag + code + name), never as a table row; group `00` stays in the table only if it also
+  has non-Major subgroups. Group `00` subgroups are fetched eagerly in `fetchGroups` for this block.
+- Head rows sort before normal rows (`sortSubgroups`, stable) and keep the light-blue row tint.
+- The only switch left is the **Head** switch (`HeadSwitchField`); there is no Major switch — Major is
+  display-only.
+- The Major full code is **composed on the client**: `activeSubjectCode + jobType.filterJobCode +
+  group_code + subgroup_code`. The OH display rule (`G00000`) is **NOT applied** — no `G00000` handling
+  exists anywhere in `src/`. Backend contract: `GET /master/cost-code/subgroups?group_id=&include_head=true`
+  returning `is_head`/`is_major`; not verified with real requests.
+
+**Project form "ประเภทงาน" (`src/pages/master/ProjectCreateEditPage.tsx`) — implemented.** Repeatable-row
+table (job select + % + derived amount + delete, "เพิ่มประเภทงาน" button; same pattern as
+`WOPaymentConditionsSection`). Options come from `GET /master/job-types` (`job_code, job_name,
+needs_share`); duplicates are disabled in the select. The `%` input and amount column appear only for jobs
+where the API says `needs_share === true` (nothing hardcoded). Total share of needs-share rows must be
+`<= 100` (red total, blocks save); every needs-share row needs a `%`. Amount = `budget_amount * % / 100`
+(budget treated as 0 when `project_kind === 'VO'`). Payload: `job_codes` = **full list** of selected jobs;
+`job_shares` = `[{job_code, share_percent, share_amount}]` for needs-share jobs only. Edit mode rebuilds
+rows from `job_codes` and fills `%` from `job_shares` (a legacy project without shares loads with `%`
+empty and must be filled before saving). Backend (`job_shares` on `/master/projects`) not verified.
+
+**Memo job (`MemoCreateEditPage.tsx`, `MemoDetailPage.tsx`, `MemoListPage.tsx`, `MemoPrint.tsx`) —
+implemented.** Required "ประเภทงาน (Job)" select, disabled until a project is chosen, options = that
+project's `job_codes` (from `GET /master/projects`) labelled with names from `GET /master/job-types`;
+changing the project clears the job. Sent as `job_code` on save; loaded from `job_code`/`jobCode`.
+Detail page shows `"{code} {name}"`; list page has a "Job" column showing the raw code only (resizable
+like the others); print shows `ประเภทงาน (Job) : {code} — {name}` only when set (old memos have none, so
+the line is omitted). The `Memo` type (`src/types/index.ts`) gained `jobCode`. Backend `memo.job_code`
+persistence not verified.
+
+**Work Order form (`WorkOrderCreatePage.tsx`, `types/workOrder.ts`, `WOItemsTable.tsx`,
+`WOPaymentConditionsSection.tsx`) — implemented in code.**
+- Section titles are numbered: 1 เจ้าของโครงการ (ผู้ว่าจ้าง), 2 ผู้รับจ้าง/ผู้ให้เช่า, 3 สัญญาประเภท,
+  4 งานระบบ, 5 ลักษณะของสัญญา, 6 มูลค่าสัญญา (ไม่รวม VAT), **7 เงื่อนไขการจ่ายเงิน**, 8 ระยะเวลาสัญญา,
+  9 อ้างอิงสัญญา, 10 เงื่อนไขอื่นๆ.
+- **Owner** is a dropdown *before* the project and offers the head office only
+  (`EMPLOYER_HEAD_OFFICE`), sent as `employer_name`; an old document's stored employer is kept as an extra
+  option. It no longer auto-fills from the project.
+- **Project** select (`project_choice`, form-only) accepts an existing project or typed free text
+  (`__text__:` prefix). `resolveProject` sends **either** `project_code` **or** `project_name_text`,
+  never both (the other is explicitly cleared). Warehouse projects are excluded via
+  `src/constants/warehouseProjects.ts` (`WAREHOUSE_PROJECT_CODES`, a hardcoded 4-code list — **TODO:
+  replace with a backend flag**; `PRCreatePage`/`POCreatePage` still keep their own copies). A warehouse
+  project already on an old document stays selectable. `formatWOProject` renders the project in
+  detail/print.
+- **Contract types**: `LABOR_MATERIAL`, `LABOR_ONLY`, `RENTAL`, `SERVICE`, in one shared map
+  (`WO_CONTRACT_TYPE_OPTIONS` / `WO_CONTRACT_TYPE_LABEL`) used by the form, the detail page and
+  `WorkOrderPrintStandard.tsx` (its old local label map was removed).
+- **Work system** (งานระบบ) is a multi-select of `M*` job codes from `GET /master/job-types`
+  (`useJobTypes` in `src/hooks/useJobTypeNames.ts`, cached per page load). Legacy P/E/S values stay as
+  "(ค่าเดิม)" options. `work_system` is an array on the API; the old scalar lookup produced array-index
+  garbage — fixed via `formatWorkSystem(v, names)` (`"CODE - name"`, joined with `, `), used in the
+  detail page and `WorkOrderPrintStandard.tsx`.
+- **Contract description** is now a free-text `Input.TextArea` (max 2000); old dropdown codes are mapped
+  to their Thai text on load via `WO_CONTRACT_DESCRIPTION_LABEL`.
+- **WHT defaults**: `GET /work-order/wht-defaults` → `contract_types[{contract_type, default_wht_rate}]`.
+  Line rates the user never touched follow the default for the current `contract_type`
+  (`defaultWhtRate`, falling back to 3 if the call fails or hasn't loaded); a line with an explicit
+  `wht_rate` (user-picked or saved) is never overwritten. The line Select offers 1 / 3 / 5. The header
+  `wht_rate` follows the default only while untouched (`isFieldTouched`) and not in edit mode.
+- **Signer** stays `contact_person` (label "ผู้ลงนาม"), prefilled from the supplier's `sales_person` only
+  when empty or still holding the page's own previous auto-fill. `subcontractor_signed_name` does not
+  exist in the frontend.
+- **Section 7**: **7.1 เงินล่วงหน้า** — the existing `advance_deduct_pct` field moved into the card as a
+  Select of 5/10/15/20/30 % (a stored value outside the list, e.g. 50, stays selectable) plus a read-only
+  amount `= contract_amount * % / 100` (display only, not sent). **7.2 เงินงวดสัญญา** — the existing
+  installments table, relabelled. **7.3 เงินประกัน** — `%` is a Select of 5/10 (stored other values, e.g.
+  7, stay shown and untouched) and `amount` is read-only `= contract_amount * % / 100`, recomputed when
+  the contract value changes (saved rows are not rewritten on edit-mode load). **The contract-value base
+  is `contract_amount`** (มูลค่าสัญญาไม่รวม VAT).
+- Backend (`/work-order/wht-defaults`, `project_name_text`, array `work_system`, the new contract types,
+  payment-conditions save) **not verified with real requests**. The WO save error toast now also falls
+  back to `response.data.error`. `WorkOrderPrintView.tsx` also has uncommitted changes that were not
+  reviewed for this note.
+
+**Known open items (WO).**
+- Header **VAT rate** (`vat_rate`, `InputNumber` 0–100) is saved but **not used**: VAT is a hardcoded 7%
+  in `WOItemsTable.tsx` (`* 0.07`, 3 places) and `WorkOrderDetailPage.tsx` (`* 0.07`).
+- Header **WHT** (`wht_rate`) is still a free `InputNumber` 0–100, **not** a Select of 1/3/5 (only the
+  line-level control is a Select).
+- `WorkOrderDetailPage.tsx` and `WorkOrderPrintStandard.tsx` still read the old
+  `advance_pct`/`advance_amount`/`retention_pct` fields (the print uses its own 7.1/7.3/7.4 numbering),
+  not the new 7.1 `advance_deduct_pct` / 7.3 retention rows. Same gap as the 2026-09-21 note.
+
+**Lessons.**
+- `api.ts`'s error sanitizer replaces anything that looks like a raw DB error with the generic
+  "ข้อมูลที่กรอกไม่ถูกต้อง…" message, which can hide the real backend message. When it shows up, **check
+  the Network tab response first**; don't assume the frontend validation is wrong.
+- Don't hardcode business rules the backend exposes through an endpoint (job `needs_share` from
+  `/master/job-types`, WHT defaults from `/work-order/wht-defaults`). The remaining violation is the
+  warehouse-project code list (TODO above).
 
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน

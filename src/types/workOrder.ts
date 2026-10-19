@@ -1,17 +1,49 @@
 export type WOStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
-export type WOContractType = 'LABOR_MATERIAL' | 'LABOR_ONLY'
+export type WOContractType = 'LABOR_MATERIAL' | 'LABOR_ONLY' | 'RENTAL' | 'SERVICE'
 
-// P/E/S per the paper form's "งานระบบ" field — code meaning not yet confirmed by
-// backend/CLAUDE.md beyond the letters themselves; labels below are a best-guess
-// placeholder (Plumbing / Electrical / Structural-Sanitary), flag for confirmation
-// before relying on them elsewhere.
-export type WOWorkSystem = 'P' | 'E' | 'S'
+// "สัญญาประเภท" — order here is the dropdown order. Single label map shared by the form,
+// detail page and both print templates.
+export const WO_CONTRACT_TYPE_OPTIONS: { value: WOContractType; label: string }[] = [
+  { value: 'LABOR_MATERIAL', label: 'รับเหมาทั้งค่าของค่าแรง' },
+  { value: 'LABOR_ONLY', label: 'รับเหมาค่าแรงอย่างเดียว' },
+  { value: 'RENTAL', label: 'ค่าเช่า' },
+  { value: 'SERVICE', label: 'ค่าบริการ' },
+]
+export const WO_CONTRACT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  WO_CONTRACT_TYPE_OPTIONS.map((o) => [o.value, o.label]),
+)
 
-export const WO_WORK_SYSTEM_LABEL: Record<WOWorkSystem, string> = {
+// New/edited documents store M-prefixed job codes (MP, ME, ... — names come from
+// GET /master/job-types). P/E/S are legacy values on old documents: still displayed.
+export type WOWorkSystem = string
+
+export const WO_WORK_SYSTEM_LABEL: Record<string, string> = {
   P: 'P - งานระบบสุขาภิบาล/ประปา',
   E: 'E - งานระบบไฟฟ้า',
   S: 'S - งานโครงสร้าง',
+}
+
+// work_system is an array on the API (older code treated it as a scalar). Renders every
+// entry as "CODE - name" (names from /master/job-types), legacy P/E/S via the map above,
+// unknown codes as-is.
+export const formatWorkSystem = (v: unknown, names: Record<string, string> = {}): string => {
+  const list: string[] = Array.isArray(v) ? v : v ? [String(v)] : []
+  return list
+    .map((code) => (names[code] ? `${code} - ${names[code]}` : WO_WORK_SYSTEM_LABEL[code] ?? code))
+    .join(', ')
+}
+
+// Project is either an existing project (project_code + joined project_name) or free text
+// (project_name_text). project_scope_text is the pre-change fallback.
+export const formatWOProject = (wo: {
+  project_code?: string | null
+  project_name?: string | null
+  project_name_text?: string | null
+  project_scope_text?: string | null
+}): string => {
+  if (wo.project_code) return [wo.project_code, wo.project_name].filter(Boolean).join(' ')
+  return wo.project_name_text || wo.project_scope_text || ''
 }
 
 // ⚠️ Starting assumption based on common contract types, NOT confirmed against actual
@@ -75,6 +107,8 @@ export interface WorkOrder {
   employer_name: string
   project_code?: string | null
   project_name?: string | null
+  // Free-text project; exactly one of project_code / project_name_text is set.
+  project_name_text?: string | null
   project_scope_text?: string
   // work_order has no supplier_code anymore — responses return it as null and
   // requests must send supplier_id only (never supplier_code).

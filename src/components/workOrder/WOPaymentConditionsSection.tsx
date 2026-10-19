@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Card, Table, Button, Input, InputNumber, DatePicker, Select } from 'antd'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
@@ -149,7 +149,17 @@ interface WOPaymentConditionsSectionProps {
   onRetentionsChange: (rows: RetentionRow[]) => void
   penalties: PenaltyRow[]
   onPenaltiesChange: (rows: PenaltyRow[]) => void
+  // contract_amount (มูลค่าสัญญาไม่รวม VAT) — base for the retention amount = base * % / 100.
+  contractAmount?: number | null
+  // 7.1 เงินล่วงหน้า content (Form.Items live in the page's form); rendered above 7.2.
+  advanceSlot?: React.ReactNode
 }
+
+// 7.3 เงินประกัน: % of contract offered for new selections. A stored value outside this list
+// (e.g. 7) is still shown as an extra option on its own row and is never rewritten on load.
+const RETENTION_PCT_OPTIONS = [5, 10]
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+const money2 = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Fully-controlled, editable from the moment the create page loads (even with
 // no WO id yet) — unlike an earlier version of this component, it no longer
@@ -164,7 +174,31 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   installments, onInstallmentsChange,
   retentions, onRetentionsChange,
   penalties, onPenaltiesChange,
+  contractAmount,
+  advanceSlot,
 }) => {
+  const base = Number(contractAmount) || 0
+
+  // When the contract value changes, recompute retention rows that hold an offered % (5/10).
+  // Saved rows (have an id) are skipped on the first value that arrives (the edit-mode load),
+  // so opening a document never rewrites stored amounts; other percents (e.g. 7) are never touched.
+  const prevBase = useRef<number | null | undefined>(undefined)
+  useEffect(() => {
+    const prev = prevBase.current
+    prevBase.current = contractAmount
+    if (prev === contractAmount) return
+    let changed = false
+    const next = retentions.map((r) => {
+      if (r.percent_of_contract === null || !RETENTION_PCT_OPTIONS.includes(r.percent_of_contract)) return r
+      if (r.id !== undefined && (prev === undefined || prev === null)) return r
+      const amount = round2((base * r.percent_of_contract) / 100)
+      if (amount === r.amount) return r
+      changed = true
+      return { ...r, amount }
+    })
+    if (changed) onRetentionsChange(next)
+  }, [contractAmount])
+
   // ── งวดงาน (installments) ──
   const renumberInstallments = (rows: InstallmentRow[]) => rows.map((r, idx) => ({ ...r, installment_no: idx + 1 }))
   const addInstallment = () => {
@@ -319,13 +353,23 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       key: 'percent_of_contract',
       width: 110,
       render: (_: unknown, r: RetentionRow) => (
-        <InputNumber
+        <Select
           size="small"
-          min={0}
-          max={100}
+          allowClear
           style={{ width: '100%' }}
+          placeholder="เลือก %"
           value={r.percent_of_contract ?? undefined}
-          onChange={(v) => updateRetention(r.key, { percent_of_contract: v ?? null })}
+          options={[
+            ...RETENTION_PCT_OPTIONS.map((v) => ({ value: v, label: `${v}%` })),
+            ...(r.percent_of_contract !== null && !RETENTION_PCT_OPTIONS.includes(r.percent_of_contract)
+              ? [{ value: r.percent_of_contract, label: `${r.percent_of_contract}%` }]
+              : []),
+          ]}
+          onChange={(v: number | undefined) =>
+            updateRetention(r.key, {
+              percent_of_contract: v ?? null,
+              amount: v === undefined ? 0 : round2((base * v) / 100),
+            })}
         />
       ),
     },
@@ -333,17 +377,8 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       title: 'จำนวนเงิน',
       key: 'amount',
       width: 130,
-      render: (_: unknown, r: RetentionRow) => (
-        <InputNumber
-          size="small"
-          min={0}
-          style={{ width: '100%' }}
-          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-          parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
-          value={r.amount}
-          onChange={(v) => updateRetention(r.key, { amount: v ?? 0 })}
-        />
-      ),
+      align: 'right' as const,
+      render: (_: unknown, r: RetentionRow) => <span>{money2(r.amount ?? 0)}</span>,
     },
     {
       title: 'หมายเหตุ',
@@ -448,8 +483,13 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   ]
 
   return (
-    <Card title="เงื่อนไขการจ่ายเงิน" style={cardStyle}>
-      <Card title="งวดงาน" size="small" style={subCardStyle}>
+    <Card title="7. เงื่อนไขการจ่ายเงิน" style={cardStyle}>
+      {advanceSlot && (
+        <Card title="7.1 เงินล่วงหน้า" size="small" style={subCardStyle}>
+          {advanceSlot}
+        </Card>
+      )}
+      <Card title="7.2 เงินงวดสัญญา" size="small" style={subCardStyle}>
         <Table
           rowKey="key"
           size="small"
@@ -466,7 +506,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
         </div>
       </Card>
 
-      <Card title="เงินประกัน" size="small" style={subCardStyle}>
+      <Card title="7.3 เงินประกัน" size="small" style={subCardStyle}>
         <Table
           rowKey="key"
           size="small"

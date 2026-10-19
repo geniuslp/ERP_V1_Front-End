@@ -3,8 +3,9 @@ import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
 import logo from '@/components/asset/Genius Logo-01.jpg'
 import { numberToThaiText } from '@/utils/thaiBahtText'
-import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
-import type { WorkOrder, WOContractType } from '@/types/workOrder'
+import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
+import type { WorkOrder } from '@/types/workOrder'
+import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 
 // Restored to the original numbered-fields (1–10) paper-form-replica layout,
@@ -19,11 +20,6 @@ import { formatCostCodeDisplay } from '@/utils/costCode'
 // reconstructing anything from memory. Flag back if any wording/order here
 // doesn't match the physical form — this wasn't checked against an actual
 // scan/photo of it.
-
-const CONTRACT_TYPE_LABEL: Record<WOContractType, string> = {
-  LABOR_MATERIAL: 'ทั้งค่าแรง และค่าของ',
-  LABOR_ONLY: 'ค่าแรงอย่างเดียว',
-}
 
 const thb = (n?: number) => (n ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (d?: string) => (d ? dayjs(d).format('DD/MM/YYYY') : '')
@@ -114,7 +110,12 @@ interface WOPrintDataLite extends Partial<WorkOrder> {}
 const val = (v: React.ReactNode) =>
   v === undefined || v === null || v === '' ? <span className="wo-std-underline">&nbsp;</span> : v
 
-const NumberedFields = ({ data }: { data: WOPrintDataLite }) => (
+const NumberedFields = ({ data }: { data: WOPrintDataLite }) => {
+  const jobNames = useJobTypeNames()
+  return <NumberedFieldsInner data={data} jobNames={jobNames} />
+}
+
+const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNames: Record<string, string> }) => (
   <table className="wo-table">
     <tbody>
       <tr>
@@ -127,7 +128,7 @@ const NumberedFields = ({ data }: { data: WOPrintDataLite }) => (
         <td />
         <td className="wo-label">ชื่อโครงการ</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(data.project_scope_text)}</td>
+        <td className="wo-value">{val(formatWOProject(data))}</td>
       </tr>
 
       <tr>
@@ -159,13 +160,13 @@ const NumberedFields = ({ data }: { data: WOPrintDataLite }) => (
         <td className="wo-no">3.</td>
         <td className="wo-label">สัญญานี้เป็นสัญญา</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(data.contract_type ? CONTRACT_TYPE_LABEL[data.contract_type] : '')}</td>
+        <td className="wo-value">{val(data.contract_type ? (WO_CONTRACT_TYPE_LABEL[data.contract_type] ?? data.contract_type) : '')}</td>
       </tr>
       <tr>
         <td className="wo-no">4.</td>
         <td className="wo-label">งานระบบ</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(data.work_system ? (WO_WORK_SYSTEM_LABEL[data.work_system] ?? data.work_system) : '')}</td>
+        <td className="wo-value">{val(formatWorkSystem(data.work_system, jobNames))}</td>
       </tr>
       <tr>
         <td className="wo-no">5.</td>

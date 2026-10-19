@@ -1,7 +1,8 @@
 import React from 'react'
 import dayjs from 'dayjs'
-import { WO_WORK_SYSTEM_LABEL } from '@/types/workOrder'
+import { WO_CONTRACT_DESCRIPTION_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
+import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 // Both templates are now literal PurchaseOrderPrint.tsx duplicates edited in
 // place, per explicit instruction not to reimplement PO's layout from a
 // description — WorkOrderPrintStandard.tsx (WO_STANDARD, own logo-box header)
@@ -26,7 +27,7 @@ export type WOPrintData = Partial<WorkOrder>
 // comments on WOPOData itself in those files — this function is just the
 // plumbing that fills those slots from GET /work-order/:id's actual response
 // shape, same underlying data source both templates already share.
-function mapWorkOrderToPOStyle(data: WOPrintData): WOPOData {
+function mapWorkOrderToPOStyle(data: WOPrintData, jobNames: Record<string, string>): WOPOData {
   const useDisc = Boolean(data.use_discount)
   const items: WOPOItem[] = (data.lines ?? []).map((l) => ({
     no: String(l.line_no ?? ''),
@@ -46,11 +47,13 @@ function mapWorkOrderToPOStyle(data: WOPrintData): WOPOData {
     poDate: data.wo_date ? dayjs(data.wo_date).format('DD/MM/YYYY') : '',
     prNo: data.ref_no ?? '',
     deliveryDate: '', // no WO equivalent (delivery concept doesn't apply)
-    project: data.project_scope_text ?? '',
+    project: formatWOProject(data),
     deliveryPlace: '', // no WO equivalent
-    job: (data.work_system && (WO_WORK_SYSTEM_LABEL[data.work_system] ?? data.work_system)) || '',
+    job: formatWorkSystem(data.work_system, jobNames),
     contractDelivery: '', // no WO equivalent
-    quotationNo: (data.contract_description as string) ?? '',
+    quotationNo: data.contract_description
+      ? (WO_CONTRACT_DESCRIPTION_LABEL[data.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? data.contract_description)
+      : '',
     tel: data.supplier_phone ?? '',
     supplier: {
       name: data.supplier_name ?? '',
@@ -86,8 +89,9 @@ const WorkOrderPrintView: React.FC<Props> = ({ data, template, onReady }) => {
   // from the raw WO response — it needs fields (contract_type, retention_pct,
   // advance_pct, dates, etc.) the PO-shaped mapper below doesn't carry.
   // PO_HEADER is untouched and still consumes the PO-mapped shape.
+  const jobNames = useJobTypeNames()
   if (template === 'WO_STANDARD') return <WorkOrderPrintStandard data={data} onReady={onReady} />
-  const mapped = mapWorkOrderToPOStyle(data)
+  const mapped = mapWorkOrderToPOStyle(data, jobNames)
   return <WorkOrderPrintPOStyle data={mapped} onReady={onReady} />
 }
 

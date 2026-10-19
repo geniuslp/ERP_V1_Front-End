@@ -1,15 +1,31 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber } from 'antd'
-import { SaveOutlined, CloseOutlined } from '@ant-design/icons'
+import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Table, Typography } from 'antd'
+import { SaveOutlined, CloseOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import { JOB_TYPES } from '@/constants/jobTypes'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+// GET /master/job-types -> [{ job_code, job_name, needs_share }]
+interface JobTypeApi {
+  job_code: string
+  job_name: string
+  needs_share: boolean
+}
+
+// One editable row of the "ประเภทงาน" table. `key` is frontend-only.
+interface JobRow {
+  key: string
+  job_code?: string
+  share_percent: number | null
+}
+
+const newKey = () => `new-${Date.now()}-${Math.random().toString(36).slice(2)}`
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 interface CustomerOption {
   cus_id: number
@@ -72,6 +88,34 @@ const ProjectCreateEditPage: React.FC = () => {
     return () => { stale = true }
   }, [watchedCustomerId, isEdit, accessToken])
 
+  // ── ประเภทงาน: job type options from the API + local repeatable rows ──
+  const [jobTypes, setJobTypes] = useState<JobTypeApi[]>([])
+  const [jobTypesLoading, setJobTypesLoading] = useState(false)
+  const [jobRows, setJobRows] = useState<JobRow[]>([])
+  const watchedBudget: number | undefined = Form.useWatch('budget_amount', form)
+  const budget = Number(watchedBudget) || 0
+  const jobTypeMap = new Map(jobTypes.map((j) => [j.job_code, j]))
+  const needsShare = (code?: string) => !!code && jobTypeMap.get(code)?.needs_share === true
+  const totalShare = round2(jobRows.reduce((sum, r) => sum + (needsShare(r.job_code) ? Number(r.share_percent) || 0 : 0), 0))
+  const overShare = totalShare > 100
+
+  useEffect(() => {
+    if (!accessToken) return
+    let cancelled = false
+    setJobTypesLoading(true)
+    axios.get(`${BASE_URL}/master/job-types`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => {
+        const body = res.data?.data ?? res.data
+        if (!cancelled) setJobTypes(Array.isArray(body) ? body : [])
+      })
+      .catch((e) => message.error(e?.response?.data?.message || e?.response?.data?.error || 'โหลดประเภทงานไม่สำเร็จ'))
+      .finally(() => { if (!cancelled) setJobTypesLoading(false) })
+    return () => { cancelled = true }
+  }, [accessToken])
+
+  const updateJobRow = (key: string, patch: Partial<JobRow>) =>
+    setJobRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+
   const [legacyProjectOwnerName, setLegacyProjectOwnerName] = useState<string | undefined>()
 
   // "เจ้าของโครงการ" dropdown — same source as CustomerPage.tsx (GET /customer),
@@ -126,6 +170,15 @@ const ProjectCreateEditPage: React.FC = () => {
         })
         const p = res.data?.data ?? res.data
         setLegacyProjectOwnerName(p.project_owner_name ?? undefined)
+        // job_codes is the full list; job_shares only covers needs-share jobs (empty for legacy
+        // projects, so those rows get an empty % that must be filled before Save).
+        const shares: { job_code: string; share_percent: number }[] = Array.isArray(p.job_shares) ? p.job_shares : []
+        const codes: string[] = Array.isArray(p.job_codes) ? p.job_codes : []
+        setJobRows(codes.map((code) => ({
+          key: newKey(),
+          job_code: code,
+          share_percent: shares.find((sh) => sh.job_code === code)?.share_percent ?? null,
+        })))
         form.setFieldsValue({
           project_code: p.project_code,
           project_name: p.project_name,
@@ -133,7 +186,6 @@ const ProjectCreateEditPage: React.FC = () => {
           responsible_person_name: p.responsible_person_name,
           responsible_user_ids: (p.responsible_users ?? []).map((u: { id: number }) => Number(u.id)),
           customer_id: p.customer_id ?? undefined,
-          job_codes: p.job_codes ?? [],
           budget_amount: p.budget_amount ?? 0,
           vo_amount: p.vo_amount ?? 0,
           contract_amount: p.contract_amount ?? 0,
@@ -162,6 +214,20 @@ const ProjectCreateEditPage: React.FC = () => {
     }
     const [startDate, endDate] = values.date_range ?? [undefined, undefined]
 
+    if (jobRows.some((r) => !r.job_code)) {
+      message.error('กรุณาเลือกประเภทงานให้ครบทุกแถว หรือลบแถวที่ว่าง')
+      return
+    }
+    if (jobRows.some((r) => needsShare(r.job_code) && r.share_percent === null)) {
+      message.error('กรุณากรอกสัดส่วน (%) ของประเภทงานที่ต้องระบุสัดส่วนให้ครบ')
+      return
+    }
+    if (overShare) {
+      message.error('ผลรวมสัดส่วนของประเภทงานต้องไม่เกิน 100%')
+      return
+    }
+    const effectiveBudget = values.project_kind === 'VO' ? 0 : Number(values.budget_amount) || 0
+
     const payload = {
       // Create: the server generates project_code, so it is never sent.
       ...(isEdit ? { project_code: values.project_code } : {}),
@@ -181,7 +247,14 @@ const ProjectCreateEditPage: React.FC = () => {
       // through unchanged for existing records so it isn't silently dropped
       // from the payload if the backend still stores/reads it.
       project_owner_name: legacyProjectOwnerName,
-      job_codes:     values.job_codes ?? [],
+      job_codes:     jobRows.map((r) => r.job_code as string),
+      job_shares:    jobRows
+        .filter((r) => needsShare(r.job_code))
+        .map((r) => ({
+          job_code: r.job_code as string,
+          share_percent: Number(r.share_percent),
+          share_amount: round2((effectiveBudget * Number(r.share_percent)) / 100),
+        })),
       budget_amount: values.project_kind === 'VO' ? 0 : values.budget_amount ?? 0,
       vo_amount:     values.project_kind === 'VO' ? values.vo_amount ?? 0 : 0,
       contract_amount: values.contract_amount ?? 0,
@@ -215,11 +288,11 @@ const ProjectCreateEditPage: React.FC = () => {
         // fallback message or an itemized one (e.g. "2 purchase orders, 1
         // requisition"); show whichever comes back verbatim, same
         // field-level-error pattern CustomerPage.tsx uses for its own 409.
-        const conflictMessage = err?.response?.data?.message || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
+        const conflictMessage = err?.response?.data?.message || err?.response?.data?.error || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
         if (isEdit) form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
         else message.error(conflictMessage)
       } else {
-        message.error(err?.response?.data?.message || err?.message || 'บันทึกไม่สำเร็จ')
+        message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึกไม่สำเร็จ')
       }
     } finally {
       setSubmitting(false)
@@ -345,14 +418,79 @@ const ProjectCreateEditPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col md={12} xs={24}>
-              <Form.Item label="ประเภทงาน" name="job_codes">
-                <Select
-                  mode="multiple"
-                  placeholder="— เลือกประเภทงาน —"
-                  allowClear
-                  options={JOB_TYPES.map((jt) => ({ value: jt.code, label: jt.label }))}
+            <Col span={24}>
+              <Form.Item label="ประเภทงาน" style={{ marginBottom: 16 }}>
+                <Table<JobRow>
+                  size="small"
+                  rowKey="key"
+                  pagination={false}
+                  dataSource={jobRows}
+                  loading={jobTypesLoading}
+                  locale={{ emptyText: 'ยังไม่มีประเภทงาน' }}
+                  columns={[
+                    {
+                      title: 'ประเภทงาน', dataIndex: 'job_code',
+                      render: (_: unknown, r: JobRow) => (
+                        <Select
+                          style={{ width: '100%' }}
+                          placeholder="— เลือกประเภทงาน —"
+                          showSearch
+                          optionFilterProp="label"
+                          value={r.job_code}
+                          options={jobTypes.map((j) => ({
+                            value: j.job_code,
+                            label: `${j.job_code} - ${j.job_name}`,
+                            disabled: jobRows.some((o) => o.key !== r.key && o.job_code === j.job_code),
+                          }))}
+                          onChange={(code: string) =>
+                            updateJobRow(r.key, {
+                              job_code: code,
+                              share_percent: jobTypeMap.get(code)?.needs_share ? r.share_percent : null,
+                            })}
+                        />
+                      ),
+                    },
+                    {
+                      title: 'สัดส่วน (%)', key: 'share_percent', width: 160,
+                      render: (_: unknown, r: JobRow) => needsShare(r.job_code) ? (
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={0} max={100} precision={2}
+                          value={r.share_percent}
+                          status={r.share_percent === null ? 'error' : undefined}
+                          onChange={(v) => updateJobRow(r.key, { share_percent: v === null ? null : Number(v) })}
+                        />
+                      ) : <span style={{ color: '#9ca3af' }}>-</span>,
+                    },
+                    {
+                      title: 'มูลค่า (บาท)', key: 'share_amount', width: 180, align: 'right' as const,
+                      render: (_: unknown, r: JobRow) =>
+                        needsShare(r.job_code) && budget > 0 && r.share_percent !== null
+                          ? round2((budget * r.share_percent) / 100).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          : '-',
+                    },
+                    {
+                      title: '', key: 'action', width: 56,
+                      render: (_: unknown, r: JobRow) => (
+                        <Button
+                          type="text" danger icon={<DeleteOutlined />}
+                          onClick={() => setJobRows((rows) => rows.filter((x) => x.key !== r.key))}
+                        />
+                      ),
+                    },
+                  ]}
                 />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <Button
+                    icon={<PlusOutlined />}
+                    onClick={() => setJobRows((rows) => [...rows, { key: newKey(), share_percent: null }])}
+                  >
+                    เพิ่มประเภทงาน
+                  </Button>
+                  <Typography.Text strong style={{ color: overShare ? '#dc2626' : '#1e3a8a' }}>
+                    รวมสัดส่วน: {totalShare.toFixed(2)}%{overShare ? ' — เกิน 100%' : ''}
+                  </Typography.Text>
+                </div>
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
@@ -419,6 +557,7 @@ const ProjectCreateEditPage: React.FC = () => {
           type="primary"
           icon={<SaveOutlined />}
           loading={submitting}
+          disabled={overShare}
           onClick={handleSave}
           style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none' }}
         >

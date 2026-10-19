@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { getOrderTypeLabel } from '@/constants/orderTypes'
-import { thaiBahtText } from '@/pages/po/PurchaseOrderPrint'
+import { thaiBahtText } from '@/utils/thaiBahtText'
 import type { PettyCashRequisition } from '@/types/pettyCash'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 
