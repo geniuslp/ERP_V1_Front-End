@@ -48,6 +48,8 @@ const mapProject = (raw: any): Project => ({
   customerId:   raw.customer_id,
   customerName: raw.customer_name,
   responsiblePersonName: raw.responsible_person_name,
+  inUse:        raw.in_use,
+  inUseBy:      raw.in_use_by ?? [],
   jobCodes:     raw.job_codes ?? [],
   budgetAmount: raw.budget_amount ?? 0,
   voAmount:     raw.vo_amount ?? 0,

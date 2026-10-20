@@ -97,7 +97,10 @@ const ProjectCreateEditPage: React.FC = () => {
   const jobTypeMap = new Map(jobTypes.map((j) => [j.job_code, j]))
   const needsShare = (code?: string) => !!code && jobTypeMap.get(code)?.needs_share === true
   const totalShare = round2(jobRows.reduce((sum, r) => sum + (needsShare(r.job_code) ? Number(r.share_percent) || 0 : 0), 0))
-  const overShare = totalShare > 100
+  // Edit mode: owner is locked while in_use is true or still unknown (undefined = not loaded yet).
+  const [inUse, setInUse] = useState<boolean | undefined>()
+  const [inUseBy, setInUseBy] = useState<string[]>([])
+  const ownerLocked = isEdit && inUse !== false
 
   useEffect(() => {
     if (!accessToken) return
@@ -170,6 +173,8 @@ const ProjectCreateEditPage: React.FC = () => {
         })
         const p = res.data?.data ?? res.data
         setLegacyProjectOwnerName(p.project_owner_name ?? undefined)
+        setInUse(typeof p.in_use === 'boolean' ? p.in_use : undefined)
+        setInUseBy(Array.isArray(p.in_use_by) ? p.in_use_by : [])
         // job_codes is the full list; job_shares only covers needs-share jobs (empty for legacy
         // projects, so those rows get an empty % that must be filled before Save).
         const shares: { job_code: string; share_percent: number }[] = Array.isArray(p.job_shares) ? p.job_shares : []
@@ -218,14 +223,6 @@ const ProjectCreateEditPage: React.FC = () => {
       message.error('กรุณาเลือกประเภทงานให้ครบทุกแถว หรือลบแถวที่ว่าง')
       return
     }
-    if (jobRows.some((r) => needsShare(r.job_code) && r.share_percent === null)) {
-      message.error('กรุณากรอกสัดส่วน (%) ของประเภทงานที่ต้องระบุสัดส่วนให้ครบ')
-      return
-    }
-    if (overShare) {
-      message.error('ผลรวมสัดส่วนของประเภทงานต้องไม่เกิน 100%')
-      return
-    }
     const effectiveBudget = values.project_kind === 'VO' ? 0 : Number(values.budget_amount) || 0
 
     const payload = {
@@ -242,14 +239,15 @@ const ProjectCreateEditPage: React.FC = () => {
       responsible_user_ids: values.responsible_user_ids ?? [],
       // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
       // replacing the old project_owner_name free-text input.
-      customer_id: values.customer_id ?? undefined,
+      // Omitted while the owner is locked (in use / unknown) so a changed owner is never sent.
+      ...(ownerLocked ? {} : { customer_id: values.customer_id ?? undefined }),
       // project_owner_name is no longer editable from this form, but is passed
       // through unchanged for existing records so it isn't silently dropped
       // from the payload if the backend still stores/reads it.
       project_owner_name: legacyProjectOwnerName,
       job_codes:     jobRows.map((r) => r.job_code as string),
       job_shares:    jobRows
-        .filter((r) => needsShare(r.job_code))
+        .filter((r) => needsShare(r.job_code) && r.share_percent !== null && r.share_percent > 0)
         .map((r) => ({
           job_code: r.job_code as string,
           share_percent: Number(r.share_percent),
@@ -290,7 +288,7 @@ const ProjectCreateEditPage: React.FC = () => {
         // field-level-error pattern CustomerPage.tsx uses for its own 409.
         const conflictMessage = err?.response?.data?.message || err?.response?.data?.error || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
         if (isEdit) form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
-        else message.error(conflictMessage)
+        message.error(conflictMessage)
       } else {
         message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึกไม่สำเร็จ')
       }
@@ -321,8 +319,12 @@ const ProjectCreateEditPage: React.FC = () => {
                 label="เจ้าของโครงการ"
                 name="customer_id"
                 rules={isEdit ? [] : [{ required: true, message: 'กรุณาเลือกเจ้าของโครงการ' }]}
+                extra={isEdit && inUse === true
+                  ? `ไม่สามารถเปลี่ยนเจ้าของโครงการได้ เนื่องจากรหัสโครงการนี้ถูกใช้งานแล้วใน: ${inUseBy.join(', ')}`
+                  : undefined}
               >
                 <Select
+                  disabled={ownerLocked}
                   placeholder="— เลือกลูกค้า —"
                   loading={customersLoading}
                   showSearch
@@ -457,7 +459,6 @@ const ProjectCreateEditPage: React.FC = () => {
                           style={{ width: '100%' }}
                           min={0} max={100} precision={2}
                           value={r.share_percent}
-                          status={r.share_percent === null ? 'error' : undefined}
                           onChange={(v) => updateJobRow(r.key, { share_percent: v === null ? null : Number(v) })}
                         />
                       ) : <span style={{ color: '#9ca3af' }}>-</span>,
@@ -487,8 +488,8 @@ const ProjectCreateEditPage: React.FC = () => {
                   >
                     เพิ่มประเภทงาน
                   </Button>
-                  <Typography.Text strong style={{ color: overShare ? '#dc2626' : '#1e3a8a' }}>
-                    รวมสัดส่วน: {totalShare.toFixed(2)}%{overShare ? ' — เกิน 100%' : ''}
+                  <Typography.Text strong style={{ color: '#1e3a8a' }}>
+                    รวมสัดส่วน: {totalShare.toFixed(2)}%
                   </Typography.Text>
                 </div>
               </Form.Item>
@@ -557,7 +558,6 @@ const ProjectCreateEditPage: React.FC = () => {
           type="primary"
           icon={<SaveOutlined />}
           loading={submitting}
-          disabled={overShare}
           onClick={handleSave}
           style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', border: 'none' }}
         >

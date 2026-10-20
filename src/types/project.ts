@@ -22,6 +22,9 @@ export interface Project {
   customerName?: string
   // "ผู้รับผิดชอบหลัก" — free text, required on write; replaces the old owner_id dropdown
   responsiblePersonName?: string
+  // true when other documents (PR/PO/WO/memo...) reference this project code; the owner is then locked.
+  inUse?: boolean
+  inUseBy?: string[]
   jobCodes?: string[]
   budgetAmount: number
   // "มูลค่า VO" — independent of budgetAmount (never summed or synced)
