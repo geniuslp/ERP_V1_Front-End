@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Table, Typography } from 'antd'
+import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Table, Typography, Modal } from 'antd'
 import { SaveOutlined, CloseOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -101,6 +101,19 @@ const ProjectCreateEditPage: React.FC = () => {
   const [inUse, setInUse] = useState<boolean | undefined>()
   const [inUseBy, setInUseBy] = useState<string[]>([])
   const ownerLocked = isEdit && inUse !== false
+  // Edit mode: the saved code + owner, and the live preview when an unused project's owner changes.
+  // Only the customer segment changes: {year}-{customer_code}-{NNN} (middle part may contain '-').
+  const [savedCode, setSavedCode] = useState<string | undefined>()
+  const [savedCustomerId, setSavedCustomerId] = useState<number | undefined>()
+  const [codeError, setCodeError] = useState<string | undefined>()
+  const newCode = (() => {
+    if (!isEdit || ownerLocked || !savedCode || !selectedCustomer?.customer_code) return undefined
+    if (watchedCustomerId === savedCustomerId) return undefined
+    const m = /^(\d{4})-(.*)-(\d+)$/.exec(savedCode)
+    if (!m) return undefined
+    const next = `${m[1]}-${selectedCustomer.customer_code}-${m[3]}`
+    return next === savedCode ? undefined : next
+  })()
 
   useEffect(() => {
     if (!accessToken) return
@@ -175,6 +188,8 @@ const ProjectCreateEditPage: React.FC = () => {
         setLegacyProjectOwnerName(p.project_owner_name ?? undefined)
         setInUse(typeof p.in_use === 'boolean' ? p.in_use : undefined)
         setInUseBy(Array.isArray(p.in_use_by) ? p.in_use_by : [])
+        setSavedCode(p.project_code)
+        setSavedCustomerId(p.customer_id ?? undefined)
         // job_codes is the full list; job_shares only covers needs-share jobs (empty for legacy
         // projects, so those rows get an empty % that must be filled before Save).
         const shares: { job_code: string; share_percent: number }[] = Array.isArray(p.job_shares) ? p.job_shares : []
@@ -227,7 +242,6 @@ const ProjectCreateEditPage: React.FC = () => {
 
     const payload = {
       // Create: the server generates project_code, so it is never sent.
-      ...(isEdit ? { project_code: values.project_code } : {}),
       project_name:  values.project_name,
       // "ที่อยู่โครงการ" — location_code is now a free-text project address
       // (no longer validated/joined against the location master), per the
@@ -263,13 +277,34 @@ const ProjectCreateEditPage: React.FC = () => {
       status:        values.status ?? 'ACTIVE',
     }
 
+    if (isEdit && newCode) {
+      const ok = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `รหัสโครงการจะเปลี่ยนจาก ${savedCode} เป็น ${newCode} ยืนยันหรือไม่`,
+          okText: 'ยืนยัน',
+          cancelText: 'ยกเลิก',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        })
+      })
+      if (!ok) return
+    }
+
     setSubmitting(true)
+    setCodeError(undefined)
     try {
       if (isEdit) {
-        await axios.put(`${BASE_URL}/master/projects/${id}`, payload, {
+        const res = await axios.put(`${BASE_URL}/master/projects/${id}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        message.success('แก้ไขโครงการสำเร็จ')
+        // Use the code the server actually saved, never the local preview.
+        const saved = res.data?.data ?? res.data
+        const finalCode: string | undefined = saved?.project_code ?? newCode ?? savedCode
+        if (finalCode) {
+          setSavedCode(finalCode)
+          setSavedCustomerId(watchedCustomerId)
+        }
+        message.success(finalCode ? `แก้ไขโครงการสำเร็จ รหัสโครงการ ${finalCode}` : 'แก้ไขโครงการสำเร็จ')
       } else {
         const res = await axios.post(`${BASE_URL}/master/projects`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -287,7 +322,11 @@ const ProjectCreateEditPage: React.FC = () => {
         // requisition"); show whichever comes back verbatim, same
         // field-level-error pattern CustomerPage.tsx uses for its own 409.
         const conflictMessage = err?.response?.data?.message || err?.response?.data?.error || 'ไม่สามารถแก้ไขรหัสโครงการได้ เนื่องจากมีเอกสารอื่นอ้างอิงอยู่'
-        if (isEdit) form.setFields([{ name: 'project_code', errors: [conflictMessage] }])
+        if (isEdit) {
+          setCodeError(conflictMessage)
+          // Revert the preview to the saved code by restoring the saved owner.
+          form.setFieldsValue({ customer_id: savedCustomerId })
+        }
         message.error(conflictMessage)
       } else {
         message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึกไม่สำเร็จ')
@@ -350,13 +389,18 @@ const ProjectCreateEditPage: React.FC = () => {
               {/* Read-only. Edit: saved code. Add: locally computed prefix only — the server assigns the number on save. */}
               <Form.Item
                 label="รหัสโครงการ"
-                name={isEdit ? 'project_code' : undefined}
-                extra={!isEdit && codePrefix ? 'เลขนี้เป็นตัวอย่าง ระบบจะกำหนดเลขจริงเมื่อบันทึก' : undefined}
+                validateStatus={isEdit && codeError ? 'error' : undefined}
+                help={isEdit && codeError ? codeError : undefined}
+                extra={isEdit
+                  ? (newCode ? `รหัสโครงการจะเปลี่ยนเป็น ${newCode} เมื่อบันทึก` : undefined)
+                  : (codePrefix ? 'เลขนี้เป็นตัวอย่าง ระบบจะกำหนดเลขจริงเมื่อบันทึก' : undefined)}
               >
                 <Input
                   className="project-code-input"
                   disabled
-                  {...(isEdit ? {} : { value: previewCode ?? (codePrefix ? `${codePrefix} (ระบบกำหนดเลขให้เมื่อบันทึก)` : undefined) })}
+                  value={isEdit
+                    ? (newCode ?? savedCode)
+                    : (previewCode ?? (codePrefix ? `${codePrefix} (ระบบกำหนดเลขให้เมื่อบันทึก)` : undefined))}
                   placeholder="เลือกเจ้าของโครงการก่อน"
                 />
               </Form.Item>
