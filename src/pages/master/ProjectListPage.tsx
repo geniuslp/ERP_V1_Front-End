@@ -163,9 +163,8 @@ const parseRows = (
     const status = 'ACTIVE'
 
     const cust = customer_code ? customers.find((c) => c.customer_code === customer_code) : undefined
-    // Cell values like "MP / ME / MS / MG / OH" use "/" as the separator, not
-    // "," — split on either, matching the backend's same tolerant split.
-    const job_codes = job_codes_raw ? job_codes_raw.split(/[,/]/).map((s) => s.trim()).filter(Boolean) : []
+    // Free text, comma-separated ("MP,ME,MS"); the backend upper-cases and de-duplicates.
+    const job_codes = job_codes_raw ? job_codes_raw.split(',').map((s) => s.trim()).filter(Boolean) : []
 
     const data = {
       project_name,
@@ -395,12 +394,14 @@ const ProjectListPage: React.FC = () => {
     } catch (err: any) {
       const body = err?.response?.data
       // Per-row errors as returned by the backend (plain Thai, e.g. "แถว 3: ไม่พบประเภทงาน XX").
-      const rowErrors: string[] = (Array.isArray(body?.errors) ? body.errors : [])
-        .map((e: any) => (typeof e === 'string' ? e : e?.message ?? e?.error ?? ''))
+      // Backend shape: { error, data: { errors: [{ row, reason: "แถว N: …" }] } } (all rows, nothing created).
+      const rawErrors = body?.data?.errors ?? body?.errors
+      const rowErrors: string[] = (Array.isArray(rawErrors) ? rawErrors : [])
+        .map((e: any) => (typeof e === 'string' ? e : e?.reason ?? e?.message ?? e?.error ?? ''))
         .filter(Boolean)
       if (rowErrors.length > 0) {
         Modal.error({
-          title: body?.message || 'นำเข้าข้อมูลไม่สำเร็จ',
+          title: `นำเข้าข้อมูลไม่สำเร็จ พบข้อผิดพลาด ${rowErrors.length} รายการ (ยังไม่มีการสร้างโครงการ)`,
           width: 560,
           content: (
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
@@ -550,7 +551,7 @@ const ProjectListPage: React.FC = () => {
         <div style={panelHead}>
           <div>
             <Title level={5} style={{ margin: 0 }}>อัปโหลดไฟล์เพื่อนำเข้าข้อมูล</Title>
-            <Text style={{ fontSize: 12, color: '#9ca3af' }}>นำเข้าข้อมูลโครงการจากไฟล์ Excel ได้ครั้งละหลายรายการ — รหัสโครงการระบบสร้างให้อัตโนมัติ</Text>
+            <Text style={{ fontSize: 12, color: '#9ca3af' }}>นำเข้าข้อมูลโครงการจากไฟล์ Excel ได้ครั้งละหลายรายการ — รหัสโครงการระบบสร้างให้อัตโนมัติ · คอลัมน์ job Code: พิมพ์ได้หลายค่า คั่นด้วยจุลภาค เช่น MP,ME,MS</Text>
           </div>
           <Button icon={<DownloadOutlined />} onClick={() => downloadTemplate(accessToken)}>ดาวน์โหลด Template (.xlsx)</Button>
         </div>
