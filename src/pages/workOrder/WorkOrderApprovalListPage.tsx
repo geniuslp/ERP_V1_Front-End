@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { WOListItem } from '@/types/workOrder'
 
@@ -18,6 +19,7 @@ const cardStyle: React.CSSProperties = {
 const statusOptions = [
   { value: '', label: 'ทุกสถานะ' },
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
+  { value: 'PENDING_REAPPROVAL', label: 'รออนุมัติใหม่' },
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
   { value: 'DRAFT', label: 'แบบร่าง' },
@@ -64,7 +66,7 @@ const WorkOrderApprovalListPage: React.FC = () => {
   })
 
   const columns: ColumnsType<WOListItem> = [
-    { title: 'เลขที่ WO', dataIndex: 'wo_no', key: 'wo_no', width: 150 },
+    { title: 'เลขที่ WO', dataIndex: 'wo_no', key: 'wo_no', width: 150, render: (v: string, r) => formatPoNoWithRevision(v, r.revision_round) },
     { title: 'วันที่', dataIndex: 'wo_date', key: 'wo_date', width: 110, render: (v: string) => v?.slice(0, 10) ?? '-' },
     { title: 'ผู้ว่าจ้าง', dataIndex: 'employer_name', key: 'employer_name' },
     { title: 'ผู้รับจ้าง', dataIndex: 'supplier_name', key: 'supplier_name', render: (v?: string) => v || '-' },

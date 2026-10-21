@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { storageKey } from '@/config/env'
 import { Card, Form, Input, Select, DatePicker, Button, Space, message, Row, Col, Tooltip, Modal, Alert, Spin } from 'antd'
 import {
@@ -167,8 +168,6 @@ const PRCreatePage: React.FC = () => {
   const itemsTableRef = useRef<PRItemsTableHandle>(null)
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
-  const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
-  const [projectsLoading, setProjectsLoading] = useState(false)
   // Same master data / service call as the "แผนก" dropdown on the Add User
   // page (UsersPage.tsx) — permissionMatrixService.getDepartments.
   const [departments, setDepartments] = useState<Department[]>([])
@@ -216,6 +215,8 @@ const PRCreatePage: React.FC = () => {
   // allowlist for order_type='stock', which coupled the two fields and, via
   // an AntD Select value/options-mismatch, was implicated in a project
   // dropdown rendering as a raw unlabeled code after a failed save).
+  // Project dropdown: GET /master/projects/options (all ACTIVE projects); the document's own project is merged in when it is CLOSED/INACTIVE.
+  const { options: projects, projects: projectRows, loading: projectsLoading } = useProjectOptions({}, projectCode)
   const projectOptions = projects
 
   // job_code options restricted to the selected project's allowed job_codes[].
@@ -301,38 +302,6 @@ const PRCreatePage: React.FC = () => {
       .finally(() => setDepartmentsLoading(false))
   }, [])
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      setProjectsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data)
-          ? res.data
-          : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
-            : (p.project_name ?? p.name ?? String(p.id)),
-          // Project's allowed "ประเภทงาน" codes — same field ProjectListPage.tsx
-          // reads off this same GET /master/projects response (mapProject's
-          // `jobCodes: raw.job_codes ?? []`). Used to filter/restrict the
-          // job_code Select below.
-          jobCodes: p.job_codes ?? [],
-        })))
-      } catch (err: any) {
-        message.error(
-          err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดรหัสงานไม่สำเร็จ'
-        )
-      } finally {
-        setProjectsLoading(false)
-      }
-    }
-    fetchProjects()
-  }, [])
 
 
   // The backend now generates pr_no on save (GET /pr/reserve-number is
@@ -708,7 +677,7 @@ const PRCreatePage: React.FC = () => {
     setPrintData({
       prNo: prNumber,
       prDate: dayjs().format('DD/MM/YYYY'),
-      projectDept: (values.project_code && (projects.find((p) => p.value === values.project_code)?.label ?? values.project_code)) || '',
+      projectDept: (values.project_code && ((() => { const r = projectRows.find((p) => p.project_code === values.project_code); return r ? `${r.project_code} — ${r.project_name}` : undefined })() ?? values.project_code)) || '',
       vendor: '',
       deliveryDate: values.required_date ? values.required_date.format('DD/MM/YYYY') : '',
       deliveryTo: values.location_text ?? '',

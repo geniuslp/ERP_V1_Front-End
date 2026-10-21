@@ -44,6 +44,7 @@ function mapWorkOrderToPOStyle(data: WOPrintData, jobNames: Record<string, strin
 
   return {
     poNo: data.wo_no ?? '',
+    revisionRound: data.revision_round,
     poDate: data.wo_date ? dayjs(data.wo_date).format('DD/MM/YYYY') : '',
     prNo: data.ref_no ?? '',
     deliveryDate: '', // no WO equivalent (delivery concept doesn't apply)

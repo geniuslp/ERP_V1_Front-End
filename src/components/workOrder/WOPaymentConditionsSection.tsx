@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { Card, Table, Button, Input, InputNumber, DatePicker, Select } from 'antd'
+import { Card, Table, Button, Input, InputNumber, DatePicker, Select, Row, Col } from 'antd'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
 import { WO_PAYMENT_STATUS_LABEL } from '@/types/workOrder'
@@ -153,6 +153,9 @@ interface WOPaymentConditionsSectionProps {
   contractAmount?: number | null
   // 7.1 เงินล่วงหน้า content (Form.Items live in the page's form); rendered above 7.2.
   advanceSlot?: React.ReactNode
+  // 7.4 หักคืนคำนวณ (read-only): the fixed advance amount and the % displayed in 7.1.
+  advanceAmount?: number | null
+  advancePct?: number | null
 }
 
 // 7.3 เงินประกัน: % of contract offered for new selections. A stored value outside this list
@@ -176,8 +179,16 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   penalties, onPenaltiesChange,
   contractAmount,
   advanceSlot,
+  advanceAmount,
+  advancePct,
 }) => {
   const base = Number(contractAmount) || 0
+
+  // 7.4 หักคืนคำนวณ — display only, never sent in the payload.
+  const advPct = Number(advancePct) || 0
+  const advAmount = round2(Number(advanceAmount) || 0)
+  const remainAmount = round2(base - advAmount)
+  const remainPct = round2(100 - advPct)
 
   // When the contract value changes, recompute retention rows that hold an offered % (5/10).
   // Saved rows (have an id) are skipped on the first value that arrives (the edit-mode load),
@@ -521,6 +532,21 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
             เพิ่มรายการเงินประกัน
           </Button>
         </div>
+      </Card>
+
+      <Card title="7.4 หักคืนคำนวณ" size="small" style={subCardStyle}>
+        <Row gutter={[16, 8]}>
+          {[
+            { label: 'เงินล่วงหน้าที่หัก (บาท)', value: `${money2(advAmount)} บาท` },
+            { label: 'คงเหลือ (บาท)', value: `${money2(remainAmount)} บาท` },
+            { label: 'คงเหลือ (%)', value: `${remainPct.toLocaleString('th-TH', { maximumFractionDigits: 2 })} %` },
+          ].map((f) => (
+            <Col key={f.label} xs={24} md={8}>
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{f.label}</div>
+              <Input readOnly value={f.value} style={{ textAlign: 'right' }} />
+            </Col>
+          ))}
+        </Row>
       </Card>
 
       <Card title="ค่าปรับ" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>

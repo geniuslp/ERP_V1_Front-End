@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal } from 'antd'
 import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined, WarningOutlined, PrinterOutlined } from '@ant-design/icons'
@@ -232,34 +233,17 @@ const PRDetailPage: React.FC = () => {
   const [blockingPOs, setBlockingPOs] = useState<BlockingPO[]>([])
   const [blockModalPOs, setBlockModalPOs] = useState<BlockingPO[] | null>(null)
   const [printData, setPrintData] = useState<PRData | null>(null)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  // Label lookup for old documents too: include CLOSED / INACTIVE projects.
+  const { projects: projectRows } = useProjectOptions({ include_closed: true, include_inactive: true })
+  const projects = useMemo(() => projectRows.map((p) => ({
+    value: p.project_code,
+    label: `${p.project_code} ${p.project_name ?? ''}`,
+  })), [projectRows])
 
   // Same master/projects lookup used elsewhere (e.g. Memo pages) to resolve a
   // project_code into "code full name" — GET /pr/:id only returns the raw code.
   // Space-separated (not dash) — this on-screen detail field uses a different
   // format than the print pages, which keep their own "code — name" dash style.
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data)
-          ? res.data
-          : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? `${p.project_code} ${p.project_name ?? p.name ?? ''}`
-            : (p.project_name ?? p.name ?? String(p.id)),
-        })))
-      } catch {
-        // Non-critical — falls back to the raw project_code if this fails.
-      }
-    }
-    fetchProjects()
-  }, [])
 
   const fetchPR = async () => {
     setLoading(true)

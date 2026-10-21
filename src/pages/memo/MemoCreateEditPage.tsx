@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Card, Form, Input, Row, Col, Button, Table, InputNumber, Space, message, Alert, Select, DatePicker,
@@ -100,11 +101,11 @@ const MemoCreateEditPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
   const [memoStatus, setMemoStatus] = useState('')
-  const [projects, setProjects] = useState<{ value: string; label: string; jobCodes: string[] }[]>([])
   // GET /master/job-types -> job_code -> job_name (labels only; options come from the project's job_codes).
   const [jobNames, setJobNames] = useState<Record<string, string>>({})
   const watchedProject: string | undefined = Form.useWatch('project_code', form)
-  const [projectsLoading, setProjectsLoading] = useState(false)
+  // Project dropdown: GET /master/projects/options (all ACTIVE projects); the memo's own project is merged in when it is CLOSED/INACTIVE.
+  const { options: projects, projects: projectRows, loading: projectsLoading } = useProjectOptions({}, watchedProject)
   const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
   const [requesters, setRequesters] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
@@ -125,7 +126,8 @@ const MemoCreateEditPage: React.FC = () => {
       })
       const raw = res.data?.data ?? res.data
       const lines = raw.lines ?? raw.items ?? []
-      const projectLabel = projects.find((p) => p.value === raw.project_code)?.label ?? raw.project_code ?? ''
+      const projectRow = projectRows.find((p) => p.project_code === raw.project_code)
+      const projectLabel = projectRow ? `${projectRow.project_code} — ${projectRow.project_name}` : (raw.project_code ?? '')
       const departmentLabel = DEPARTMENT_OPTIONS.find((d) => d.value === raw.department)?.label ?? raw.department ?? ''
       const jobLabel = raw.job_code ? (jobNames[raw.job_code] ? `${raw.job_code} — ${jobNames[raw.job_code]}` : raw.job_code) : ''
       setPrintData({
@@ -163,32 +165,6 @@ const MemoCreateEditPage: React.FC = () => {
     buildAndShowPrint(id)
   }
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      setProjectsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data)
-          ? res.data
-          : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
-            : (p.project_name ?? p.name ?? String(p.id)),
-          jobCodes: Array.isArray(p.job_codes) ? p.job_codes : [],
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'Failed to load projects')
-      } finally {
-        setProjectsLoading(false)
-      }
-    }
-    fetchProjects()
-  }, [])
 
   useEffect(() => {
     axios.get(`${BASE_URL}/master/job-types`, { headers: { Authorization: `Bearer ${accessToken}` } })

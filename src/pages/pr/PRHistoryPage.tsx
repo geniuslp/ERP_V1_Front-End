@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined, WarningOutlined } from '@ant-design/icons'
 import { poLinkedTooltip } from '@/constants/prEdit'
@@ -131,7 +132,12 @@ const PRHistoryPage: React.FC = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(20)
   const [loading, setLoading] = useState(false)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  // Label lookup for old documents too: include CLOSED / INACTIVE projects.
+  const { projects: projectRows } = useProjectOptions({ include_closed: true, include_inactive: true })
+  const projects = useMemo(() => projectRows.map((p) => ({
+    value: p.project_code,
+    label: [p.project_code, p.project_name].filter(Boolean).join(' '),
+  })), [projectRows])
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
 
   // Resizable widths — all columns, same pattern as POStatusPage.tsx / PRStatusPage.tsx,
@@ -173,28 +179,6 @@ const PRHistoryPage: React.FC = () => {
   // to resolve a project_code into "code full name" — GET /pr only returns the raw code.
   // On-screen display convention (per PR/PO/Memo consistency pass): "{code} {name}",
   // a single space, no dash — the dash format is reserved for print pages only.
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data)
-          ? res.data
-          : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? [p.project_code, p.project_name ?? p.name].filter(Boolean).join(' ')
-            : (p.project_name ?? p.name ?? String(p.id)),
-        })))
-      } catch {
-        // Non-critical — falls back to the raw project_code if this fails.
-      }
-    }
-    fetchProjects()
-  }, [])
 
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)

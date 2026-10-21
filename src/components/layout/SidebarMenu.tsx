@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Menu, Skeleton, Tooltip } from 'antd'
 import {
   DashboardOutlined, FileTextOutlined, ShoppingCartOutlined,
@@ -106,79 +106,56 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PETTY_CASH_LIST: <SearchOutlined />,
   MENU_PETTY_CASH_CREATE: <PlusOutlined />,
   MENU_PETTY_CASH_APPROVAL: <CheckCircleOutlined />,
-  // Customer Master (ลูกค้า) — DB menu row (menu_code=MENU_MASTER_CUSTOMER,
-  // parent=MENU_MASTER, menu_path=/master/customer) still needs to be created
-  // by an admin; this only maps the icon once that row exists.
-  MENU_MASTER_CUSTOMER: <TeamOutlined />,
+  // MENU_MASTER_CUSTOMER (ลูกค้า) intentionally unmapped — renders without an icon,
+  // like its Master siblings (กลุ่ม, วัสดุ, สถานที่, ผู้ขาย, โครงการ, Group Cost Code).
   MENU_IC_PROJECT: <SearchOutlined />,
   MENU_IC_PO_RECEIVE: <InboxOutlined />,
   MENU_IC_PO_RETURN: <RollbackOutlined />,
 }
 
 interface VisibleMenuNode extends PermMenu {
-  children: PermMenu[]
+  children: VisibleMenuNode[]
 }
 
 interface SidebarMenuProps {
   collapsed: boolean
 }
 
+// Frontend-only override: PR/PO "ตรวจสอบสถานะ" pages were consolidated into the history
+// pages — hide these two menu entries regardless of the backend is_active/permission flags.
+const HIDDEN_MENU_CODES = ['MENU_PR_STATUS', 'MENU_PO_STATUS']
+
 const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
   const location = useLocation()
   const { can, hasRole, loading, menus } = usePermissionContext()
 
+  // Recursive tree of any depth. A leaf is shown when the user can read it (write for *_CREATE);
+  // a group is shown only when at least one descendant is visible.
   const visibleMenuTree = useMemo<VisibleMenuNode[]>(() => {
-    const topLevel = menus.filter((m) => m.parent_id === null && m.is_active)
+    const byParent = new Map<number | null, PermMenu[]>()
+    for (const m of menus) {
+      if (!m.is_active || HIDDEN_MENU_CODES.includes(m.menu_code)) continue
+      const list = byParent.get(m.parent_id) ?? []
+      list.push(m)
+      byParent.set(m.parent_id, list)
+    }
 
-    // ── DEBUG (remove after diagnosis) ─────────────────────────────
-    console.log('[sidebar-debug] total menus received:', menus.length)
-    console.log('[sidebar-debug] topLevel count:', topLevel.length, topLevel.map((m) => m.menu_code))
-    // ────────────────────────────────────────────────────────────────
-
-    const result = topLevel
-      .map((top) => {
-        const isAdminOnly = ADMIN_CENTER_ONLY_MENU_CODES.includes(top.menu_code)
-        if (isAdminOnly && !hasRole('ADMIN_CENTER')) return null
-
-        const children = menus.filter((m) => m.parent_id === top.id && m.is_active)
-        if (children.length > 0) {
-          const visibleChildren = children
-            // Frontend-only override: PR/PO "ตรวจสอบสถานะ" pages were consolidated
-            // into the history pages — hide these two menu entries regardless of
-            // the backend is_active/permission flags. The route/page files and
-            // their permissions are left untouched, only sidebar visibility.
-            .filter((c) => c.menu_code !== 'MENU_PR_STATUS' && c.menu_code !== 'MENU_PO_STATUS')
-            .filter((c) => (isCreateMenu(c.menu_code) ? can(c.menu_code, 'write') : can(c.menu_code, 'read')))
-            .sort((a, b) => a.order - b.order)
-
-          // ── DEBUG (remove after diagnosis) ─────────────────────────
-          console.log(
-            `[sidebar-debug] top=${top.menu_code} children total=${children.length} visible=${visibleChildren.length}`,
-            children.map((c) => ({
-              code: c.menu_code,
-              isCreate: isCreateMenu(c.menu_code),
-              checkedAction: isCreateMenu(c.menu_code) ? 'write' : 'read',
-              result: isCreateMenu(c.menu_code) ? can(c.menu_code, 'write') : can(c.menu_code, 'read'),
-            })),
-          )
-          
-          // ────────────────────────────────────────────────────────────
-
-          if (visibleChildren.length === 0) return null
-          return { ...top, children: visibleChildren }
+    const build = (parentId: number | null, depth: number, seen: Set<number>): VisibleMenuNode[] => {
+      const out: VisibleMenuNode[] = []
+      for (const m of (byParent.get(parentId) ?? []).slice().sort((a, b) => a.order - b.order)) {
+        if (seen.has(m.id)) continue // guard against a parent_id cycle
+        if (depth === 0 && ADMIN_CENTER_ONLY_MENU_CODES.includes(m.menu_code) && !hasRole('ADMIN_CENTER')) continue
+        const kids = build(m.id, depth + 1, new Set(seen).add(m.id))
+        if (byParent.has(m.id)) {
+          if (kids.length > 0) out.push({ ...m, children: kids })
+        } else if (isCreateMenu(m.menu_code) ? can(m.menu_code, 'write') : can(m.menu_code, 'read')) {
+          out.push({ ...m, children: [] })
         }
-        const standaloneVisible = isCreateMenu(top.menu_code)
-          ? can(top.menu_code, 'write')
-          : can(top.menu_code, 'read')
+      }
+      return out
+    }
 
-        // ── DEBUG (remove after diagnosis) ───────────────────────────
-        console.log(`[sidebar-debug] standalone top=${top.menu_code} visible=${standaloneVisible}`)
-        // ──────────────────────────────────────────────────────────────
-
-        return standaloneVisible ? { ...top, children: [] } : null
-      })
-      .filter((m): m is VisibleMenuNode => m !== null)
-      .sort((a, b) => a.order - b.order)
+    return build(null, 0, new Set())
       // Frontend-only override: Memo must appear before PR regardless of the
       // DB-configured `order` value (DB order not changed as part of this task).
       .sort((a, b) => {
@@ -186,69 +163,68 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
         if (a.menu_code === 'MENU_PR' && b.menu_code === 'MENU_MEMO') return 1
         return 0
       })
-
-    // ── DEBUG (remove after diagnosis) ─────────────────────────────
-    console.log('[sidebar-debug] final visibleMenuTree:', result.length, result.map((m) => m.menu_code))
-    // ────────────────────────────────────────────────────────────────
-
-    return result
   }, [menus, can, hasRole])
 
   // Menu items render their label as a real react-router <Link> (an actual
-  // <a href>) instead of a plain string + onClick(navigate(...)) — the latter
-  // bypasses the browser entirely, which is why Ctrl/Cmd/middle-click and
-  // right-click → "Open in new tab" never worked. A real href restores all of
-  // that native behavior for free; no onClick/preventDefault is added here
-  // that could interfere with it. Items without a menu_path (grouping-only)
-  // fall back to a plain label, matching the previous no-op guard.
-  const buildMenuItems = (): MenuProps['items'] => {
-    return visibleMenuTree.map((top) => {
-      if (top.children.length > 0) {
+  // <a href>) so Ctrl/Cmd/middle-click and "Open in new tab" keep working.
+  // Items without a menu_path (grouping-only) fall back to a plain label.
+  const buildItems = (nodes: VisibleMenuNode[], depth: number): MenuProps['items'] =>
+    nodes.map((node) => {
+      if (node.children.length > 0) {
         return {
-          key: String(top.id),
-          icon: topIconMap[top.menu_code] || <AppstoreOutlined />,
-          label: top.menu_name,
-          children: top.children.map((child) => {
-            if (PARAM_REQUIRED_MENU_CODES.includes(child.menu_code)) {
-              return {
-                key: child.menu_code,
-                icon: subIconMap[child.menu_code] || null,
-                disabled: true,
-                label: (
-                  <Tooltip title="กรุณาเลือกโครงการก่อน" placement="right">
-                    <span>{child.menu_name}</span>
-                  </Tooltip>
-                ),
-              }
-            }
-            return {
-              key: child.menu_path || child.menu_code,
-              icon: subIconMap[child.menu_code] || null,
-              label: child.menu_path ? <Link to={child.menu_path}>{child.menu_name}</Link> : child.menu_name,
-            }
-          }),
+          key: String(node.id),
+          icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || topIconMap[node.menu_code] || null),
+          label: node.menu_name,
+          children: buildItems(node.children, depth + 1),
+        }
+      }
+      if (PARAM_REQUIRED_MENU_CODES.includes(node.menu_code)) {
+        return {
+          key: node.menu_code,
+          icon: subIconMap[node.menu_code] || null,
+          disabled: true,
+          label: (
+            <Tooltip title="กรุณาเลือกโครงการก่อน" placement="right">
+              <span>{node.menu_name}</span>
+            </Tooltip>
+          ),
         }
       }
       return {
-        key: top.menu_path || top.menu_code,
-        icon: topIconMap[top.menu_code] || <AppstoreOutlined />,
-        label: top.menu_path ? <Link to={top.menu_path}>{top.menu_name}</Link> : top.menu_name,
+        key: node.menu_path || node.menu_code,
+        icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || null),
+        label: node.menu_path ? <Link to={node.menu_path}>{node.menu_name}</Link> : node.menu_name,
       }
     })
-  }
 
-  const getSelectedKeys = () => {
+  // Active leaf = the visible leaf whose path matches the URL (exact, else longest prefix), plus
+  // the ids of all its ancestor groups so they can be opened automatically.
+  const { selectedKeys, activeAncestors } = useMemo(() => {
     const path = location.pathname
-    return [path]
-  }
+    let best: { key: string; ancestors: string[]; len: number } | null = null
+    const visit = (nodes: VisibleMenuNode[], ancestors: string[]) => {
+      for (const n of nodes) {
+        if (n.children.length > 0) {
+          visit(n.children, [...ancestors, String(n.id)])
+        } else if (n.menu_path && (path === n.menu_path || path.startsWith(n.menu_path + '/'))) {
+          if (!best || n.menu_path.length > best.len) {
+            best = { key: n.menu_path, ancestors, len: n.menu_path.length }
+          }
+        }
+      }
+    }
+    visit(visibleMenuTree, [])
+    const b = best as { key: string; ancestors: string[] } | null
+    return { selectedKeys: b ? [b.key] : [path], activeAncestors: b ? b.ancestors : [] }
+  }, [visibleMenuTree, location.pathname])
 
-  const getOpenKeys = () => {
-    const path = location.pathname
-    const match = visibleMenuTree.find((top) =>
-      top.children.some((c) => c.menu_path && path.startsWith(c.menu_path)),
-    )
-    return match ? [String(match.id)] : []
-  }
+  // Controlled open state: the active leaf's ancestor groups are opened on navigation / first
+  // load, while groups the user toggled by hand stay as they are.
+  const [openKeys, setOpenKeys] = useState<string[]>([])
+  useEffect(() => {
+    if (activeAncestors.length === 0) return
+    setOpenKeys((prev) => Array.from(new Set([...prev, ...activeAncestors])))
+  }, [activeAncestors])
 
   if (loading) {
     return (
@@ -262,9 +238,10 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
     <Menu
       theme="dark"
       mode="inline"
-      selectedKeys={getSelectedKeys()}
-      defaultOpenKeys={getOpenKeys()}
-      items={buildMenuItems()}
+      selectedKeys={selectedKeys}
+      openKeys={collapsed ? undefined : openKeys}
+      onOpenChange={setOpenKeys}
+      items={buildItems(visibleMenuTree, 0)}
       style={{ background: 'transparent', border: 'none', marginTop: 8, padding: '0 8px' }}
     />
   )

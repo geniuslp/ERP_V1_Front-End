@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { storageKey } from '@/config/env'
 import {
   Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip,
@@ -178,8 +179,9 @@ const POCreatePage: React.FC = () => {
   const [prOptions, setPrOptions] = useState<PRListItem[]>([])
   const [prOptionsLoading, setPrOptionsLoading] = useState(false)
   const [prFromEditMode, setPrFromEditMode] = useState<PRListItem | null>(null)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
-  const [projectsLoading, setProjectsLoading] = useState(false)
+  // Project dropdown: GET /master/projects/options (all ACTIVE projects); the PO's own project is merged in when it is CLOSED/INACTIVE.
+  const watchedProjectCode: string | undefined = Form.useWatch('project_code', form)
+  const { options: projects, projects: projectRows, loading: projectsLoading } = useProjectOptions({}, watchedProjectCode)
   // "โครงการ" dropdown options: only the 4 warehouse-projects for order_type
   // 'stock' (required there — see the Form.Item below), the normal
   // customer-project list (warehouse-projects excluded) otherwise. Applies to
@@ -383,44 +385,31 @@ const POCreatePage: React.FC = () => {
     try { sessionStorage.removeItem(storageKey('po_reserved_number')) } catch { /* ignore */ }
   }, [isEdit])
 
+  // Budget / spent / remaining for the selected project (kept in projectDetails). The options endpoint is
+  // deliberately light, so these figures come from GET /master/projects/:id when a project is selected.
   useEffect(() => {
-    const fetchProjects = async () => {
-      setProjectsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
-            : (p.project_name ?? p.name ?? String(p.id)),
-        })))
-        // GET /master/projects already returns budget_amount / spent_amount /
-        // remaining_amount alongside the other project fields — reuse this
-        // response for the hover tooltip instead of firing a second request
-        // when a project is selected.
-        const detailMap: Record<string, { projectName: string; budgetAmount?: number; spentAmount?: number; remainingAmount?: number }> = {}
-        list.forEach((p: any) => {
-          if (!p.project_code) return
-          detailMap[p.project_code] = {
-            projectName: p.project_name ?? p.name ?? '',
-            budgetAmount: p.budget_amount ?? undefined,
-            spentAmount: p.spent_amount ?? undefined,
-            remainingAmount: p.remaining_amount ?? undefined,
-          }
-        })
-        setProjectDetails(detailMap)
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดรหัสงานไม่สำเร็จ')
-      } finally {
-        setProjectsLoading(false)
-      }
-    }
-    fetchProjects()
-  }, [])
+    const code = watchedProjectCode
+    if (!code || !accessToken) return
+    const row = projectRows.find((r) => r.project_code === code)
+    if (!row) return
+    let cancelled = false
+    axios.get(`${BASE_URL}/master/projects/${row.id}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => {
+        if (cancelled) return
+        const p: any = res.data?.data ?? res.data
+        setProjectDetails((prev) => ({
+          ...prev,
+          [code]: {
+            projectName: p?.project_name ?? row.project_name ?? '',
+            budgetAmount: p?.budget_amount ?? undefined,
+            spentAmount: p?.spent_amount ?? undefined,
+            remainingAmount: p?.remaining_amount ?? undefined,
+          },
+        }))
+      })
+      .catch(() => { /* non-critical: the figures just stay unset */ })
+    return () => { cancelled = true }
+  }, [watchedProjectCode, projectRows, accessToken])
 
   // Edit mode: load the existing PO and populate the form/items with it.
   useEffect(() => {

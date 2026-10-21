@@ -7,6 +7,7 @@ import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem
 import type { WorkOrder } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 // Restored to the original numbered-fields (1–10) paper-form-replica layout,
 // matching the physical "หนังสือสั่งจ้าง" document — completely distinct from
@@ -87,7 +88,7 @@ const Header = ({ data }: { data: WOPrintDataLite }) => (
     </div>
     <div className="wo-std-doc-title-wrap"><span className="wo-std-doc-title">หนังสือสั่งจ้าง</span></div>
     <div className="wo-std-doc-meta">
-      <div>เลขที่ : <b>{data.wo_no ?? ''}</b></div>
+      <div>เลขที่ : <b>{formatPoNoWithRevision(data.wo_no ?? '', data.revision_round)}</b></div>
       <div>วันที่ : <b>{fmtDate(data.wo_date)}</b></div>
     </div>
   </div>

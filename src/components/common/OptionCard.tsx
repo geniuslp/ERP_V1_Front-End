@@ -5,12 +5,14 @@ export interface OptionCardProps {
   label: string
   /** Optional smaller line under the label (e.g. Thai caption). */
   caption?: string
+  /** Overrides for the caption line (merged over the default style). */
+  captionStyle?: React.CSSProperties
   base: string
   hover: string
   onClick: () => void
 }
 
-const OptionCard: React.FC<OptionCardProps> = ({ icon, label, caption, base, hover, onClick }) => {
+const OptionCard: React.FC<OptionCardProps> = ({ icon, label, caption, captionStyle, base, hover, onClick }) => {
   const [isHover, setHover] = useState(false)
   return (
     <div
@@ -39,7 +41,7 @@ const OptionCard: React.FC<OptionCardProps> = ({ icon, label, caption, base, hov
       {icon}
       <div style={{ textAlign: 'center' }}>
         <div>{label}</div>
-        {caption && <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>{caption}</div>}
+        {caption && <div style={{ fontSize: 13, fontWeight: 400, opacity: 0.9, marginTop: 2, ...captionStyle }}>{caption}</div>}
       </div>
     </div>
   )

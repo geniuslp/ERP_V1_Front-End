@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Space, Select, Empty, Modal, message } from 'antd'
-import { InboxOutlined, SwapOutlined, ContainerOutlined } from '@ant-design/icons'
+import { InboxOutlined, SwapOutlined } from '@ant-design/icons'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
@@ -15,6 +15,13 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   border: 'none',
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+}
+
+// Thai subtitle under each action button's English label.
+const CAPTION_STYLE: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.8,
+  fontFamily: "'IBM Plex Sans Thai', sans-serif",
 }
 
 interface ICProject {
@@ -268,6 +275,8 @@ const ICProjectListPage: React.FC = () => {
             <OptionCard
               icon={<InboxOutlined style={{ fontSize: 40 }} />}
               label="PO Receive / PO Return"
+              caption="รับสินค้า / คืนสินค้า"
+              captionStyle={CAPTION_STYLE}
               base="#2563eb"
               hover="#1d4ed8"
               onClick={() => goTo(`/ic/projects/${selected.id}/po-receive`)}
@@ -275,16 +284,11 @@ const ICProjectListPage: React.FC = () => {
             <OptionCard
               icon={<SwapOutlined style={{ fontSize: 40 }} />}
               label="Issue / Transfer"
+              caption="ตัดเบิกสินค้า / โอนสินค้า"
+              captionStyle={CAPTION_STYLE}
               base="#0ea5e9"
               hover="#0284c7"
               onClick={() => goTo(`/ic/projects/${selected.project_code}/movements`)}
-            />
-            <OptionCard
-              icon={<ContainerOutlined style={{ fontSize: 40 }} />}
-              label="คงเหลือวัสดุ"
-              base="#1d4ed8"
-              hover="#1e40af"
-              onClick={() => goTo(`/ic/projects/${selected.project_code}/stock`)}
             />
           </div>
         )}

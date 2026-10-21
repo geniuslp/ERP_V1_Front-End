@@ -52,7 +52,8 @@ const CostCodePage = lazy(() => import('@/pages/master/CostCodePage'))
 const LocationPage = lazy(() => import('@/pages/master/LocationPage'))
 const SupplierPage = lazy(() => import('@/pages/master/SupplierPage'))
 const CustomerPage = lazy(() => import('@/pages/master/CustomerPage'))
-const StockListPage = lazy(() => import('@/pages/master/StockListPage'))
+const StockProjectListPage = lazy(() => import('@/pages/stock-project/StockProjectListPage'))
+const StockProjectDetailPage = lazy(() => import('@/pages/stock-project/StockProjectDetailPage'))
 const ProjectListPage = lazy(() => import('@/pages/master/ProjectListPage'))
 const ProjectCreateEditPage = lazy(() => import('@/pages/master/ProjectCreateEditPage'))
 const ApprovalMatrix = lazy(() => import('@/pages/admin/ApprovalMatrix'))
@@ -95,7 +96,6 @@ const ICProjectListPage = lazy(() => import('@/pages/ic/ICProjectListPage'))
 const ICPoReceivePage = lazy(() => import('@/pages/ic/ICPoReceivePage'))
 const ICPoReturnPage = lazy(() => import('@/pages/ic/ICPoReturnPage'))
 const ICProjectMovementPage = lazy(() => import('@/pages/ic/ICProjectMovementPage'))
-const ICProjectStockPage = lazy(() => import('@/pages/ic/ICProjectStockPage'))
 const ICProjectMovementListPage = lazy(() => import('@/pages/ic/ICProjectMovementListPage'))
 const ICProjectCostTransactionPage = lazy(() => import('@/pages/ic/ICProjectCostTransactionPage'))
 
@@ -210,7 +210,12 @@ const AppRoutes: React.FC = () => (
               <Route path="/master/location" element={<LocationPage />} />
               <Route path="/master/supplier" element={<SupplierPage />} />
               <Route path="/master/customer" element={<CustomerPage />} />
-              <Route path="/master/stock" element={<StockListPage />} />
+              <Route path="/master/stock" element={
+                <RequirePermission menuCode="master-stock" action="read"><StockProjectListPage /></RequirePermission>
+              } />
+              <Route path="/master/stock/:projectCode" element={
+                <RequirePermission menuCode="master-stock" action="read"><StockProjectDetailPage /></RequirePermission>
+              } />
               <Route path="/master/projects" element={<ProjectListPage />} />
               <Route path="/master/projects/create" element={<ProjectCreateEditPage key="create" />} />
               <Route path="/master/projects/:id/edit" element={<ProjectCreateEditPage key="edit" />} />
@@ -317,9 +322,6 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/ic/projects/:projectCode/movements" element={
                 <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectMovementListPage /></RequirePermission>
-              } />
-              <Route path="/ic/projects/:projectCode/stock" element={
-                <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectStockPage /></RequirePermission>
               } />
               <Route path="/ic/projects/:projectCode/cost-transactions" element={
                 <RequirePermission menuCode="MENU_IC_PROJECT" action="read"><ICProjectCostTransactionPage /></RequirePermission>

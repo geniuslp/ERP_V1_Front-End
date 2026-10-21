@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { Card, Form, Select, Button, Space, message, Input, Row, Col, DatePicker, Grid, Tooltip, Modal, Tag } from 'antd'
 import { SaveOutlined, PlusOutlined, CheckCircleFilled, PrinterOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -123,7 +124,8 @@ const PettyCashCreatePage: React.FC = () => {
 
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [departments, setDepartments] = useState<LookupOption[]>([])
-  const [projects, setProjects] = useState<LookupOption[]>([])
+  // Project dropdown: GET /master/projects/options (all ACTIVE projects); the document's own project is merged in when it is CLOSED/INACTIVE.
+  const { options: projects } = useProjectOptions({}, headerProjectCode)
 
   const [items, setItems] = useState<PettyCashLineForm[]>([])
   // Line modal: which action/row is open (null = closed).
@@ -164,12 +166,6 @@ const PettyCashCreatePage: React.FC = () => {
           value: d.dept_code, label: d.dept_code, name: d.dept_name ?? '',
         })))
       } catch { message.error('โหลดรายชื่อแผนกไม่สำเร็จ') }
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, { headers })
-        setProjects(unwrapList(res.data).filter((p: any) => p.project_code).map((p: any) => ({
-          value: p.project_code, label: `${p.project_code} ${p.project_name ?? ''}`.trim(), name: p.project_name ?? '',
-        })))
-      } catch { message.error('โหลดรายชื่อโครงการไม่สำเร็จ') }
     }
     load()
   }, [accessToken])

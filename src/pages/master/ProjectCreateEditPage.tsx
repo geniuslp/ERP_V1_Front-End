@@ -93,7 +93,9 @@ const ProjectCreateEditPage: React.FC = () => {
   const [jobTypesLoading, setJobTypesLoading] = useState(false)
   const [jobRows, setJobRows] = useState<JobRow[]>([])
   const watchedBudget: number | undefined = Form.useWatch('budget_amount', form)
-  const budget = Number(watchedBudget) || 0
+  const watchedVo: number | undefined = Form.useWatch('vo_amount', form)
+  // Job-share base: NEW -> contract value (budget_amount), VO -> vo_amount. Empty/0 is allowed.
+  const shareBase = Number(projectKind === 'VO' ? watchedVo : watchedBudget) || 0
   const jobTypeMap = new Map(jobTypes.map((j) => [j.job_code, j]))
   const needsShare = (code?: string) => !!code && jobTypeMap.get(code)?.needs_share === true
   const totalShare = round2(jobRows.reduce((sum, r) => sum + (needsShare(r.job_code) ? Number(r.share_percent) || 0 : 0), 0))
@@ -238,7 +240,7 @@ const ProjectCreateEditPage: React.FC = () => {
       message.error('กรุณาเลือกประเภทงานให้ครบทุกแถว หรือลบแถวที่ว่าง')
       return
     }
-    const effectiveBudget = values.project_kind === 'VO' ? 0 : Number(values.budget_amount) || 0
+    const effectiveBase = Number(values.project_kind === 'VO' ? values.vo_amount : values.budget_amount) || 0
 
     const payload = {
       // Create: the server generates project_code, so it is never sent.
@@ -265,11 +267,12 @@ const ProjectCreateEditPage: React.FC = () => {
         .map((r) => ({
           job_code: r.job_code as string,
           share_percent: Number(r.share_percent),
-          share_amount: round2((effectiveBudget * Number(r.share_percent)) / 100),
+          share_amount: round2((effectiveBase * Number(r.share_percent)) / 100),
         })),
-      budget_amount: values.project_kind === 'VO' ? 0 : values.budget_amount ?? 0,
+      budget_amount: values.budget_amount ?? 0,
       vo_amount:     values.project_kind === 'VO' ? values.vo_amount ?? 0 : 0,
-      contract_amount: values.contract_amount ?? 0,
+      // No longer an input on this form; pass the loaded value through so it is not reset to 0.
+      contract_amount: form.getFieldValue('contract_amount') ?? 0,
       cost_amount:   values.cost_amount ?? 0,
       project_kind:  values.project_kind ?? 'NEW',
       start_date:    startDate ? startDate.format('YYYY-MM-DD') : undefined,
@@ -408,13 +411,6 @@ const ProjectCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item label="ประเภทโครงการ" name="project_kind">
                 <Select
-                  onChange={(k: 'NEW' | 'VO') => {
-                    // Reset the field that is being hidden so no stale value is submitted.
-                    const hidden = k === 'VO' ? 'budget_amount' : 'vo_amount'
-                    const shown = k === 'VO' ? 'vo_amount' : 'budget_amount'
-                    form.setFieldsValue({ [hidden]: 0 })
-                    form.setFields([{ name: hidden, errors: [] }, { name: shown, errors: [] }])
-                  }}
                   options={[
                     { value: 'NEW', label: 'โครงการใหม่' },
                     { value: 'VO',  label: 'งานเพิ่ม (VO)' },
@@ -447,23 +443,46 @@ const ProjectCreateEditPage: React.FC = () => {
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
-              {/* One value field per project kind, same slot: NEW → มูลค่าโครงการ, VO → มูลค่า VO. */}
-              <Form.Item
-                key={projectKind}
-                label={projectKind === 'VO' ? 'มูลค่า VO' : 'มูลค่าโครงการ'}
-                name={projectKind === 'VO' ? 'vo_amount' : 'budget_amount'}
-                rules={[{ required: true, message: projectKind === 'VO' ? 'กรุณากรอกมูลค่า VO' : 'กรุณากรอกมูลค่าโครงการ' }]}
-              >
+              <Form.Item label="มูลค่าสัญญา" name="budget_amount">
                 <InputNumber
                   style={{ width: '100%' }}
                   min={0 as number}
                   step={1000}
+                  precision={2}
                   formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
                   placeholder="0.00"
                 />
               </Form.Item>
             </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="มูลค่าต้นทุน" name="cost_amount">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0 as number}
+                  step={1000}
+                  precision={2}
+                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
+                  placeholder="0.00"
+                />
+              </Form.Item>
+            </Col>
+            {projectKind === 'VO' && (
+              <Col md={12} xs={24}>
+                <Form.Item label="มูลค่า VO" name="vo_amount">
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    min={0 as number}
+                    step={1000}
+                    precision={2}
+                    formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
+                    placeholder="0.00"
+                  />
+                </Form.Item>
+              </Col>
+            )}
             <Col span={24}>
               <Form.Item label="ประเภทงาน" style={{ marginBottom: 16 }}>
                 <Table<JobRow>
@@ -510,8 +529,8 @@ const ProjectCreateEditPage: React.FC = () => {
                     {
                       title: 'มูลค่า (บาท)', key: 'share_amount', width: 180, align: 'right' as const,
                       render: (_: unknown, r: JobRow) =>
-                        needsShare(r.job_code) && budget > 0 && r.share_percent !== null
-                          ? round2((budget * r.share_percent) / 100).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        needsShare(r.job_code) && r.share_percent !== null
+                          ? round2((shareBase * r.share_percent) / 100).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                           : '-',
                     },
                     {
@@ -541,38 +560,6 @@ const ProjectCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item label="ระยะเวลาโครงการ" name="date_range">
                 <DatePicker.RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item
-                label="มูลค่าสัญญา"
-                name="contract_amount"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0 as number}
-                  step={1000}
-                  precision={2}
-                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
-                  placeholder="0.00"
-                />
-              </Form.Item>
-            </Col>
-            <Col md={12} xs={24}>
-              <Form.Item
-                label="มูลค่าต้นทุน"
-                name="cost_amount"
-              >
-                <InputNumber
-                  style={{ width: '100%' }}
-                  min={0 as number}
-                  step={1000}
-                  precision={2}
-                  formatter={(v) => `฿ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
-                  placeholder="0.00"
-                />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, type DiscType } from '@/utils/poCalc'
 import { thaiBahtText } from '@/utils/thaiBahtText'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -65,9 +66,6 @@ export interface WOPOData {
   // below to compute 7% client-side, matching how WO's own WOItemsTable
   // already computes VAT.
   vatAmt?: number; whtAmt?: number; totalAmt?: number; netAmt?: number
-  // WO has no revision/edit-log concept on this print template — always
-  // undefined, so formatPoNoWithRevision's "#R{n}" suffix logic never
-  // triggers (harmless, matches "no revision" behavior).
   revisionRound?: number
   status?: string
 }
@@ -272,7 +270,7 @@ const POInfoBox = ({data}:{data:WOPOData}) => (
       <div><b>ผู้รับจ้าง :</b>&nbsp;{data.supplier.name}</div>
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
-      <div><b>WO No :</b>&nbsp;{data.poNo}</div>
+      <div><b>WO No :</b>&nbsp;{formatPoNoWithRevision(data.poNo ?? '', data.revisionRound)}</div>
       <div><b>Currency :</b>&nbsp;{CURRENCY}</div>
     </div>
   </div>

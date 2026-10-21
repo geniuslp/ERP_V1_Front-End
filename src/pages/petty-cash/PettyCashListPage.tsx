@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { Card, Table, Button, Space, message, Input, Row, Col, Select, DatePicker, Tooltip } from 'antd'
 import { PlusOutlined, EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -42,26 +43,13 @@ const PettyCashListPage: React.FC = () => {
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined)
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  // Label lookup for old documents too: include CLOSED / INACTIVE projects.
+  const { projects: projectRows } = useProjectOptions({ include_closed: true, include_inactive: true })
+  const projects = useMemo(() => projectRows.map((p) => ({
+    value: p.project_code,
+    label: `${p.project_code} — ${p.project_name ?? ''}`,
+  })), [projectRows])
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code ? `${p.project_code} — ${p.project_name ?? ''}` : (p.project_name ?? String(p.id)),
-        })))
-      } catch {
-        setProjects([])
-      }
-    }
-    fetchProjects()
-  }, [accessToken])
 
   const fetchData = async () => {
     setLoading(true)

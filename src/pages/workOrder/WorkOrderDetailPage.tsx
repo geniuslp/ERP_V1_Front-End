@@ -8,6 +8,8 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
+import WOEditApprovedButton from '@/components/workOrder/WOEditApprovedButton'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 import { WO_CONTRACT_TYPE_LABEL, WO_CONTRACT_DESCRIPTION_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 import type { WorkOrder, WorkOrderLine } from '@/types/workOrder'
@@ -99,18 +101,21 @@ const WorkOrderDetailPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title={wo.wo_no}
+        title={formatPoNoWithRevision(wo.wo_no, wo.revision_round)}
         subtitle="รายละเอียดหนังสือสั่งจ้าง"
-        breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: wo.wo_no }]}
+        breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: formatPoNoWithRevision(wo.wo_no, wo.revision_round) }]}
         extra={
           <Space>
             <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
-            {wo.status === 'DRAFT' && (
+            {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(wo.status) && (
               <PermissionButton menuCode="MENU_WO_CREATE" action="write" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${wo.id}/edit`)}>
                 แก้ไข
               </PermissionButton>
             )}
-            {wo.status === 'PENDING_APPROVAL' && (
+            {(wo.status === 'APPROVED' || wo.status === 'PENDING_REAPPROVAL') && (
+              <WOEditApprovedButton woId={wo.id} woNo={wo.wo_no} />
+            )}
+            {(wo.status === 'PENDING_APPROVAL' || wo.status === 'PENDING_REAPPROVAL') && (
               <>
                 <PermissionButton
                   menuCode={MENU_CODE}
@@ -157,7 +162,7 @@ const WorkOrderDetailPage: React.FC = () => {
 
       <Card title="เอกสาร / ผู้ว่าจ้าง / ผู้รับจ้าง" style={cardStyle}>
         <Descriptions bordered column={2} size="small">
-          <Descriptions.Item label="เลขที่ WO">{wo.wo_no}</Descriptions.Item>
+          <Descriptions.Item label="เลขที่ WO">{formatPoNoWithRevision(wo.wo_no, wo.revision_round)}</Descriptions.Item>
           <Descriptions.Item label="วันที่">{dateFmt(wo.wo_date)}</Descriptions.Item>
           <Descriptions.Item label="เลขที่อ้างอิง">{wo.ref_no || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้ว่าจ้าง">{wo.employer_name}</Descriptions.Item>

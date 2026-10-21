@@ -223,8 +223,8 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       render: (v: string, r) => (isItemRow(r) ? v : <span style={{ fontWeight: 700 }}>{v}</span>),
     },
     { title: 'Budget', dataIndex: 'budget', key: 'budget', align: 'right', render: (v: number) => thb(v) },
-    { title: 'PuCost', dataIndex: 'pu_cost', key: 'pu_cost', align: 'right', render: (v: number) => thb(v) },
-    { title: 'PuBal', dataIndex: 'pu_bal', key: 'pu_bal', align: 'right', render: bal },
+    { title: 'Pu.Cost', dataIndex: 'pu_cost', key: 'pu_cost', align: 'right', render: (v: number) => thb(v) },
+    { title: 'Pu.Bal', dataIndex: 'pu_bal', key: 'pu_bal', align: 'right', render: bal },
     { title: 'Ac.Cost', dataIndex: 'ac_cost', key: 'ac_cost', align: 'right', render: (v: number) => thb(v) },
     { title: 'Ac.Bal', dataIndex: 'ac_bal', key: 'ac_bal', align: 'right', render: bal },
   ]
@@ -233,6 +233,11 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
   const dateText =
     p && (p.start_date || p.end_date)
       ? `${p.start_date ? dayjs(p.start_date).format('DD/MM/YY') : '—'} - ${p.end_date ? dayjs(p.end_date).format('DD/MM/YY') : '—'}`
+      : null
+  // Calendar days from start_date to end_date; "—" unless both dates are present.
+  const durationText =
+    p?.start_date && p?.end_date
+      ? `${dayjs(p.end_date).startOf('day').diff(dayjs(p.start_date).startOf('day'), 'day').toLocaleString('th-TH')} วัน`
       : null
 
   return (
@@ -260,7 +265,6 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
         >
           <div style={gridStyle}>
             <HeaderField label="Project">{`${p.project_code} ${(p.project_name ?? '').replace(/\s+/g, ' ')}`.trim()}</HeaderField>
-            <HeaderField label="Contract">{p.contract || dash}</HeaderField>
             <HeaderField label="Contact">{p.contact || dash}</HeaderField>
             <HeaderField label="Status">
               <Tag color={statusColor[p.status]} style={{ margin: 0 }}>
@@ -270,8 +274,9 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
           </div>
           <div style={gridStyle}>
             <HeaderField label="Owner">{p.owner_name || dash}</HeaderField>
-            <HeaderField label="Budget">{thb(p.budget_amount)}</HeaderField>
+            <HeaderField label="Budget">{`${thb(p.budget_amount)} บาท`}</HeaderField>
             <HeaderField label="Date">{dateText || dash}</HeaderField>
+            <HeaderField label="ระยะเวลา">{durationText || dash}</HeaderField>
           </div>
         </div>
       )}

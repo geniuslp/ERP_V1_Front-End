@@ -9,6 +9,7 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
+import { formatPoNoWithRevision } from '@/utils/poNo'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
 import type { WOListItem } from '@/types/workOrder'
 
@@ -24,6 +25,7 @@ const statusOptions = [
   { value: '', label: 'ทุกสถานะ' },
   { value: 'DRAFT', label: 'แบบร่าง' },
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
+  { value: 'PENDING_REAPPROVAL', label: 'รออนุมัติใหม่' },
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
@@ -86,7 +88,7 @@ const WorkOrderListPage: React.FC = () => {
       key: 'wo_no',
       render: (v: string, r) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/work-order/${r.id}`)}>
-          {v}
+          {formatPoNoWithRevision(v, r.revision_round)}
         </a>
       ),
     },
@@ -119,7 +121,7 @@ const WorkOrderListPage: React.FC = () => {
           <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/work-order/${r.id}`)}>
             ดู
           </Button>
-          {r.status === 'DRAFT' && (
+          {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(r.status) && (
             <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${r.id}/edit`)}>
               แก้ไข
             </Button>

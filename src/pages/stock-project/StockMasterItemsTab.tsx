@@ -3,7 +3,6 @@ import { Card, Table, Space, Input, Select, Tag, Upload, Typography, Button, mes
 import type { UploadProps } from 'antd'
 import { InboxOutlined, CheckCircleOutlined, CloseCircleOutlined, PlusOutlined, SaveOutlined, DownloadOutlined, ExclamationCircleFilled } from '@ant-design/icons'
 import * as XLSX from 'xlsx'
-import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import PermissionGate from '@/components/permission/PermissionGate'
 import { useAppSelector } from '@/store'
@@ -115,7 +114,7 @@ const downloadTemplate = () => {
   XLSX.writeFile(wb, 'stock_import_template.xlsx')
 }
 
-const StockListPage: React.FC = () => {
+const StockMasterItemsTab: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<StockItem[]>([])
   const [categories, setCategories] = useState<StockCategory[]>([])
@@ -355,12 +354,6 @@ const StockListPage: React.FC = () => {
 
   return (
     <div>
-      <PageHeader
-        title="ข้อมูลพัสดุ (Stock)"
-        subtitle="รายการพัสดุหลัก ค้นหา เพิ่มรายการ และนำเข้าจากไฟล์ Excel"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ข้อมูลหลัก' }, { title: 'พัสดุ (Stock)' }]}
-      />
-
       {/* list */}
       <Card style={{ ...cardStyle, marginBottom: 20 }}>
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
@@ -623,4 +616,4 @@ const StockListPage: React.FC = () => {
   )
 }
 
-export default StockListPage
+export default StockMasterItemsTab

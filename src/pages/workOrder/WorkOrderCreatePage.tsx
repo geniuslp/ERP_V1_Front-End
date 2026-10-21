@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import {
   Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin,
 } from 'antd'
 import { SaveOutlined, SendOutlined, CloseOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
@@ -22,6 +23,7 @@ import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WAREHOUSE_PROJECT_CODES } from '@/constants/warehouseProjects'
 import { useJobTypes } from '@/hooks/useJobTypeNames'
+import { formatApproverOption } from '@/utils/formatApproverOption'
 
 // "เจ้าของโครงการ (ผู้ว่าจ้าง)" — only the head-office option is offered; sent as employer_name.
 const EMPLOYER_HEAD_OFFICE = 'บริษัท จีเนียส เอนจิเนียริ่ง (สำนักงานใหญ่) จำกัด'
@@ -73,12 +75,49 @@ interface ProjectOption {
 const WorkOrderCreatePage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  // Edit-after-approval: WOEditApprovedButton passes the mandatory reason via router state.
+  const editApprovedReason = (useLocation().state as { editApprovedReason?: string } | null)?.editApprovedReason
   const isEdit = !!id
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const [form] = Form.useForm()
 
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
+  // Status of the loaded document (edit mode). PENDING_APPROVAL keeps its status on save.
+  const [loadedStatus, setLoadedStatus] = useState<string | undefined>()
+  // contract_amount as loaded from the API: outside edit-approved mode it is a floor (cannot be lowered).
+  const [loadedContractAmount, setLoadedContractAmount] = useState<number | undefined>()
+
+  // Eligible approvers — same endpoint/shape as POCreatePage, doc_type 'WO'.
+  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
+  const [approversLoading, setApproversLoading] = useState(false)
+  useEffect(() => {
+    if (!accessToken) return
+    const fetchApprovers = async () => {
+      setApproversLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/eligible-approvers`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { doc_type: 'WO' },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        // Coerce to Number: the form value is a Number and Select matches option values with ===.
+        setApprovers(list.map((u: any) => ({
+          value: Number(u.value ?? u.id),
+          label: formatApproverOption(u.username, u.value ?? u.id),
+          dept: u.dept ?? u.department,
+          username: u.username,
+          name: u.full_name ?? u.label ?? u.fullName,
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.response?.data?.error || 'โหลดรายชื่อผู้อนุมัติไม่สำเร็จ')
+      } finally {
+        setApproversLoading(false)
+      }
+    }
+    fetchApprovers()
+  }, [accessToken])
 
   // Two tabs share this one Form instance (tab panes stay mounted via forceRender). In create
   // mode the WO id only exists after the first Tab 1 save; it is kept here instead of navigating
@@ -86,6 +125,11 @@ const WorkOrderCreatePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'header' | 'items'>('header')
   const [createdId, setCreatedId] = useState<number | string | undefined>(undefined)
   const woId: number | string | undefined = id ?? createdId
+  const isEditApproved = !!editApprovedReason && (loadedStatus === 'APPROVED' || loadedStatus === 'PENDING_REAPPROVAL')
+  // Editing an existing, not-yet-approved WO: the contract amount may not go below the loaded value.
+  // Edit-approved mode (and create) has no floor.
+  const contractFloor: number | undefined = isEdit && !isEditApproved ? loadedContractAmount : undefined
+  const CONTRACT_LOWER_MSG = 'การลดมูลค่าสัญญาทำได้เฉพาะการแก้ไขหลังอนุมัติ'
 
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
@@ -100,10 +144,11 @@ const WorkOrderCreatePage: React.FC = () => {
   // options so the multi-select still shows them as tags for old documents.
   const [legacyWorkSystem, setLegacyWorkSystem] = useState<string[]>([])
   const jobTypes = useJobTypes()
-  const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [projectsLoading, setProjectsLoading] = useState(false)
   const [projectSearch, setProjectSearch] = useState('')
   const projectChoice: string | undefined = Form.useWatch('project_choice', form)
+  // Project dropdown: GET /master/projects/options (all ACTIVE projects); the WO's own project is merged in when it is CLOSED/INACTIVE.
+  const { options: projects, loading: projectsLoading } = useProjectOptions(
+    {}, projectChoice && !projectChoice.startsWith(PROJECT_TEXT_PREFIX) ? projectChoice : undefined)
   const employerName: string | undefined = Form.useWatch('employer_name', form)
 
   // Project-change guard. Select.onChange only fires on user interaction (not on edit-mode
@@ -130,7 +175,22 @@ const WorkOrderCreatePage: React.FC = () => {
   // Contract value (ไม่รวม VAT) is the base for the 7.1 / 7.3 percentage amounts.
   const watchedContractAmount: number | undefined = Form.useWatch('contract_amount', form)
   const watchedAdvancePct: number | undefined = Form.useWatch('advance_deduct_pct', form)
-  const advanceAmount = ((Number(watchedContractAmount) || 0) * (Number(watchedAdvancePct) || 0)) / 100
+  // 7.1: the amount (advance_deduct_amount) is the stored value. Create / user-picked %: amount =
+  // contract * % / 100. Edit mode keeps a loaded amount fixed when the contract value changes, and the
+  // displayed % is derived from it (amount / contract * 100).
+  const watchedAdvanceAmount: number | undefined = Form.useWatch('advance_deduct_amount', form)
+  const advanceAmount = Number(watchedAdvanceAmount) || 0
+  const contractBase = Number(watchedContractAmount) || 0
+  const displayedAdvancePct = contractBase > 0 ? Math.round((advanceAmount / contractBase * 100 + Number.EPSILON) * 100) / 100 : 0
+  const advancePctOption = ADVANCE_PCT_VALUES.find((v) => Math.abs(v - displayedAdvancePct) < 0.01)
+  const advanceExceeds = advanceAmount > contractBase
+  const calcAdvanceAmount = (contract: number, pct: number) => Math.round((contract * pct / 100 + Number.EPSILON) * 100) / 100
+  // Create mode: the amount follows the selected % when the contract value changes.
+  useEffect(() => {
+    if (isEdit) return
+    form.setFieldValue('advance_deduct_amount', calcAdvanceAmount(contractBase, Number(form.getFieldValue('advance_deduct_pct')) || 0))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractBase, isEdit])
 
   // Default wht_rate by contract_type, from GET /work-order/wht-defaults (backend is the
   // source of truth). Until it loads / if it fails, 3 is used — the pre-existing line default.
@@ -185,28 +245,6 @@ const WorkOrderCreatePage: React.FC = () => {
     fetchSuppliers()
   }, [accessToken])
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      setProjectsLoading(true)
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.filter((p: any) => p.project_code).map((p: any) => ({
-          value: p.project_code,
-          label: `${p.project_code} ${p.project_name ?? p.name ?? ''}`.trim(),
-          name: p.project_name ?? p.name ?? '',
-        })))
-      } catch (err: any) {
-        message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลโครงการไม่สำเร็จ')
-      } finally {
-        setProjectsLoading(false)
-      }
-    }
-    fetchProjects()
-  }, [accessToken])
 
   useEffect(() => {
     if (!accessToken) return
@@ -283,10 +321,22 @@ const WorkOrderCreatePage: React.FC = () => {
       setLoading(true)
       try {
         const wo = await workOrderService.get(accessToken, id)
+        const afterApproval = wo.status === 'APPROVED' || wo.status === 'PENDING_REAPPROVAL'
+        if (wo.status === 'CANCELLED' || (afterApproval && !editApprovedReason)) {
+          message.warning('ไม่สามารถแก้ไขหนังสือสั่งจ้างที่อนุมัติแล้วหรือยกเลิกแล้ว')
+          navigate(`/work-order/${id}`, { replace: true })
+          return
+        }
+        setLoadedStatus(wo.status)
+        setLoadedContractAmount(wo.contract_amount != null ? Number(wo.contract_amount) : undefined)
         const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
         setLegacyWorkSystem(storedSystems.filter((v) => !v.startsWith('M')))
         form.setFieldsValue({
           ...wo,
+          approver_id: wo.approver_id != null ? Number(wo.approver_id) : undefined,
+          // Legacy rows without a stored amount: derive it once from the saved %.
+          advance_deduct_amount: wo.advance_deduct_amount
+            ?? Math.round(((Number(wo.contract_amount) || 0) * (Number(wo.advance_deduct_pct) || 0) / 100 + Number.EPSILON) * 100) / 100,
           project_choice: wo.project_code
             ? wo.project_code
             : wo.project_name_text ? PROJECT_TEXT_PREFIX + wo.project_name_text : undefined,
@@ -387,11 +437,15 @@ const WorkOrderCreatePage: React.FC = () => {
     } = form.getFieldsValue()
     const header = {
       ...v,
+      // Persist the % that 7.1 actually displays (derived from the fixed amount).
+      advance_deduct_pct: displayedAdvancePct,
+      advance_deduct_amount: advanceAmount,
       ...resolveProject(project_choice),
       wo_date: v.wo_date ? dayjs(v.wo_date).format('YYYY-MM-DD') : undefined,
       start_date: v.start_date ? dayjs(v.start_date).format('YYYY-MM-DD') : undefined,
       end_date: v.end_date ? dayjs(v.end_date).format('YYYY-MM-DD') : undefined,
-      status: submitForApproval ? 'PENDING_APPROVAL' : 'DRAFT',
+      // PENDING_APPROVAL stays PENDING_APPROVAL on save (approver kept unless the user changed it).
+      status: loadedStatus === 'PENDING_APPROVAL' || submitForApproval ? 'PENDING_APPROVAL' : 'DRAFT',
 
       // ── Tax (flat — mirrors POCreatePage's buildPayload exactly) ──
       use_discount: useDisc,
@@ -434,6 +488,14 @@ const WorkOrderCreatePage: React.FC = () => {
     }
   }
 
+  // Normal PUT /work-order/:id, or PUT /work-order/:id/edit-approved (reason required) when editing
+  // an approved WO — the backend sets the status there, so `status` is not sent.
+  const persistWO = (savedWoId: number | string, payload: ReturnType<typeof buildPayload>) => {
+    if (!isEditApproved) return workOrderService.update(accessToken, savedWoId, payload)
+    const { status: _status, ...rest } = payload
+    return workOrderService.editApproved(accessToken, savedWoId, rest, editApprovedReason as string)
+  }
+
   const saveErrorMessage = (err: any) =>
     err?.response?.data?.message || err?.response?.data?.error || err?.message || 'บันทึกไม่สำเร็จ'
 
@@ -450,12 +512,13 @@ const WorkOrderCreatePage: React.FC = () => {
   // Tab 1 — "บันทึกและไปต่อ": full header, `lines` omitted. Create on first save, PUT afterwards;
   // stays on the page and moves to Tab 2.
   const handleSaveHeader = async () => {
+    if (advanceExceeds) return
     if (!(await validateHeader())) return
     setSaving(true)
     try {
       const payload = buildPayload(false, false)
       const wo = woId !== undefined
-        ? await workOrderService.update(accessToken, woId, payload)
+        ? await persistWO(woId, payload)
         : await workOrderService.create(accessToken, payload)
       const savedId = (wo?.id ?? woId) as number | string
       if (woId === undefined) {
@@ -474,7 +537,7 @@ const WorkOrderCreatePage: React.FC = () => {
 
   // Tab 2 — "บันทึกร่าง" / "ส่งอนุมัติ": PUT the full payload including `lines` from the table.
   const handleSaveWithLines = async (submitForApproval: boolean) => {
-    if (woId === undefined) return
+    if (woId === undefined || advanceExceeds) return
     if (items.length === 0) {
       message.warning(submitForApproval
         ? 'กรุณาเพิ่มรายการอย่างน้อย 1 รายการก่อนส่งขออนุมัติ'
@@ -485,9 +548,15 @@ const WorkOrderCreatePage: React.FC = () => {
       setActiveTab('header')
       return
     }
+    // ผู้อนุมัติ is required only when submitting for approval (not for a draft save).
+    if (submitForApproval && !isEditApproved && !form.getFieldValue('approver_id')) {
+      form.setFields([{ name: 'approver_id', errors: ['กรุณาเลือกผู้อนุมัติ'] }])
+      message.warning('กรุณาเลือกผู้อนุมัติ')
+      return
+    }
     setSaving(true)
     try {
-      const wo = await workOrderService.update(accessToken, woId, buildPayload(submitForApproval, true))
+      const wo = await persistWO(woId, buildPayload(submitForApproval, true))
       const savedId = (wo?.id ?? woId) as number | string
       if (await savePaymentConditions(savedId)) {
         message.success(submitForApproval ? 'ส่งอนุมัติสำเร็จ' : 'บันทึกร่างสำเร็จ')
@@ -744,12 +813,22 @@ const WorkOrderCreatePage: React.FC = () => {
                       <Form.Item
                         label={<span style={labelStyle}>มูลค่าสัญญาไม่รวม VAT (บาท)</span>}
                         name="contract_amount"
-                        rules={[{ required: true, message: 'กรุณาระบุมูลค่าสัญญา' }]}
+                        rules={[
+                          { required: true, message: 'กรุณาระบุมูลค่าสัญญา' },
+                          {
+                            validator: (_, v) =>
+                              contractFloor !== undefined && v != null && Number(v) < contractFloor
+                                ? Promise.reject(new Error(CONTRACT_LOWER_MSG))
+                                : Promise.resolve(),
+                          },
+                        ]}
+                        validateStatus={contractFloor !== undefined && watchedContractAmount != null && Number(watchedContractAmount) < contractFloor ? 'error' : undefined}
+                        help={contractFloor !== undefined && watchedContractAmount != null && Number(watchedContractAmount) < contractFloor ? CONTRACT_LOWER_MSG : undefined}
                         extra={contractAmountText && <span style={{ fontSize: 12, color: '#2563eb' }}>({contractAmountText})</span>}
                       >
                         <InputNumber
                           style={fieldStyle}
-                          min={0}
+                          min={contractFloor ?? 0}
                           precision={2}
                           formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                           parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
@@ -782,26 +861,44 @@ const WorkOrderCreatePage: React.FC = () => {
                   penalties={penalties}
                   onPenaltiesChange={setPenalties}
                   contractAmount={watchedContractAmount}
+                  advanceAmount={advanceAmount}
+                  advancePct={displayedAdvancePct}
                   // 7.1 เงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
                   advanceSlot={
                     <Row gutter={[16, 0]}>
+                      {/* Both values live in the form store; the Select below only edits them. */}
+                      <Form.Item name="advance_deduct_pct" hidden><InputNumber /></Form.Item>
+                      <Form.Item name="advance_deduct_amount" hidden><InputNumber /></Form.Item>
                       <Col {...FIELD_SPAN}>
-                        <Form.Item label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>} name="advance_deduct_pct" style={{ marginBottom: 0 }}>
+                        <Form.Item
+                          label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>}
+                          style={{ marginBottom: 0 }}
+                          extra={advancePctOption === undefined && advanceAmount > 0
+                            ? `สัดส่วนปัจจุบัน ${displayedAdvancePct.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% (คำนวณจากจำนวนเงินที่หัก)`
+                            : undefined}
+                        >
                           <Select
                             allowClear
                             style={fieldStyle}
-                            options={[
-                              ...ADVANCE_PCT_OPTIONS,
-                              // Saved value outside the offered list (e.g. 50) stays selectable so it isn't shown blank.
-                              ...(watchedAdvancePct != null && !ADVANCE_PCT_VALUES.includes(Number(watchedAdvancePct))
-                                ? [{ value: watchedAdvancePct, label: `${watchedAdvancePct}%` }]
-                                : []),
-                            ]}
+                            value={advancePctOption}
+                            options={ADVANCE_PCT_OPTIONS}
+                            onChange={(v?: number) => {
+                              const pct = Number(v) || 0
+                              form.setFieldsValue({
+                                advance_deduct_pct: pct,
+                                advance_deduct_amount: calcAdvanceAmount(contractBase, pct),
+                              })
+                            }}
                           />
                         </Form.Item>
                       </Col>
                       <Col {...FIELD_SPAN}>
-                        <Form.Item label={<span style={labelStyle}>จำนวนเงิน (บาท)</span>} style={{ marginBottom: 0 }}>
+                        <Form.Item
+                          label={<span style={labelStyle}>จำนวนเงิน (บาท)</span>}
+                          style={{ marginBottom: 0 }}
+                          validateStatus={advanceExceeds ? 'error' : undefined}
+                          help={advanceExceeds ? 'จำนวนเงินที่หักคืนเกินมูลค่าสัญญา' : undefined}
+                        >
                           <Input
                             style={fieldStyle}
                             readOnly
@@ -881,6 +978,7 @@ const WorkOrderCreatePage: React.FC = () => {
                         type="primary"
                         icon={<ArrowRightOutlined />}
                         loading={saving}
+                        disabled={advanceExceeds}
                         onClick={handleSaveHeader}
                         style={primaryStyle}
                       >
@@ -936,6 +1034,40 @@ const WorkOrderCreatePage: React.FC = () => {
                     onUseWhtChange={setUseWht}
                   />
                 </div>
+                {/* ผู้อนุมัติ — bottom of page 2 (below line items / totals, above the action bar); required only
+                    on submit for approval. Page 2 sits outside the page-1 <Form>, so this wraps the item in a
+                    non-rendering <Form component={false}> bound to the same form instance. */}
+                <Form form={form} component={false}>
+                  <div style={{ margin: '16px 24px 0' }}>
+                        <Row gutter={[16, 0]}>
+                          <Col xs={24}>
+                            <Form.Item label={<span style={labelStyle}>ผู้อนุมัติ</span>} name="approver_id" style={{ marginBottom: 0 }}>
+                              <Select
+                                allowClear
+                                style={fieldStyle}
+                                placeholder="- เลือกรายการ -"
+                                loading={approversLoading}
+                                showSearch
+                                filterOption={(input, option) => {
+                                  const q = input.toLowerCase()
+                                  const o = option as { label?: unknown; username?: string; name?: string } | undefined
+                                  return [o?.label, o?.username, o?.name].some((t) => String(t ?? '').toLowerCase().includes(q))
+                                }}
+                                optionRender={(option) => (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                    <span>{option.data.label}</span>
+                                    {option.data.dept && (
+                                      <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>
+                                    )}
+                                  </div>
+                                )}
+                                options={approvers}
+                              />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                  </div>
+                </Form>
                 {/* Action bar — footer of this card: print on the left; back / save draft / submit on the right. */}
                 <div style={{ ...barStyle, margin: '16px 24px 0', paddingBottom: 24 }}>
                   <div style={groupStyle}>{printTrigger}</div>
@@ -943,21 +1075,25 @@ const WorkOrderCreatePage: React.FC = () => {
                     <Button icon={<ArrowLeftOutlined />} style={{ borderRadius: 8 }} onClick={() => setActiveTab('header')}>
                       ย้อนกลับ
                     </Button>
-                    <PermissionButton
-                      menuCode={MENU_CODE}
-                      action="write"
-                      icon={<SaveOutlined />}
-                      loading={saving}
-                      onClick={() => handleSaveWithLines(false)}
-                    >
-                      บันทึกร่าง
-                    </PermissionButton>
+                    {!isEditApproved && (
+                      <PermissionButton
+                        menuCode={MENU_CODE}
+                        action="write"
+                        icon={<SaveOutlined />}
+                        loading={saving}
+                        disabled={advanceExceeds}
+                        onClick={() => handleSaveWithLines(false)}
+                      >
+                        บันทึกร่าง
+                      </PermissionButton>
+                    )}
                     <PermissionButton
                       menuCode={MENU_CODE}
                       action="write"
                       type="primary"
                       icon={<SendOutlined />}
                       loading={saving}
+                      disabled={advanceExceeds}
                       onClick={() => handleSaveWithLines(true)}
                       style={primaryStyle}
                     >

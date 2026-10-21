@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input,
@@ -192,7 +193,12 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   const [cancelModal, setCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [printData, setPrintData] = useState<MemoData | null>(null)
-  const [projects, setProjects] = useState<{ value: string; label: string }[]>([])
+  // Label lookup for old documents too: include CLOSED / INACTIVE projects.
+  const { projects: projectRows } = useProjectOptions({ include_closed: true, include_inactive: true })
+  const projects = useMemo(() => projectRows.map((p) => ({
+    value: p.project_code,
+    label: `${p.project_code} — ${p.project_name ?? ''}`,
+  })), [projectRows])
   // GET /master/job-types -> job_code -> job_name, for the Job label (non-critical).
   const [jobNames, setJobNames] = useState<Record<string, string>>({})
 
@@ -206,28 +212,6 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       .catch(() => { /* falls back to the bare job code */ })
   }, [])
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await axios.get(`${BASE_URL}/master/projects`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-        const raw = Array.isArray(res.data)
-          ? res.data
-          : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
-        setProjects(list.map((p: any) => ({
-          value: p.project_code,
-          label: p.project_code
-            ? `${p.project_code} — ${p.project_name ?? p.name ?? ''}`
-            : (p.project_name ?? p.name ?? String(p.id)),
-        })))
-      } catch {
-        // Non-critical — print falls back to the raw project_code if this fails.
-      }
-    }
-    fetchProjects()
-  }, [])
 
   const fetchMemo = async () => {
     setLoading(true)

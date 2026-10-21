@@ -116,37 +116,24 @@ export const permissionMatrixService = {
     const normalizeId = (v: unknown): number | null =>
       v === null || v === undefined ? null : Number(v)
 
+    // /menus returns a nested tree of any depth (root -> child -> grandchild ...);
+    // flatten it recursively so every level reaches the sidebar/permission code.
     const flat: PermMenu[] = []
-    for (const item of raw) {
-      if (import.meta.env.DEV && String(item.menu_code).startsWith('MENU_WO')) {
-        console.log(`[getMenus] ${item.menu_code} raw parent_id:`, item.parent_id, 'typeof:', typeof item.parent_id, '| raw id:', item.id, 'typeof:', typeof item.id)
-      }
-      flat.push({
-        id: normalizeId(item.id)!,
-        menu_code: item.menu_code,
-        menu_name: item.menu_name,
-        menu_path: item.menu_path,
-        parent_id: normalizeId(item.parent_id),
-        order: item.sort_order ?? 0,
-        is_active: item.is_active ?? true,
-      })
-      if (Array.isArray(item.children)) {
-        for (const child of item.children) {
-          if (import.meta.env.DEV && String(child.menu_code).startsWith('MENU_WO')) {
-            console.log(`[getMenus] ${child.menu_code} raw parent_id:`, child.parent_id, 'typeof:', typeof child.parent_id, '| raw id:', child.id, 'typeof:', typeof child.id)
-          }
-          flat.push({
-            id: normalizeId(child.id)!,
-            menu_code: child.menu_code,
-            menu_name: child.menu_name,
-            menu_path: child.menu_path,
-            parent_id: normalizeId(child.parent_id),
-            order: child.sort_order ?? 0,
-            is_active: child.is_active ?? true,
-          })
-        }
+    const walk = (items: any[]) => {
+      for (const item of items) {
+        flat.push({
+          id: normalizeId(item.id)!,
+          menu_code: item.menu_code,
+          menu_name: item.menu_name,
+          menu_path: item.menu_path,
+          parent_id: normalizeId(item.parent_id),
+          order: item.sort_order ?? 0,
+          is_active: item.is_active ?? true,
+        })
+        if (Array.isArray(item.children)) walk(item.children)
       }
     }
+    walk(raw)
     return flat
   },
 

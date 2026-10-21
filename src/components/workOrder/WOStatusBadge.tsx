@@ -7,6 +7,7 @@ import type { WOStatus } from '@/types/workOrder'
 const statusMap: Record<WOStatus, { color: string; label: string }> = {
   DRAFT: { color: 'default', label: 'แบบร่าง' },
   PENDING_APPROVAL: { color: 'processing', label: 'รออนุมัติ' },
+  PENDING_REAPPROVAL: { color: 'warning', label: 'รออนุมัติใหม่' },
   APPROVED: { color: 'success', label: 'อนุมัติแล้ว' },
   REJECTED: { color: 'error', label: 'ไม่อนุมัติ' },
   CANCELLED: { color: 'default', label: 'ยกเลิก' },

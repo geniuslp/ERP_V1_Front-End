@@ -1,4 +1,4 @@
-export type WOStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type WOStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'PENDING_REAPPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
 export type WOContractType = 'LABOR_MATERIAL' | 'LABOR_ONLY' | 'RENTAL' | 'SERVICE'
 
@@ -93,6 +93,8 @@ export interface WOListItem {
   supplier_name?: string
   contract_amount: number
   status: WOStatus
+  // How many times this WO was edited-and-resent after approval; 0/undefined = original.
+  revision_round?: number
   created_by_name?: string
   created_at: string
   updated_at: string
@@ -132,6 +134,7 @@ export interface WorkOrder {
   progress_payment_note?: string
   retention_pct?: number
   advance_deduct_pct?: number
+  advance_deduct_amount?: number
   other_deduction_note?: string
 
   start_date?: string
@@ -151,6 +154,7 @@ export interface WorkOrder {
   other_terms?: string
 
   status: WOStatus
+  revision_round?: number
   approver_id?: number
   approver_name?: string
   approved_at?: string
@@ -231,6 +235,6 @@ export interface WOListResult {
 // Everything the create/edit form collects, sent as-is to POST/PUT /work-order.
 export type WorkOrderPayload = Omit<
   WorkOrder,
-  'id' | 'status' | 'approver_id' | 'approver_name' | 'approved_at' | 'rejected_reason' |
+  'id' | 'status' | 'revision_round' | 'approver_name' | 'approved_at' | 'rejected_reason' |
   'created_by_name' | 'created_at' | 'updated_at' | 'supplier_name' | 'supplier_code' | 'project_name'
 >

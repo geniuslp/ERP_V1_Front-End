@@ -62,6 +62,12 @@ export const workOrderService = {
     return res.data?.data ?? res.data
   },
 
+  // Edit after approval: reason is mandatory; backend moves the WO to PENDING_REAPPROVAL.
+  editApproved: async (token: string, id: string | number, payload: Partial<WorkOrderPayload>, reason: string): Promise<WorkOrder> => {
+    const res = await axios.put(`${BASE_URL}/work-order/${id}/edit-approved`, { ...payload, reason }, { headers: authHeader(token) })
+    return res.data?.data ?? res.data
+  },
+
   approve: async (token: string, id: string | number): Promise<void> => {
     await axios.post(`${BASE_URL}/work-order/${id}/approve`, {}, { headers: authHeader(token) })
   },
