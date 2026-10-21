@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Table, Input, Select, Row, Col, Typography, Modal, Space, Tag, Spin, message } from 'antd'
+import React, { useEffect, useRef, useState } from 'react'
+import { Card, Table, Input, Select, Row, Col, Typography, Modal, Space, Tag, Spin, Tooltip, message } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { poApprovalService } from '@/services/poApprovalService'
@@ -23,13 +25,47 @@ const cardStyle: React.CSSProperties = {
 const thb = (n?: number) =>
   (n ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+interface CostBreakdown {
+  po: number
+  wo: number
+  petty_cash: number
+}
+
+// Row of GET /project-overview (backend-confirmed contract).
 interface ProjectOverviewRow {
   project_code: string
   project_name: string
-  budget_amount: number
-  spent_amount: number
-  remaining_amount: number
+  customer_name?: string | null
+  contract_budget: number
+  pu_cost: number
+  pu_balance: number
+  ac_cost: number
+  ac_balance: number
+  usage_pct: number | null
+  status: string
+  status_label: string
+  pu_breakdown?: CostBreakdown
+  ac_breakdown?: CostBreakdown
 }
+
+const STATUS_COLOR: Record<string, string> = {
+  NORMAL: 'green',
+  NEAR_LIMIT: 'orange',
+  OVER_BUDGET: 'red',
+  NO_BUDGET: 'default',
+  CLOSED: 'blue',
+  INACTIVE: 'default',
+}
+
+// The default list hides INACTIVE; it is only returned when status=INACTIVE is passed.
+const STATUS_OPTIONS = [
+  { value: 'NORMAL', label: 'ปกติ' },
+  { value: 'NEAR_LIMIT', label: 'ใกล้เต็มงบ' },
+  { value: 'OVER_BUDGET', label: 'เกินงบ' },
+  { value: 'NO_BUDGET', label: 'ไม่มีงบ' },
+  { value: 'CLOSED', label: 'ปิดโครงการ' },
+  { value: 'INACTIVE', label: 'ไม่ใช้งาน' },
+]
 
 // Level-2 data cached per project_code once its row is first expanded — the
 // PO list (GET /po/line-items) and this project's paid_amount (summed from
@@ -55,7 +91,86 @@ interface SearchResultItem {
   mat_name?: string
 }
 
+// Same react-resizable pattern as POStatusPage.tsx (copied locally, there is no shared
+// component): only header cells that receive width/onResize get a drag handle.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) {
+    return <th {...restProps} />
+  }
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[MIN_COL_WIDTH, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
+const MIN_COL_WIDTH = 80
+const EXPAND_COL_WIDTH = 48
+const COL_WIDTHS_STORAGE_KEY = 'project-overview.col-widths'
+const DEFAULT_COL_WIDTHS: Record<string, number> = {
+  project: 280,
+  customer_name: 200,
+  contract_budget: 150,
+  pu_cost: 140,
+  pu_balance: 140,
+  ac_cost: 140,
+  ac_balance: 140,
+  status: 150,
+}
+
+// Per-viewer convenience only — any storage failure falls back to the defaults.
+const loadColWidths = (): Record<string, number> => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COL_WIDTHS_STORAGE_KEY) ?? 'null')
+    if (saved && typeof saved === 'object') {
+      const merged = { ...DEFAULT_COL_WIDTHS }
+      for (const k of Object.keys(merged)) {
+        if (typeof saved[k] === 'number' && saved[k] >= MIN_COL_WIDTH) merged[k] = saved[k]
+      }
+      return merged
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_COL_WIDTHS }
+}
+
 const ProjectOverviewPage: React.FC = () => {
+  const [colWidths, setColWidths] = useState<Record<string, number>>(loadColWidths)
+  const handleColResize =
+    (key: string) =>
+    (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+      const width = Math.max(MIN_COL_WIDTH, Math.round(data.size.width))
+      setColWidths((prev) => {
+        const next = { ...prev, [key]: width }
+        try {
+          localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+    }
+
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
 
   const [projects, setProjects] = useState<ProjectOverviewRow[]>([])
@@ -83,28 +198,31 @@ const ProjectOverviewPage: React.FC = () => {
     po: null,
   })
 
+  // Server-side search / status filter / pagination — GET /project-overview.
+  const [tableSearchInput, setTableSearchInput] = useState('')
+  const [tableSearch, setTableSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const tableSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const fetchProjects = async () => {
     setLoading(true)
     try {
-      const res = await axios.get(`${BASE_URL}/master/projects`, {
+      const res = await axios.get(`${BASE_URL}/project-overview`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        // Fetched in one batch and paginated client-side (Table's own
-        // pagination below) — same convention as ProjectListPage.tsx — so the
-        // StatCard totals below can sum across every project, not just the
-        // current visible page.
-        params: { page_size: 1000 },
+        params: {
+          search: tableSearch || undefined,
+          status: statusFilter || undefined,
+          page,
+          page_size: pageSize,
+        },
       })
-      const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-      const list = Array.isArray(raw) ? raw : []
-      setProjects(
-        list.map((p: any) => ({
-          project_code: p.project_code,
-          project_name: p.project_name ?? p.name ?? '',
-          budget_amount: p.budget_amount ?? 0,
-          spent_amount: p.spent_amount ?? 0,
-          remaining_amount: p.remaining_amount ?? 0,
-        })),
-      )
+      const payload = res.data?.data ?? res.data
+      const list = Array.isArray(payload) ? payload : payload?.data ?? []
+      setProjects(Array.isArray(list) ? list : [])
+      setTotal(payload?.total ?? (Array.isArray(list) ? list.length : 0))
     } catch (err: any) {
       message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลโครงการไม่สำเร็จ')
     } finally {
@@ -115,40 +233,22 @@ const ProjectOverviewPage: React.FC = () => {
   useEffect(() => {
     fetchProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [tableSearch, statusFilter, page, pageSize])
 
-  // budget/spent/remaining only — paid_amount is deliberately excluded here
-  // per decision: it's only available per-project once that row's PO list is
-  // lazy-loaded (fetchProjectPOs), so there's no cheap way to sum it across
-  // every project up front without loading all of them immediately.
-  const totals = useMemo(
-    () =>
-      projects.reduce(
-        (acc, p) => ({
-          budget: acc.budget + p.budget_amount,
-          spent: acc.spent + p.spent_amount,
-          remaining: acc.remaining + p.remaining_amount,
-        }),
-        { budget: 0, spent: 0, remaining: 0 },
-      ),
-    [projects],
-  )
+  const handleTableSearchChange = (value: string) => {
+    setTableSearchInput(value)
+    if (tableSearchRef.current) clearTimeout(tableSearchRef.current)
+    tableSearchRef.current = setTimeout(() => {
+      setTableSearch(value.trim())
+      setPage(1)
+    }, 400)
+  }
 
-  // Client-side project filter for the level-1 table only — separate from
-  // handleSearchInputChange's cross-entity search below. This dropdown never
-  // hits the API; it just narrows which already-loaded `projects` rows are
-  // shown. The search bar, by contrast, queries GET /project-overview/search
-  // across projects/POs/materials and jumps to/opens a result rather than
-  // filtering this table's rows. The two are intentionally independent —
-  // clearing one has no effect on the other.
-  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined)
-  const projectFilterOptions = useMemo(
-    () => projects.map((p) => ({ value: p.project_code, label: `${p.project_code} — ${p.project_name}` })),
-    [projects],
-  )
-  const filteredProjects = useMemo(
-    () => (projectFilter ? projects.filter((p) => p.project_code === projectFilter) : projects),
-    [projects, projectFilter],
+  useEffect(
+    () => () => {
+      if (tableSearchRef.current) clearTimeout(tableSearchRef.current)
+    },
+    [],
   )
 
   const fetchProjectPOs = async (projectCode: string) => {
@@ -267,10 +367,16 @@ const ProjectOverviewPage: React.FC = () => {
   const handleResultClick = (item: SearchResultItem) => {
     if (item.type === 'project' && item.project_code) {
       const code = item.project_code
-      // Clear the project filter first if it's narrowed to a different
-      // project — otherwise the clicked project's row wouldn't be rendered
-      // at all and the scroll-into-view below would silently find nothing.
-      setProjectFilter((prev) => (prev && prev !== code ? undefined : prev))
+      // The table is server-paginated, so the clicked project may not be on the
+      // current page — narrow the table to it (and drop the status filter, which
+      // could hide it) before expanding and scrolling.
+      if (tableSearch !== code || statusFilter) {
+        if (tableSearchRef.current) clearTimeout(tableSearchRef.current)
+        setTableSearchInput(code)
+        setTableSearch(code)
+        setStatusFilter(undefined)
+        setPage(1)
+      }
       setExpandedProjectKeys((prev) => (prev.includes(code) ? prev : [...prev, code]))
       fetchProjectPOs(code)
       // Scroll to the row once it's rendered — the row may already be on
@@ -333,39 +439,117 @@ const ProjectOverviewPage: React.FC = () => {
     },
   ]
 
-  const projectColumns: ColumnsType<ProjectOverviewRow> = [
-    { title: 'รหัสโครงการ', dataIndex: 'project_code', key: 'project_code' },
-    { title: 'ชื่อโครงการ', dataIndex: 'project_name', key: 'project_name', ellipsis: true },
+  const breakdownTip = (b?: CostBreakdown) =>
+    b ? (
+      <div>
+        <div>PO: {thb(b.po)}</div>
+        <div>WO: {thb(b.wo)}</div>
+        <div>Petty Cash: {thb(b.petty_cash)}</div>
+      </div>
+    ) : undefined
+
+  const balanceCell = (v: number) => (
+    <span style={{ fontWeight: 600, color: v < 0 ? '#dc2626' : undefined }}>{thb(v)}</span>
+  )
+
+  // Widths are overridden from `colWidths` state below (baseColumns -> projectColumns).
+  const baseColumns: ColumnsType<ProjectOverviewRow> = [
     {
-      title: 'งบประมาณ',
-      dataIndex: 'budget_amount',
-      key: 'budget_amount',
+      title: 'รหัสโครงการ / ชื่อโครงการ',
+      key: 'project',
+      fixed: 'left',
+      ellipsis: true,
+      // On-screen convention: "{code} {name}", single space, no dash.
+      render: (_: unknown, r) => [r.project_code, r.project_name].filter(Boolean).join(' '),
+    },
+    {
+      title: 'ลูกค้า',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      ellipsis: true,
+      render: (v?: string | null) => v || '-',
+    },
+    {
+      title: 'Contract Budget',
+      dataIndex: 'contract_budget',
+      key: 'contract_budget',
+      width: 150,
       align: 'right',
       render: (v: number) => thb(v),
     },
     {
-      title: 'ใช้ไปแล้ว',
-      dataIndex: 'spent_amount',
-      key: 'spent_amount',
+      title: 'Pu.Cost',
+      dataIndex: 'pu_cost',
+      key: 'pu_cost',
+      width: 150,
       align: 'right',
-      render: (v: number) => thb(v),
+      render: (v: number, r) => (
+        <Tooltip title={breakdownTip(r.pu_breakdown)}>
+          <div>
+            <div>{thb(v)}</div>
+            {r.usage_pct != null && (
+              <div style={{ fontSize: 11, color: '#64748b' }}>{r.usage_pct.toFixed(2)}%</div>
+            )}
+          </div>
+        </Tooltip>
+      ),
     },
     {
-      title: 'คงเหลือ',
-      dataIndex: 'remaining_amount',
-      key: 'remaining_amount',
+      title: 'Pu.Balance',
+      dataIndex: 'pu_balance',
+      key: 'pu_balance',
+      width: 150,
       align: 'right',
-      render: (v: number) => (
-        <span style={{ fontWeight: 600, color: v < 0 ? '#dc2626' : '#16a34a' }}>{thb(v)}</span>
+      render: balanceCell,
+    },
+    {
+      title: 'Ac.Cost',
+      dataIndex: 'ac_cost',
+      key: 'ac_cost',
+      width: 150,
+      align: 'right',
+      render: (v: number, r) => (
+        <Tooltip title={breakdownTip(r.ac_breakdown)}>
+          <span>{thb(v)}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: 'Ac.Balance',
+      dataIndex: 'ac_balance',
+      key: 'ac_balance',
+      width: 150,
+      align: 'right',
+      render: balanceCell,
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (v: string, r) => (
+        <Tag color={STATUS_COLOR[v] ?? 'default'} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+          {r.status_label}
+        </Tag>
       ),
     },
   ]
 
-  const statCards = [
-    { label: 'งบประมาณรวม', value: totals.budget, color: '#2563eb' },
-    { label: 'ใช้ไปแล้วรวม', value: totals.spent, color: '#d97706' },
-    { label: 'คงเหลือรวม', value: totals.remaining, color: totals.remaining < 0 ? '#dc2626' : '#16a34a' },
-  ]
+  // Every column is drag-resizable; widths live in state (and localStorage) so they survive
+  // paging/search/filter reloads. Status gets extra left padding (cells + header) so its
+  // left-aligned tag doesn't touch the right-aligned Ac.Balance numbers.
+  const projectColumns: ColumnsType<ProjectOverviewRow> = baseColumns.map((col) => {
+    const key = String(col.key)
+    const width = colWidths[key]
+    const pad: React.CSSProperties | undefined = key === 'status' ? { paddingLeft: 24 } : undefined
+    return {
+      ...col,
+      width,
+      onHeaderCell: () =>
+        ({ width, onResize: handleColResize(key), style: pad }) as React.HTMLAttributes<HTMLElement>,
+      onCell: pad ? () => ({ style: pad }) : undefined,
+    }
+  })
+  const tableScrollX = Object.values(colWidths).reduce((a, b) => a + b, 0) + EXPAND_COL_WIDTH
 
   return (
     <div>
@@ -375,39 +559,38 @@ const ProjectOverviewPage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'ภาพรวมโครงการ' }]}
       />
 
-      <Row gutter={16} style={{ marginBottom: 20 }}>
-        {statCards.map((c) => (
-          <Col xs={24} sm={8} key={c.label}>
-            <Card style={cardStyle} bodyStyle={{ padding: 20 }}>
-              <Typography.Text style={{ color: '#64748b', fontSize: 12 }}>{c.label}</Typography.Text>
-              <div style={{ fontSize: 22, fontWeight: 700, color: c.color, marginTop: 4 }}>
-                {thb(c.value)} บาท
-              </div>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
       <Card style={{ ...cardStyle, marginBottom: 20 }}>
         <Row gutter={16}>
-          <Col xs={24} md={10}>
+          <Col xs={24} md={8}>
             <Typography.Text style={{ display: 'block', marginBottom: 8, color: '#374151' }}>
-              กรองตามโครงการ
+              ค้นหาโครงการ
             </Typography.Text>
-            <Select
-              placeholder="- ดูทุกโครงการ -"
-              style={{ width: '100%' }}
-              value={projectFilter}
-              onChange={(v) => setProjectFilter(v ?? undefined)}
+            <Input
+              placeholder="รหัสหรือชื่อโครงการ..."
+              prefix={<SearchOutlined />}
+              value={tableSearchInput}
+              onChange={(e) => handleTableSearchChange(e.target.value)}
               allowClear
-              showSearch
-              filterOption={(input, option) =>
-                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              options={projectFilterOptions}
+              style={{ width: '100%' }}
             />
           </Col>
-          <Col xs={24} md={14}>
+          <Col xs={24} md={6}>
+            <Typography.Text style={{ display: 'block', marginBottom: 8, color: '#374151' }}>
+              สถานะ
+            </Typography.Text>
+            <Select
+              placeholder="- ทุกสถานะ (ไม่รวมไม่ใช้งาน) -"
+              style={{ width: '100%' }}
+              value={statusFilter}
+              onChange={(v) => {
+                setStatusFilter(v ?? undefined)
+                setPage(1)
+              }}
+              allowClear
+              options={STATUS_OPTIONS}
+            />
+          </Col>
+          <Col xs={24} md={10}>
             <Typography.Text style={{ display: 'block', marginBottom: 8, color: '#374151' }}>
               ค้นหาข้ามโครงการ/PO/วัสดุ
             </Typography.Text>
@@ -473,14 +656,27 @@ const ProjectOverviewPage: React.FC = () => {
         <Table
           rowKey="project_code"
           loading={loading}
-          dataSource={filteredProjects}
+          dataSource={projects}
           columns={projectColumns}
+          components={{ header: { cell: ResizableTitle } }}
           size="middle"
-          scroll={{ x: 'max-content' }}
+          scroll={{ x: tableScrollX }}
           locale={{ emptyText: 'ไม่พบข้อมูลโครงการ' }}
-          pagination={{ pageSize: 20, showTotal: (t) => `ทั้งหมด ${t} โครงการ` }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            pageSizeOptions: [20, 50, 100, 200],
+            showTotal: (t) => `ทั้งหมด ${t} โครงการ`,
+            onChange: (p, ps) => {
+              setPage(p)
+              setPageSize(ps)
+            },
+          }}
           onRow={(record) => ({ id: `project-row-${record.project_code}` } as React.HTMLAttributes<HTMLElement>)}
           expandable={{
+            fixed: 'left',
             expandedRowKeys: expandedProjectKeys,
             onExpandedRowsChange: (keys) => setExpandedProjectKeys(keys as React.Key[]),
             onExpand: (expanded, record) => {
