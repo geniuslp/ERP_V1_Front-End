@@ -14,6 +14,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import MemoStatusBadge from './components/MemoStatusBadge'
 import { ROUTES } from '@/config/routes'
+import { handleApprovalForbidden } from '@/utils/approvalAccess'
 import { useAppSelector } from '@/store'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import MemoPrint, { type MemoData } from './MemoPrint'
@@ -218,10 +219,16 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
     try {
       const res = await axios.get(`${BASE_URL}/memo/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        // Only the approval route (showApproveActions) asks the backend to enforce approver scoping.
+        params: showApproveActions ? { for_approval: true } : undefined,
       })
       const raw = res.data?.data ?? res.data
       setMemo(mapMemo(raw))
     } catch (err: any) {
+      if (showApproveActions && handleApprovalForbidden(err)) {
+        navigate(ROUTES.MEMO.APPROVAL, { replace: true })
+        return
+      }
       message.error(
         err?.response?.data?.message || err?.response?.data?.error || err?.message || 'โหลดข้อมูลใบบันทึกขอซื้อ (Memo) ไม่สำเร็จ'
       )

@@ -37,6 +37,7 @@ export const workOrderService = {
         employer_name: params.employer_name || undefined,
         supplier: params.supplier || undefined,
         status: params.status || undefined,
+        my_approvals: params.my_approvals ? true : undefined,
         date_from: params.date_from || undefined,
         date_to: params.date_to || undefined,
         page,
@@ -47,8 +48,12 @@ export const workOrderService = {
     return { items: unwrapListEnvelope(res.data) as WOListItem[], ...meta }
   },
 
-  get: async (token: string, id: string | number): Promise<WorkOrder> => {
-    const res = await axios.get(`${BASE_URL}/work-order/${id}`, { headers: authHeader(token) })
+  // forApproval: only the approval detail view sets it (backend 403s non-assigned approvers).
+  get: async (token: string, id: string | number, opts: { forApproval?: boolean } = {}): Promise<WorkOrder> => {
+    const res = await axios.get(`${BASE_URL}/work-order/${id}`, {
+      headers: authHeader(token),
+      params: opts.forApproval ? { for_approval: true } : undefined,
+    })
     return res.data?.data ?? res.data
   },
 

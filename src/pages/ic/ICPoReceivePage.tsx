@@ -63,6 +63,7 @@ const ICPoReceivePage: React.FC = () => {
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
 
+  const [refreshKey, setRefreshKey] = useState(0)
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -158,16 +159,13 @@ const ICPoReceivePage: React.FC = () => {
         const payload = res.data?.data ?? res.data
         const raw = Array.isArray(payload) ? payload : payload?.data ?? []
         const list: ICPoRow[] = Array.isArray(raw) ? raw : []
-        console.log('[ICPoReceivePage] DEBUG first raw row', list[0], 'keys:', list[0] && Object.keys(list[0]))
-        // Restrict matching to the selected mode's own field (backend `search` may cover both).
-        const field: 'po_no' | 'pr_no' = mode === 'PO' ? 'po_no' : 'pr_no'
-        const needle = search.toLowerCase()
-        const scoped = list.filter((r) => String(r[field] ?? '').toLowerCase().includes(needle))
+        // The server decides what matches (APPROVED, not deleted; a PR search also matches PRs linked
+        // through PO lines), so the rows are shown as returned.
         if (!cancelled) {
-          setRows(scoped)
+          setRows(list)
           // Reload: drop the selection if that PO is no longer in the list.
-          setSelectedRow((prev) => (prev && scoped.some((r) => r.po_id === prev.po_id) ? prev : null))
-          setTotal(scoped.length === list.length ? payload?.total ?? scoped.length : scoped.length)
+          setSelectedRow((prev) => (prev && list.some((r) => r.po_id === prev.po_id) ? prev : null))
+          setTotal(payload?.total ?? list.length)
         }
       } catch (err: any) {
         if (!cancelled) message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
@@ -180,7 +178,7 @@ const ICPoReceivePage: React.FC = () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, mode, search, onlyCompleted, page, pageSize])
+  }, [project, mode, search, onlyCompleted, page, pageSize, refreshKey])
 
   const resetSelection = () => {
     setPage(1)
@@ -230,6 +228,9 @@ const ICPoReceivePage: React.FC = () => {
     setModalOpen(false)
     setReturnOpen(false)
     setSelectedPoId(null)
+    // Reload the list: a save changes receive status, and a PO that is no longer APPROVED (the
+    // backend's 400 guard) drops out of it.
+    setRefreshKey((k) => k + 1)
   }
 
   const actionsDisabled = !selectedRow
@@ -374,6 +375,13 @@ const ICPoReceivePage: React.FC = () => {
               value={pickedNo}
               onChange={handlePickedChange}
               options={mode === 'PO' ? poOptions : prOptions}
+              notFoundContent={
+                (mode === 'PO' ? poOptions : prOptions).length === 0
+                  ? mode === 'PO'
+                    ? 'ไม่มีใบสั่งซื้อที่อนุมัติแล้วในโครงการนี้'
+                    : 'ไม่มี PR ที่ถูกสร้างเป็น PO ครบแล้วในโครงการนี้'
+                  : 'ไม่พบข้อมูล'
+              }
               style={{ width: 240 }}
               filterOption={(input, option) =>
                 String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -401,6 +409,10 @@ const ICPoReceivePage: React.FC = () => {
             </Button>
           </Space>
         </div>
+
+        <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: -8, marginBottom: 16 }}>
+          แสดงเฉพาะ PO ที่อนุมัติแล้ว / PR ที่สร้าง PO ครบแล้ว
+        </Typography.Text>
 
         {!search ? (
           <Empty description="กรุณาเลือกหรือกรอกเลขที่ PO / PR เพื่อค้นหา" />

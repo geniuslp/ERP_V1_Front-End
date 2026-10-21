@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { formatApproverOption } from '@/utils/formatApproverOption'
+import { VO_NAME_PREFIX, buildVoName, stripVoPrefix } from '@/constants/projectName'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -41,6 +42,24 @@ const cardStyle: React.CSSProperties = {
 const cardTitleStyle: React.CSSProperties = {
   fontSize: 13, fontWeight: 600, color: '#1e40af',
   textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+
+// Form.Item child: the form value is always the full name. For VO the prefix is a read-only addon
+// and only the text after it is editable. A stored VO name without the prefix is shown as-is and
+// only gets the prefix once the user edits it (or switches the kind).
+const ProjectNameInput: React.FC<{ value?: string; onChange?: (v: string) => void; kind: 'NEW' | 'VO' }> = ({
+  value, onChange, kind,
+}) => {
+  if (kind !== 'VO') {
+    return <Input value={value} onChange={(e) => onChange?.(e.target.value)} />
+  }
+  return (
+    <Input
+      prefix={<span style={{ whiteSpace: 'pre', userSelect: 'none', color: '#64748b' }}>{VO_NAME_PREFIX}</span>}
+      value={stripVoPrefix(value ?? '')}
+      onChange={(e) => onChange?.(buildVoName(e.target.value))}
+    />
+  )
 }
 
 const ProjectCreateEditPage: React.FC = () => {
@@ -227,6 +246,14 @@ const ProjectCreateEditPage: React.FC = () => {
     fetchProject()
   }, [id])
 
+  // NEW -> VO adds the locked prefix and keeps the typed text; VO -> NEW removes it and keeps the rest.
+  const handleKindChange = (kind: 'NEW' | 'VO') => {
+    const current = String(form.getFieldValue('project_name') ?? '')
+    const next = kind === 'VO' ? buildVoName(current) : stripVoPrefix(current)
+    if (next !== current) form.setFieldsValue({ project_name: next })
+    if (form.isFieldTouched('project_name')) form.validateFields(['project_name']).catch(() => undefined)
+  }
+
   const handleSave = async () => {
     let values
     try {
@@ -383,9 +410,17 @@ const ProjectCreateEditPage: React.FC = () => {
               <Form.Item
                 label="ชื่อโครงการ"
                 name="project_name"
-                rules={[{ required: true, message: 'กรุณากรอกชื่อโครงการ' }]}
+                rules={[{
+                  validator: (_, v) => {
+                    const s = String(v ?? '')
+                    if (projectKind === 'VO') {
+                      return stripVoPrefix(s).trim() ? Promise.resolve() : Promise.reject(new Error('กรุณากรอกชื่อโครงการต่อจาก Q -'))
+                    }
+                    return s.trim() ? Promise.resolve() : Promise.reject(new Error('กรุณากรอกชื่อโครงการ'))
+                  },
+                }]}
               >
-                <Input />
+                <ProjectNameInput kind={projectKind} />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>
@@ -411,6 +446,7 @@ const ProjectCreateEditPage: React.FC = () => {
             <Col md={12} xs={24}>
               <Form.Item label="ประเภทโครงการ" name="project_kind">
                 <Select
+                  onChange={handleKindChange}
                   options={[
                     { value: 'NEW', label: 'โครงการใหม่' },
                     { value: 'VO',  label: 'งานเพิ่ม (VO)' },

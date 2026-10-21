@@ -7,6 +7,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { WOListItem } from '@/types/workOrder'
 
@@ -43,8 +44,12 @@ const WorkOrderApprovalListPage: React.FC = () => {
   const fetchList = async () => {
     setLoading(true)
     try {
+      // The default "รออนุมัติ" view includes re-approvals (comma-separated status is supported).
       const result = await workOrderService.list(accessToken, {
-        status: statusFilter || undefined,
+        status: statusFilter === 'PENDING_APPROVAL'
+          ? 'PENDING_APPROVAL,PENDING_REAPPROVAL'
+          : statusFilter || undefined,
+        my_approvals: true,
         page,
         page_size: 20,
       })
@@ -79,7 +84,7 @@ const WorkOrderApprovalListPage: React.FC = () => {
     {
       title: '', key: 'action', width: 140,
       render: (_: unknown, record: WOListItem) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/work-order/${record.id}`) }}>
+        <Button size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); navigate(`/work-order/${record.id}?${FOR_APPROVAL_QUERY}`) }}>
           ดูรายละเอียด
         </Button>
       ),
@@ -133,9 +138,10 @@ const WorkOrderApprovalListPage: React.FC = () => {
             showSizeChanger: false,
           }}
           onRow={(record) => ({
-            onClick: () => navigate(`/work-order/${record.id}`),
+            onClick: () => navigate(`/work-order/${record.id}?${FOR_APPROVAL_QUERY}`),
             style: { cursor: 'pointer' },
           })}
+          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
           scroll={{ x: 900 }}
           size="small"
         />

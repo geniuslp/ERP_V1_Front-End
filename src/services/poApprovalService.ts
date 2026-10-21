@@ -25,6 +25,8 @@ export const poApprovalService = {
       // size-changer as fully broken.
       page_size?: number
       my?: boolean
+      // Approval list only: restrict to documents assigned to the current approver.
+      my_approvals?: boolean
       po_no?: string
       supplier?: string
       created_by_name?: string
@@ -36,9 +38,11 @@ export const poApprovalService = {
       params,
     }),
 
-  getDetail: (token: string, id: number | string) =>
+  // forApproval: only the approval detail page sets it (backend 403s non-assigned approvers).
+  getDetail: (token: string, id: number | string, opts: { forApproval?: boolean } = {}) =>
     axios.get<PODetailResponse>(`${BASE_URL}/po/${id}`, {
       headers: authHeader(token),
+      params: opts.forApproval ? { for_approval: true } : undefined,
     }),
 
   approve: (token: string, id: number | string) =>

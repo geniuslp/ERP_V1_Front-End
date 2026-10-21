@@ -26,6 +26,66 @@ body {
   border-radius: 8px;
 }
 
+/* Sidebar: long menu_name values wrap onto up to 2 lines (ellipsis + native title tooltip beyond
+   that) instead of being cut off. Scoped to .erp-sidebar-menu and skipped in icon-only collapsed
+   mode, so no other antd Menu changes. */
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-item,
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-submenu-title {
+  height: auto;
+  min-height: 40px;
+  line-height: 1.3;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  display: flex;
+  align-items: center;
+  white-space: normal;
+}
+
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-submenu-title {
+  padding-inline-end: 36px; /* keep wrapped text clear of the absolutely-positioned arrow */
+}
+
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-item .ant-menu-item-icon,
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-submenu-title .ant-menu-item-icon {
+  flex-shrink: 0;
+}
+
+.erp-sidebar-menu.ant-menu-inline:not(.ant-menu-inline-collapsed) .ant-menu-title-content {
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Sidebar 'blue' colour variant (see MENU_COLOR_GROUPS in SidebarMenu.tsx). The class is only emitted
+   by the sidebar, and also reaches the collapsed-mode popup menus. #60A5FA on the #0f2d5e sidebar is
+   ~5.4:1 (AA); the brand #2563EB would be ~2.2:1 there. Selected keeps the shared gradient + white
+   text, with a brighter bar, so it differs from the plain blue state. */
+.ant-menu-dark .ant-menu-item.erp-menu-blue,
+.ant-menu-dark .ant-menu-submenu.erp-menu-blue > .ant-menu-submenu-title {
+  color: #60a5fa;
+  box-shadow: inset 3px 0 0 #60a5fa;
+}
+.ant-menu-dark .ant-menu-item.erp-menu-blue a { color: inherit; }
+.ant-menu-dark .ant-menu-item.erp-menu-blue:not(.ant-menu-item-selected):hover,
+.ant-menu-dark .ant-menu-submenu.erp-menu-blue > .ant-menu-submenu-title:hover {
+  background: rgba(96, 165, 250, 0.14) !important;
+  color: #93c5fd;
+}
+.ant-menu-dark .ant-menu-item.erp-menu-blue.ant-menu-item-selected {
+  color: #fff;
+  box-shadow: inset 3px 0 0 #93c5fd;
+}
+
+/* Header logo + title link: only a subtle opacity change on hover/focus. */
+.erp-brand-link { transition: opacity 0.15s; }
+.erp-brand-link:hover,
+.erp-brand-link:focus-visible { opacity: 0.85; }
+
 .ant-table-tbody > tr:hover > td {
   background: #eff6ff !important;
 }

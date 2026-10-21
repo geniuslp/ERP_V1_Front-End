@@ -218,6 +218,8 @@ export interface WOListParams {
   employer_name?: string
   supplier?: string
   status?: string
+  // Approval list only: restrict to documents assigned to the current approver.
+  my_approvals?: boolean
   date_from?: string
   date_to?: string
   page?: number

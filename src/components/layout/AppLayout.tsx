@@ -4,13 +4,14 @@ import {
   BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined,
 } from '@ant-design/icons'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
 import SidebarMenu from './SidebarMenu'
 import BrandLogo from '@/components/common/BrandLogo'
 import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
+import { useMyPendingApprovalCount } from '@/hooks/useMyPendingApprovalCount'
 
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
@@ -30,6 +31,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { user } = useAppSelector((state) => state.auth)
   const screens = useBreakpoint()
   const isMobile = screens.md === false
+  const pendingCounts = useMyPendingApprovalCount(location.pathname)
 
   // Auto-close the mobile drawer whenever the route changes (nav-item click)
   React.useEffect(() => {
@@ -59,15 +61,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       borderBottom: '1px solid rgba(255,255,255,0.08)',
       gap: 10,
     }}>
-      <BrandLogo variant={collapsedState ? 'sidebar-collapsed' : 'sidebar'} />
-      {!collapsedState && (
-        <div style={{ minWidth: 0, overflow: 'hidden' }}>
-          <div style={{
-            color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>ERP System</div>
-        </div>
-      )}
+      {/* Logo + title are one link to the home route ("/", the dashboard — same for every role). */}
+      <Link
+        to="/"
+        className="erp-brand-link"
+        title="กลับหน้าหลัก"
+        aria-label="กลับหน้าหลัก"
+        style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
+      >
+        <BrandLogo variant={collapsedState ? 'sidebar-collapsed' : 'sidebar'} />
+        {!collapsedState && (
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <div style={{
+              color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>ERP System</div>
+          </div>
+        )}
+      </Link>
     </div>
   )
 
@@ -154,7 +165,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, flexShrink: 0 }}>
-            <Badge count={3} size="small">
+            <Badge count={pendingCounts.total} size="small" overflowCount={99}>
               <Button type="text" icon={<BellOutlined style={{ fontSize: 18, color: '#1d4ed8' }} />} />
             </Badge>
 

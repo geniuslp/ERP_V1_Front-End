@@ -7,7 +7,7 @@ import {
   CheckCircleOutlined, DatabaseOutlined, SwapOutlined, ExportOutlined,
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
-  DollarOutlined, CalculatorOutlined, RollbackOutlined,
+  DollarOutlined, CalculatorOutlined, RollbackOutlined, ContainerOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -111,6 +111,24 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_IC_PROJECT: <SearchOutlined />,
   MENU_IC_PO_RECEIVE: <InboxOutlined />,
   MENU_IC_PO_RETURN: <RollbackOutlined />,
+  // คลัง (Stock) — child of MENU_IC in the DB (menu_path /master/stock). Its menu_code is not
+  // MENU_-prefixed; the permission key stays 'master-stock'.
+  'master-stock': <ContainerOutlined />,
+}
+
+// Colour variants for children inside a top-level group, matched by menu_code PREFIX so future
+// children (new petty cash / WO menus) pick the colour up automatically. Keys are the top-level
+// group's menu_code; anything not listed stays 'default' (current look). 'blue' items get the
+// .erp-menu-blue class (styles in index.css).
+type MenuColorVariant = 'default' | 'blue'
+const MENU_COLOR_GROUPS: Record<string, { prefix: string; variant: MenuColorVariant }[]> = {
+  MENU_PR: [{ prefix: 'MENU_PETTY_CASH', variant: 'blue' }],
+  MENU_PO: [{ prefix: 'MENU_WO', variant: 'blue' }],
+}
+
+const menuColorClass = (rootCode: string, menuCode: string): string | undefined => {
+  const rule = MENU_COLOR_GROUPS[rootCode]?.find((r) => menuCode.startsWith(r.prefix))
+  return rule?.variant === 'blue' ? 'erp-menu-blue' : undefined
 }
 
 interface VisibleMenuNode extends PermMenu {
@@ -168,14 +186,19 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
   // Menu items render their label as a real react-router <Link> (an actual
   // <a href>) so Ctrl/Cmd/middle-click and "Open in new tab" keep working.
   // Items without a menu_path (grouping-only) fall back to a plain label.
-  const buildItems = (nodes: VisibleMenuNode[], depth: number): MenuProps['items'] =>
+  const buildItems = (nodes: VisibleMenuNode[], depth: number, rootCode = ''): MenuProps['items'] =>
     nodes.map((node) => {
+      // Top-level group the node lives under (a top-level node is its own root; the group itself keeps its style).
+      const root = depth === 0 ? node.menu_code : rootCode
+      const className = depth === 0 ? undefined : menuColorClass(root, node.menu_code)
       if (node.children.length > 0) {
         return {
           key: String(node.id),
           icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || topIconMap[node.menu_code] || null),
           label: node.menu_name,
-          children: buildItems(node.children, depth + 1),
+          title: node.menu_name,
+          className,
+          children: buildItems(node.children, depth + 1, root),
         }
       }
       if (PARAM_REQUIRED_MENU_CODES.includes(node.menu_code)) {
@@ -183,6 +206,7 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
           key: node.menu_code,
           icon: subIconMap[node.menu_code] || null,
           disabled: true,
+          className,
           label: (
             <Tooltip title="กรุณาเลือกโครงการก่อน" placement="right">
               <span>{node.menu_name}</span>
@@ -194,6 +218,8 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
         key: node.menu_path || node.menu_code,
         icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || null),
         label: node.menu_path ? <Link to={node.menu_path}>{node.menu_name}</Link> : node.menu_name,
+        title: node.menu_name,
+        className,
       }
     })
 
@@ -236,6 +262,7 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
 
   return (
     <Menu
+      className="erp-sidebar-menu"
       theme="dark"
       mode="inline"
       selectedKeys={selectedKeys}

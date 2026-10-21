@@ -9,6 +9,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 
 // TODO: enable when permission system is ready
 // const userDept = useAppSelector((s) => s.auth.user?.department)
@@ -47,6 +48,7 @@ const POApprovalListPage: React.FC = () => {
         : statusFilter || undefined
       const res = await poApprovalService.getList(accessToken, {
         status,
+        my_approvals: true,
         page,
         page_size: 20,
       })
@@ -137,7 +139,7 @@ const POApprovalListPage: React.FC = () => {
           icon={<EyeOutlined />}
           onClick={(e) => {
             e.stopPropagation()
-            navigate(`/po/approval/${record.po_id}`)
+            navigate(`/po/approval/${record.po_id}?${FOR_APPROVAL_QUERY}`)
           }}
         >
           ดูรายละเอียด
@@ -198,9 +200,10 @@ const POApprovalListPage: React.FC = () => {
           showSizeChanger: false,
         }}
         onRow={(record) => ({
-          onClick: () => navigate(`/po/approval/${record.po_id}`),
+          onClick: () => navigate(`/po/approval/${record.po_id}?${FOR_APPROVAL_QUERY}`),
           style: { cursor: 'pointer' },
         })}
+        locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
         scroll={{ x: 900 }}
         size="small"
         style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}

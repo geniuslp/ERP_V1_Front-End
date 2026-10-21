@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin, Table } from 'antd'
 import { EditOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { handleApprovalForbidden } from '@/utils/approvalAccess'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
@@ -31,6 +32,8 @@ const dateFmt = (v?: string) => (v ? dayjs(v).format('DD/MM/YYYY') : '—')
 const WorkOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Set only by the approval list's links; other entry points open this page without it.
+  const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
 
   const [loading, setLoading] = useState(false)
@@ -44,9 +47,13 @@ const WorkOrderDetailPage: React.FC = () => {
     if (!id) return
     setLoading(true)
     try {
-      const result = await workOrderService.get(accessToken, id)
+      const result = await workOrderService.get(accessToken, id, { forApproval })
       setWo(result)
     } catch (err: any) {
+      if (forApproval && handleApprovalForbidden(err)) {
+        navigate('/work-order/approval', { replace: true })
+        return
+      }
       message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลไม่สำเร็จ')
     } finally {
       setLoading(false)

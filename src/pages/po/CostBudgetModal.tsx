@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Modal, Table, Tag, Spin, Popover, message } from 'antd'
+import { Modal, Table, Tag, Spin, Tooltip, message } from 'antd'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
 import api from '@/services/api'
 import type { ProjectStatus } from '@/types/project'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import CostCodePoLinesModal, { type CostCodePoLinesTarget } from './CostCodePoLinesModal'
 
 export interface CostBudgetDetailLine {
   subgroup_id: number
@@ -21,11 +22,16 @@ export interface CostBudgetDetailLine {
 
 export type CostBudgetRowType = 'MAJOR' | 'HEAD' | 'ITEM'
 
-// MAJOR/HEAD rows are not selectable and have no purchases, so no drill-down is offered on them.
+// MAJOR/HEAD rows are not selectable and have no POs, so only ITEM rows open the PO list.
 const isItemRow = (r: CostBudgetDetailLine) => r.row_type === 'ITEM'
 
-// Row tint via onRow inline style (DESIGN.md "Row tint", option 1).
-const ROW_BG: Partial<Record<CostBudgetRowType, string>> = { MAJOR: '#f5f3ff', HEAD: '#eff6ff' }
+// Row-type colours (applied via .cb-row-major / .cb-row-head in the scoped <style> below):
+// Major = purple, Head = amber. The same hues feed the legend swatches.
+const ROW_COLOR = {
+  MAJOR: { bg: '#F3E8FF', hover: '#E9D5FF', bar: '#7C3AED' },
+  HEAD: { bg: '#FEF3C7', hover: '#FDE68A', bar: '#D97706' },
+}
+const ROW_TYPE_LABEL: Partial<Record<CostBudgetRowType, string>> = { MAJOR: 'Major', HEAD: 'Head' }
 const INDENT: Record<CostBudgetRowType, number> = { MAJOR: 0, HEAD: 16, ITEM: 32 }
 
 export interface CostBudgetDetailTotals {
@@ -52,15 +58,6 @@ export interface CostBudgetDetailResponse {
   project: CostBudgetDetailProject
   rows: CostBudgetDetailLine[]
   totals: CostBudgetDetailTotals
-}
-
-export interface CostBudgetPurchaseLine {
-  po_no: string
-  pr_no: string | null
-  mat_code: string
-  item_name: string | null
-  qty_ordered: number
-  unit_price: number
 }
 
 interface Props {
@@ -96,18 +93,14 @@ const gridStyle: React.CSSProperties = {
 const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<CostBudgetDetailResponse | null>(null)
-  const [purchases, setPurchases] = useState<Record<number, CostBudgetPurchaseLine[]>>({})
-  const [purchasesLoading, setPurchasesLoading] = useState<Record<number, boolean>>({})
-  const [purchasesError, setPurchasesError] = useState<Record<number, boolean>>({})
+  const [poTarget, setPoTarget] = useState<CostCodePoLinesTarget | null>(null)
   const reqSeq = useRef(0)
 
   useEffect(() => {
     // reset on every open/close/switch; stale responses are ignored via reqSeq
     const seq = ++reqSeq.current
     setData(null)
-    setPurchases({})
-    setPurchasesLoading({})
-    setPurchasesError({})
+    setPoTarget(null)
     if (!projectCode) {
       setLoading(false)
       return
@@ -130,60 +123,6 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCode])
 
-  const loadPurchases = (subgroupId: number) => {
-    if (!projectCode || purchases[subgroupId] || purchasesLoading[subgroupId]) return
-    const seq = reqSeq.current
-    setPurchasesLoading((p) => ({ ...p, [subgroupId]: true }))
-    setPurchasesError((p) => ({ ...p, [subgroupId]: false }))
-    api
-      .get(`/po/${encodeURIComponent(projectCode)}/cost-budget-detail/${subgroupId}/purchases`)
-      .then((res) => {
-        if (seq !== reqSeq.current) return
-        const body = res.data?.data ?? res.data
-        setPurchases((p) => ({ ...p, [subgroupId]: Array.isArray(body) ? body : [] }))
-      })
-      .catch(() => {
-        if (seq !== reqSeq.current) return
-        setPurchasesError((p) => ({ ...p, [subgroupId]: true }))
-      })
-      .finally(() => {
-        if (seq === reqSeq.current) setPurchasesLoading((p) => ({ ...p, [subgroupId]: false }))
-      })
-  }
-
-  const purchaseColumns: ColumnsType<CostBudgetPurchaseLine> = [
-    { title: 'PO No', dataIndex: 'po_no', key: 'po_no', width: 130 },
-    { title: 'PR No', dataIndex: 'pr_no', key: 'pr_no', width: 130, render: (v: string | null) => v || '—' },
-    { title: 'Item', key: 'item', render: (_: unknown, r) => r.item_name || r.mat_code },
-    { title: 'Qty', dataIndex: 'qty_ordered', key: 'qty', render: (v: number) => thb(v), align: 'right', width: 80 },
-    { title: 'Unit price', dataIndex: 'unit_price', key: 'unit_price', align: 'right', width: 110, render: (v: number) => thb(v) },
-  ]
-
-  const renderPopover = (subgroupId: number) => {
-    if (purchasesLoading[subgroupId] || (!purchases[subgroupId] && !purchasesError[subgroupId])) {
-      return (
-        <div style={{ padding: 16, textAlign: 'center', minWidth: 200 }}>
-          <Spin size="small" />
-        </div>
-      )
-    }
-    if (purchasesError[subgroupId]) {
-      return <div style={{ color: '#dc2626', fontSize: 13 }}>โหลดรายการสั่งซื้อไม่สำเร็จ</div>
-    }
-    return (
-      <div style={{ maxHeight: 300, overflowY: 'auto', maxWidth: 640 }}>
-        <Table
-          rowKey={(r, i) => `${r.po_no}-${i}`}
-          size="small"
-          pagination={false}
-          columns={purchaseColumns}
-          dataSource={purchases[subgroupId]}
-          locale={{ emptyText: 'ยังไม่มีรายการสั่งซื้อ' }}
-        />
-      </div>
-    )
-  }
-
   // Running number for ITEM rows only, from the full API list (stable; MAJOR/HEAD get none).
   const itemNo = new Map<number, number>()
   ;(data?.rows ?? []).filter(isItemRow).forEach((r, i) => itemNo.set(r.subgroup_id, i + 1))
@@ -191,28 +130,35 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
   const bal = (v: number) => <span style={{ color: v < 0 ? '#dc2626' : undefined }}>{thb(v)}</span>
 
   const columns: ColumnsType<CostBudgetDetailLine> = [
-    { title: 'No.', key: 'no', width: 60, align: 'center', render: (_: unknown, r) => itemNo.get(r.subgroup_id) ?? '' },
+    {
+      title: 'No.',
+      key: 'no',
+      width: 78,
+      align: 'center',
+      // First cell: Major/Head rows have no number, so it carries the row-type tooltip
+      // (colour alone must not be the only cue).
+      render: (_: unknown, r) =>
+        isItemRow(r) ? (
+          itemNo.get(r.subgroup_id) ?? ''
+        ) : (
+          <Tooltip title={ROW_TYPE_LABEL[r.row_type]}>
+            <span aria-label={ROW_TYPE_LABEL[r.row_type]} style={{ display: 'inline-block', minWidth: 32, minHeight: 20 }} />
+          </Tooltip>
+        ),
+    },
     {
       title: 'CostCode',
       dataIndex: 'cost_code',
       key: 'cost_code',
-      width: 140,
+      width: 182,
       render: (v: string, r) => !isItemRow(r) ? (
         <span style={{ paddingLeft: INDENT[r.row_type], fontWeight: 700, whiteSpace: 'nowrap' }}>
-          <Tag color={r.row_type === 'MAJOR' ? '#7c3aed' : '#1d4ed8'} style={{ marginInlineEnd: 6 }}>
-            {r.row_type === 'MAJOR' ? 'Major' : 'Head'}
-          </Tag>
           {formatCostCodeDisplay(v)}
         </span>
       ) : (
-        <Popover
-          mouseEnterDelay={0.2}
-          destroyTooltipOnHide
-          onOpenChange={(open) => open && loadPurchases(r.subgroup_id)}
-          content={renderPopover(r.subgroup_id)}
-        >
-          <span style={{ paddingLeft: INDENT.ITEM, color: '#2563eb', cursor: 'help' }}>{formatCostCodeDisplay(v)}</span>
-        </Popover>
+        <span className="cb-item-link" style={{ paddingLeft: INDENT.ITEM, color: '#2563eb', cursor: 'pointer' }}>
+          {formatCostCodeDisplay(v)}
+        </span>
       ),
     },
     {
@@ -246,7 +192,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       onCancel={onClose}
       footer={null}
       destroyOnClose
-      width={1100}
+      width={1430}
       style={{ maxWidth: '95vw' }}
       title="งบประมาณต้นทุน"
     >
@@ -286,16 +232,54 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
           .cb-table .ant-table-thead > tr > th { background: #eff6ff; color: #1e40af; font-weight: 600; border-bottom: 1px solid #dbeafe; }
           .cb-table .ant-table-tbody > tr > td { border-bottom: 1px solid #dbeafe; }
           .cb-table .ant-table-tbody > tr:hover > td { background: #f0f5ff !important; }
+          .cb-table .cb-item-link:hover { text-decoration: underline; }
+          .cb-table .ant-table-tbody > tr.cb-row-major > td { background: ${ROW_COLOR.MAJOR.bg}; color: #1f1235; }
+          .cb-table .ant-table-tbody > tr.cb-row-major > td:first-child { box-shadow: inset 4px 0 0 ${ROW_COLOR.MAJOR.bar}; }
+          .cb-table .ant-table-tbody > tr.cb-row-major:hover > td { background: ${ROW_COLOR.MAJOR.hover} !important; }
+          .cb-table .ant-table-tbody > tr.cb-row-head > td { background: ${ROW_COLOR.HEAD.bg}; color: #3b2a05; }
+          .cb-table .ant-table-tbody > tr.cb-row-head > td:first-child { box-shadow: inset 4px 0 0 ${ROW_COLOR.HEAD.bar}; }
+          .cb-table .ant-table-tbody > tr.cb-row-head:hover > td { background: ${ROW_COLOR.HEAD.hover} !important; }
+          .cb-legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
         `}</style>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, marginBottom: 8, fontSize: 12, color: '#475569' }}>
+          <span>
+            <span className="cb-legend-swatch" style={{ background: ROW_COLOR.MAJOR.bg, border: `1px solid ${ROW_COLOR.MAJOR.bar}`, borderLeftWidth: 4 }} />
+            Major
+          </span>
+          <span>
+            <span className="cb-legend-swatch" style={{ background: ROW_COLOR.HEAD.bg, border: `1px solid ${ROW_COLOR.HEAD.bar}`, borderLeftWidth: 4 }} />
+            Head
+          </span>
+        </div>
         <Table
           className="cb-table"
           rowKey="subgroup_id"
-          onRow={(r) => (ROW_BG[r.row_type] ? { style: { background: ROW_BG[r.row_type] } } : {})}
+          rowClassName={(r) => (r.row_type === 'MAJOR' ? 'cb-row-major' : r.row_type === 'HEAD' ? 'cb-row-head' : '')}
+          onRow={(r) => {
+            if (isItemRow(r)) {
+              // Click on a sub cost code (ITEM) row lists the POs charged to it; MAJOR/HEAD rows are inert.
+              return {
+                style: { cursor: 'pointer' },
+                onClick: () => {
+                  if (!projectCode) return
+                  setPoTarget({
+                    projectCode,
+                    projectName: data?.project?.project_name ?? '',
+                    subgroupId: r.subgroup_id,
+                    costCode: formatCostCodeDisplay(r.cost_code),
+                    description: r.description,
+                  })
+                },
+              }
+            }
+            return {}
+          }}
           size="small"
           pagination={false}
           columns={columns}
           dataSource={data?.rows ?? []}
-          scroll={{ y: '60vh' }}
+          // 60vh x 1.3 = 78vh, but never taller than the viewport minus the modal chrome (max 90vh).
+          scroll={{ y: 'min(78vh, calc(100vh - 420px))' }}
           locale={{ emptyText: loading ? ' ' : 'ไม่พบรายการสั่งซื้อของโครงการนี้' }}
           summary={() =>
             data?.totals ? (
@@ -315,6 +299,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
           }
         />
       </Spin>
+      <CostCodePoLinesModal target={poTarget} onClose={() => setPoTarget(null)} />
     </Modal>
   )
 }

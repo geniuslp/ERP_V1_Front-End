@@ -23,6 +23,13 @@ interface CostCodeOption {
   cost_name: string
 }
 
+// "<cost code> - <cost name>"; just the code when the name is missing.
+const costCodeLabel = (c: CostCodeOption) =>
+  c.cost_name ? `${formatCostCodeDisplay(c.cost_code)} - ${c.cost_name}` : formatCostCodeDisplay(c.cost_code)
+
+// Case-insensitive, whitespace-insensitive text for the ToCostCode search.
+const normalizeCostSearch = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+
 /** A line held in the page's local state until the document is submitted. */
 export interface PendingMovementLine {
   payload: {
@@ -373,15 +380,29 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
                 rules={[{ required: true, message: 'กรุณาเลือกรหัสต้นทุนปลายทาง' }]}
               >
                 <Select
-                  placeholder={selectedToProject ? '- เลือกรายการ -' : 'กรุณาเลือกโครงการปลายทางก่อน'}
+                  placeholder={selectedToProject ? 'พิมพ์รหัสหรือชื่อต้นทุนเพื่อค้นหา' : 'กรุณาเลือกโครงการปลายทางก่อน'}
                   loading={costCodesLoading}
                   showSearch
+                  allowClear
                   disabled={!selectedToProject}
-                  filterOption={(input, option) =>
-                    String(option?.label ?? '').toLowerCase().includes(input.toLowerCase()) ||
-                    String((option as { storedCode?: string } | undefined)?.storedCode ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={costCodes.map((c) => ({ value: c.cost_subgroup_id, label: formatCostCodeDisplay(c.cost_code), storedCode: c.cost_code }))}
+                  notFoundContent="ไม่พบรหัสต้นทุน"
+                  popupMatchSelectWidth={480}
+                  listHeight={320}
+                  virtual
+                  // Client-side only, on the loaded options: matches the code (as stored and as
+                  // displayed) or the name, case-insensitive and ignoring spaces.
+                  filterOption={(input, option) => {
+                    const q = normalizeCostSearch(input)
+                    if (!q) return true
+                    const o = option as { storedCode?: string; costName?: string; label?: unknown } | undefined
+                    return normalizeCostSearch(`${o?.storedCode ?? ''}${o?.label ?? ''}${o?.costName ?? ''}`).includes(q)
+                  }}
+                  options={costCodes.map((c) => ({
+                    value: c.cost_subgroup_id,
+                    label: costCodeLabel(c),
+                    storedCode: c.cost_code,
+                    costName: c.cost_name,
+                  }))}
                   onChange={(value) => setSelectedCostSubgroupId(value)}
                 />
               </Form.Item>

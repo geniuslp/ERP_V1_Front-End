@@ -53,6 +53,7 @@ const ICPoReturnPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
 
+  const [refreshKey, setRefreshKey] = useState(0)
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -93,15 +94,20 @@ const ICPoReturnPage: React.FC = () => {
     let cancelled = false
     const fetchOptions = async () => {
       try {
+        // for=return keeps the wider PR list (the default is the stricter Receive list).
         const res = await axios.get(`${BASE_URL}/ic/projects/${project.id}/po-search-options`, {
           headers: authHeader,
+          params: { for: 'return' },
         })
         const payload = res.data?.data ?? res.data
-        const prList = payload?.pr_list ?? payload?.pr_numbers ?? []
-        const poList = payload?.po_list ?? payload?.po_numbers ?? []
+        // Shape: flat [{id, no, type}] with type 'PR' | 'PO'. Older shape ({pr_list, po_list}) still tolerated.
+        const flat: any[] = Array.isArray(payload) ? payload : []
+        const byType = (t: 'PO' | 'PR') => flat.filter((i) => String(i?.type ?? '').toUpperCase() === t)
+        const prList = flat.length ? byType('PR') : payload?.pr_list ?? payload?.pr_numbers ?? []
+        const poList = flat.length ? byType('PO') : payload?.po_list ?? payload?.po_numbers ?? []
         const toOptions = (list: any[]): SearchOption[] =>
           (Array.isArray(list) ? list : []).map((item) => {
-            const value = typeof item === 'string' ? item : item?.pr_no ?? item?.po_no ?? item?.value ?? String(item)
+            const value = typeof item === 'string' ? item : item?.no ?? item?.pr_no ?? item?.po_no ?? item?.value ?? String(item)
             return { value, label: value }
           })
         if (!cancelled) {
@@ -151,7 +157,7 @@ const ICPoReturnPage: React.FC = () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, search, page, pageSize])
+  }, [project, search, page, pageSize, refreshKey])
 
   const handleSearchChange = (value: string | undefined) => {
     setSearch(value)
@@ -166,6 +172,8 @@ const ICPoReturnPage: React.FC = () => {
   const handleModalClose = () => {
     setModalOpen(false)
     setSelectedPoId(null)
+    // Reload the list after the modal closes (a return changes what is returnable).
+    setRefreshKey((k) => k + 1)
   }
 
   const columns = [
@@ -249,6 +257,7 @@ const ICPoReturnPage: React.FC = () => {
             value={search}
             onChange={handleSearchChange}
             style={{ width: 280 }}
+            notFoundContent={prOptions.length === 0 ? 'ไม่มี PR ในโครงการนี้' : 'ไม่พบข้อมูล'}
             optionFilterProp="label"
             filterOption={(input, option) =>
               (option?.label as string)?.toLowerCase().includes(input.toLowerCase())

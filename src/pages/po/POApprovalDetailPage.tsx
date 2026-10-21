@@ -11,7 +11,8 @@ import {
   PrinterOutlined,
   EditOutlined,
 } from '@ant-design/icons'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { handleApprovalForbidden } from '@/utils/approvalAccess'
 import type { ColumnsType } from 'antd/es/table'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import { useAppSelector } from '@/store'
@@ -95,6 +96,8 @@ const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({
 const POApprovalDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Set only by the approval list's links; requester/history/print entries open this page without it.
+  const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
 
   const [loading, setLoading] = useState(false)
@@ -112,10 +115,12 @@ const POApprovalDetailPage: React.FC = () => {
     if (!id) return
     setLoading(true)
     try {
-      const res = await poApprovalService.getDetail(accessToken, id)
+      const res = await poApprovalService.getDetail(accessToken, id, { forApproval })
       setPo(res.data.data)
     } catch (err: any) {
-      if (err?.response?.status === 404) {
+      if (forApproval && handleApprovalForbidden(err)) {
+        navigate('/po/approval', { replace: true })
+      } else if (err?.response?.status === 404) {
         setNotFound(true)
       } else {
         message.error(

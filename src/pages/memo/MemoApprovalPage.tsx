@@ -12,6 +12,7 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
+import { APPROVAL_EMPTY_TEXT } from '@/utils/approvalAccess'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -252,7 +253,7 @@ const MemoApprovalPage: React.FC = () => {
           columns={columns}
           dataSource={data}
           pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} items` }}
-          locale={{ emptyText: 'No pending approvals' }}
+          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
         />
       </Card>
 
