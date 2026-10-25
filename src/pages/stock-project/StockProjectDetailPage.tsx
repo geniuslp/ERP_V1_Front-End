@@ -131,7 +131,9 @@ const StockProjectDetailPage: React.FC = () => {
         const d = res.data?.data ?? res.data
         if (!cancelled) {
           setSource(d?.source ?? null)
-          setBalRows(Array.isArray(d?.rows) ? d.rows : [])
+          // Backend envelope (stockPageData): rows are under `data`, cost per unit is `unit_cost`.
+          const list: any[] = Array.isArray(d?.data) ? d.data : Array.isArray(d?.rows) ? d.rows : []
+          setBalRows(list.map((r) => ({ ...r, last_unit_cost: r.last_unit_cost ?? r.unit_cost })))
           setBalTotal(Number(d?.total ?? 0))
         }
       } catch (err: any) {

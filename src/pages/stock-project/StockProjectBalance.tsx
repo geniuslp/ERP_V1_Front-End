@@ -86,7 +86,9 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
         const d = res.data?.data ?? res.data
         if (!cancelled) {
           setSource(d?.source ?? null)
-          setRows(Array.isArray(d?.rows) ? d.rows : [])
+          // Backend envelope (stockPageData): rows are under `data`, cost per unit is `unit_cost`.
+          const list: any[] = Array.isArray(d?.data) ? d.data : Array.isArray(d?.rows) ? d.rows : []
+          setRows(list.map((r) => ({ ...r, last_unit_cost: r.last_unit_cost ?? r.unit_cost })))
           setTotal(Number(d?.total ?? 0))
         }
       } catch (err: any) {
