@@ -66,11 +66,13 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_WO_LIST: <SearchOutlined />,
   MENU_WO_CREATE: <PlusOutlined />,
   MENU_WO_APPROVAL: <CheckCircleOutlined />,
+  MENU_WO_CONTRACTOR_LOG: <FileTextOutlined />,
   MENU_SYSTEM_CONFIG: <SettingOutlined />,
   MENU_SYSTEM_USERS: <TeamOutlined />,
   MENU_SYSTEM_ROLES: <ApartmentOutlined />,
   MENU_SYSTEM_MENUS: <AppstoreOutlined />,
   MENU_SYSTEM_PERMISSIONS: <SafetyOutlined />,
+  MENU_ADMIN_DEPARTMENTS: <ApartmentOutlined />,
   MENU_ADMIN_APPROVAL_MATRIX: <CheckCircleOutlined />,
   MENU_ADMIN_PERMISSION_MATRIX: <SafetyOutlined />,
   MENU_STOCK_ITEMS: <AppstoreOutlined />,
@@ -143,6 +145,13 @@ interface SidebarMenuProps {
 // pages — hide these two menu entries regardless of the backend is_active/permission flags.
 const HIDDEN_MENU_CODES = ['MENU_PR_STATUS', 'MENU_PO_STATUS']
 
+// First Latin letter or Thai consonant of a menu name (skips leading Thai vowels/marks like เ แ โ);
+// falls back to the first character.
+const menuInitial = (name: string): string => {
+  const m = name.match(/[A-Za-zก-ฮ]/)
+  return (m ? m[0] : name.trim().charAt(0)).toUpperCase()
+}
+
 const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
   const location = useLocation()
   const { can, hasRole, loading, menus } = usePermissionContext()
@@ -186,6 +195,15 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
   // Menu items render their label as a real react-router <Link> (an actual
   // <a href>) so Ctrl/Cmd/middle-click and "Open in new tab" keep working.
   // Items without a menu_path (grouping-only) fall back to a plain label.
+  // Top-level items show no icon when expanded; the collapsed (icon-only) sidebar shows the menu
+  // name's first letter in the same slot instead. topIconMap is kept for future use / sub-items.
+  const topLevelIcon = (name: string): React.ReactNode =>
+    collapsed ? (
+      <span style={{ display: 'inline-block', minWidth: '1em', textAlign: 'center', fontWeight: 600, fontSize: 16, lineHeight: 1 }}>
+        {menuInitial(name)}
+      </span>
+    ) : undefined
+
   const buildItems = (nodes: VisibleMenuNode[], depth: number, rootCode = ''): MenuProps['items'] =>
     nodes.map((node) => {
       // Top-level group the node lives under (a top-level node is its own root; the group itself keeps its style).
@@ -194,7 +212,7 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
       if (node.children.length > 0) {
         return {
           key: String(node.id),
-          icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || topIconMap[node.menu_code] || null),
+          icon: depth === 0 ? topLevelIcon(node.menu_name) : (subIconMap[node.menu_code] || topIconMap[node.menu_code] || null),
           label: node.menu_name,
           title: node.menu_name,
           className,
@@ -216,7 +234,7 @@ const SidebarMenu: React.FC<SidebarMenuProps> = ({ collapsed }) => {
       }
       return {
         key: node.menu_path || node.menu_code,
-        icon: depth === 0 ? (topIconMap[node.menu_code] || <AppstoreOutlined />) : (subIconMap[node.menu_code] || null),
+        icon: depth === 0 ? topLevelIcon(node.menu_name) : (subIconMap[node.menu_code] || null),
         label: node.menu_path ? <Link to={node.menu_path}>{node.menu_name}</Link> : node.menu_name,
         title: node.menu_name,
         className,

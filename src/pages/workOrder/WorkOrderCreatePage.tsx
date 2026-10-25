@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import {
-  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin,
+  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin, Radio,
 } from 'antd'
 import { SaveOutlined, SendOutlined, CloseOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -43,6 +43,14 @@ const ADVANCE_PCT_OPTIONS = ADVANCE_PCT_VALUES.map((v) => ({ value: v, label: `$
 
 const MENU_CODE = 'MENU_WO_CREATE'
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+// Sub-block inside a numbered section (same look as WOPaymentConditionsSection's 7.x blocks).
+const subCardStyle: React.CSSProperties = {
+  borderRadius: 10,
+  border: '1px solid #e5e7eb',
+  boxShadow: 'none',
+  marginBottom: 16,
+}
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -653,6 +661,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   contract_type: 'LABOR_MATERIAL',
                   vat_rate: 7,
                   wht_rate: 3,
+                  has_penalty: false,
                 }}
               >
                 <Form.Item name="supplier_name" hidden><Input /></Form.Item>
@@ -908,18 +917,13 @@ const WorkOrderCreatePage: React.FC = () => {
                       </Col>
                     </Row>
                   }
+                  // 7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ) — other_deduction_note, rendered after 7.4 inside card 7.
+                  otherSlot={
+                    <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note" style={{ marginBottom: 0 }}>
+                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
+                    </Form.Item>
+                  }
                 />
-
-                {/* other_deduction_note: 24 (advance_deduct_pct moved into card 7 as 7.1) */}
-                <Card title="เงื่อนไขการจ่ายเงิน (อื่นๆ)" style={cardStyle}>
-                  <Row gutter={[16, 0]}>
-                    <Col xs={24}>
-                      <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note">
-                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </Card>
 
                 {/* 8. ระยะเวลาสัญญา — 6 + 6 + 6 + 6 */}
                 <Card title="8. ระยะเวลาสัญญา" style={cardStyle}>
@@ -939,12 +943,24 @@ const WorkOrderCreatePage: React.FC = () => {
                         <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
                       </Form.Item>
                     </Col>
-                    <Col {...FIELD_SPAN}>
-                      <Form.Item label={<span style={labelStyle}>ระยะเวลารับประกัน (ปี)</span>} name="warranty_years">
-                        <InputNumber style={fieldStyle} min={0} />
-                      </Form.Item>
-                    </Col>
                   </Row>
+                  <Card title="8.1 เบี้ยปรับ" size="small" style={{ ...subCardStyle, marginTop: 8 }}>
+                    <Form.Item
+                      label={<span style={labelStyle}>ปรับวันละ 1.00% ของมูลค่างาน</span>}
+                      name="has_penalty"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Radio.Group>
+                        <Radio value={true}>มี</Radio>
+                        <Radio value={false}>ไม่มี</Radio>
+                      </Radio.Group>
+                    </Form.Item>
+                  </Card>
+                  <Card title="8.2 ประกันผลงาน 1 ปี" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
+                    <Form.Item name="warranty_note" style={{ marginBottom: 0 }}>
+                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} maxLength={2000} />
+                    </Form.Item>
+                  </Card>
                 </Card>
 
                 {/* 9. อ้างอิงสัญญา — 12 */}

@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
 import { Card, Switch, Table, InputNumber, Input, Checkbox, Button, Tag, Tooltip, message } from 'antd'
 import { PlusOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
 import PermissionButton from '@/components/common/PermissionButton'
@@ -235,12 +236,10 @@ const FinanceInstallmentsSection = forwardRef<InstallmentsSectionHandle, Props>(
       key: 'del',
       width: 50,
       render: (_: unknown, r: Row) => (
-        <Button
+        <ConfirmDeleteButton
           type="text"
-          danger
-          icon={<DeleteOutlined />}
           disabled={r.locked}
-          onClick={() => {
+          onConfirm={() => {
             setRows((rs) => rs.filter((x) => x.key !== r.key))
             setSelectedKeys((ks) => ks.filter((k) => k !== r.key))
           }}

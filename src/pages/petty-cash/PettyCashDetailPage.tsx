@@ -204,23 +204,28 @@ const PettyCashDetailPage: React.FC = () => {
     {
       title: 'รหัสวัสดุ / รายการ',
       key: 'mat',
-      render: (_: unknown, r: any) => (
-        <div>
-          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{r.mat_code}</span>
-          <div style={{ fontSize: 13 }}>{r.item_name}</div>
-        </div>
-      ),
+      // No material code: the typed item name lives in description (mat_code is null).
+      render: (_: unknown, r: any) =>
+        r.mat_code ? (
+          <div>
+            <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{r.mat_code}</span>
+            <div style={{ fontSize: 13 }}>{r.item_name}</div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13 }}>{r.description || r.item_name || '—'}</div>
+        ),
     },
-    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80, align: 'center' as const },
     {
       title: 'Stock อ้างอิง',
       dataIndex: 'stock_on_hand',
       key: 'stock_on_hand',
       width: 110,
       align: 'right' as const,
-      render: (v: number) => <span style={{ fontSize: 12, color: '#93c5fd' }}>{v?.toLocaleString('th-TH') ?? 0}</span>,
+      render: (v: number, r: any) =>
+        r.mat_code ? <span style={{ fontSize: 12, color: '#93c5fd' }}>{v?.toLocaleString('th-TH') ?? 0}</span> : '—',
     },
     { title: 'จำนวน', dataIndex: 'qty', key: 'qty', width: 90, align: 'right' as const },
+    { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80, align: 'center' as const },
     { title: 'ราคา/หน่วย', dataIndex: 'unit_price', key: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => fmt(v) },
     { title: 'มูลค่าสุทธิ/แถว', dataIndex: 'line_net', key: 'line_net', width: 120, align: 'right' as const, render: (v: number) => fmt(v) },
     {
@@ -234,7 +239,13 @@ const PettyCashDetailPage: React.FC = () => {
         </div>
       ),
     },
-    { title: 'รายละเอียด', dataIndex: 'description', key: 'description', render: (v?: string) => v || '—' },
+    {
+      // Reads `description`; for a line without mat_code the item cell already shows it, so show remarks instead.
+      title: 'รายละเอียด',
+      dataIndex: 'description',
+      key: 'description',
+      render: (v: string | undefined, r: any) => (r.mat_code ? v || '—' : r.remarks || '—'),
+    },
   ]
 
   if (!pc && !loading) {
@@ -289,7 +300,7 @@ const PettyCashDetailPage: React.FC = () => {
               ? pc.project_codes.join(', ')
               : [pc?.project_code, pc?.project_name].filter(Boolean).join(' ') || '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="แผนก">{pc?.dept_name || '-'}</Descriptions.Item>
+          <Descriptions.Item label="แผนก">{[pc?.dept_code, pc?.dept_name].filter(Boolean).join(' ') || '-'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">{pc && <StatusBadge status={pc.status} />}</Descriptions.Item>
           <Descriptions.Item label="ผู้ขอเบิก">{pc?.requested_by_name || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{pc?.approver_name || '—'}</Descriptions.Item>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Card, Table, Button, Input, InputNumber, DatePicker, Select, Row, Col } from 'antd'
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import dayjs, { Dayjs } from 'dayjs'
 import { WO_PAYMENT_STATUS_LABEL } from '@/types/workOrder'
 import type {
@@ -153,6 +154,8 @@ interface WOPaymentConditionsSectionProps {
   contractAmount?: number | null
   // 7.1 เงินล่วงหน้า content (Form.Items live in the page's form); rendered above 7.2.
   advanceSlot?: React.ReactNode
+  // 7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ) content (Form.Items live in the page's form); rendered after 7.4.
+  otherSlot?: React.ReactNode
   // 7.4 หักคืนคำนวณ (read-only): the fixed advance amount and the % displayed in 7.1.
   advanceAmount?: number | null
   advancePct?: number | null
@@ -179,6 +182,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   penalties, onPenaltiesChange,
   contractAmount,
   advanceSlot,
+  otherSlot,
   advanceAmount,
   advancePct,
 }) => {
@@ -341,7 +345,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       width: 40,
       align: 'center' as const,
       render: (_: unknown, r: InstallmentRow) => (
-        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeInstallment(r.key)} />
+        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeInstallment(r.key)} />
       ),
     },
   ]
@@ -409,7 +413,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       width: 40,
       align: 'center' as const,
       render: (_: unknown, r: RetentionRow) => (
-        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeRetention(r.key)} />
+        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeRetention(r.key)} />
       ),
     },
   ]
@@ -488,7 +492,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       width: 40,
       align: 'center' as const,
       render: (_: unknown, r: PenaltyRow) => (
-        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removePenalty(r.key)} />
+        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removePenalty(r.key)} />
       ),
     },
   ]
@@ -549,22 +553,13 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
         </Row>
       </Card>
 
-      <Card title="ค่าปรับ" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
-        <Table
-          rowKey="key"
-          size="small"
-          pagination={false}
-          dataSource={penalties}
-          columns={penaltyColumns}
-          scroll={{ x: 800 }}
-          locale={{ emptyText: 'ยังไม่มีรายการค่าปรับ' }}
-        />
-        <div style={{ marginTop: 12 }}>
-          <Button icon={<PlusOutlined />} size="small" onClick={addPenalty}>
-            เพิ่มรายการค่าปรับ
-          </Button>
-        </div>
-      </Card>
+      {otherSlot && (
+        <Card title="7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ)" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
+          {otherSlot}
+        </Card>
+      )}
+
+      {/* ค่าปรับ block hidden for now (state/save wiring kept; see 8.1 เบี้ยปรับ). */}
     </Card>
   )
 }

@@ -12,7 +12,8 @@ import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
-import { ROW_TINT_CLASS } from '@/constants/rowTint'
+import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
+import RowTintLegend from '@/components/common/RowTintLegend'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS } from '@/constants/orderTypes'
 
 // Same convention as PRStatusPage.tsx's edit button — edit is gated by the
@@ -43,6 +44,15 @@ const getRowClassName = (status?: string, poConversionStatus?: string, hasRemain
   }
   return ROW_TINT_CATEGORY[status ?? ''] ?? ''
 }
+
+// Legend entries — same categories as ROW_TINT_CATEGORY / getRowClassName above
+// (gray = STOCK_CHECK, orange = PARTIALLY_FILLED, green = fully-ordered COMPLETED/FULFILLED).
+// DRAFT/CANCELLED have no tint, so they are not listed.
+const ROW_TINT_LEGEND = [
+  { ...ROW_TINT_SWATCH.gray, label: 'ตรวจสอบสต็อก' },
+  { ...ROW_TINT_SWATCH.orange, label: 'ออก PO ได้บางส่วน' },
+  { ...ROW_TINT_SWATCH.green, label: 'ออก PO ครบแล้ว' },
+]
 
 const PR_NO_COLUMN_DEFAULT_WIDTH = 110
 const MEMO_COLUMN_DEFAULT_WIDTH = 100
@@ -428,6 +438,7 @@ const PRHistoryPage: React.FC = () => {
           options={ORDER_TYPE_OPTIONS}
           onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
         />
+        <RowTintLegend items={ROW_TINT_LEGEND} />
         <Table
           rowKey="id"
           loading={loading}

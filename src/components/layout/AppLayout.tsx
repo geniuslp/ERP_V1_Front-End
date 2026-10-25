@@ -1,20 +1,17 @@
 import React, { useState } from 'react'
-import { Layout, Avatar, Dropdown, Badge, Button, Typography, Drawer, Grid } from 'antd'
-import {
-  BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined,
-} from '@ant-design/icons'
+import { Layout, Avatar, Dropdown, Badge, Button, Grid } from 'antd'
+import { BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
-import SidebarMenu from './SidebarMenu'
+import TopNavMenu from './TopNavMenu'
+import { resetTopNavWidths } from './topNavData'
 import BrandLogo from '@/components/common/BrandLogo'
 import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
 import { useMyPendingApprovalCount } from '@/hooks/useMyPendingApprovalCount'
 
-const { Header, Sider, Content } = Layout
-const { Text } = Typography
+const { Content } = Layout
 const { useBreakpoint } = Grid
 
 interface AppLayoutProps {
@@ -22,21 +19,15 @@ interface AppLayoutProps {
 }
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [pwModalOpen, setPwModalOpen] = useState(false)
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAppSelector((state) => state.auth)
   const screens = useBreakpoint()
-  const isMobile = screens.md === false
+  // The top bar's desktop layout starts at 992px (antd `lg`); below that the menu becomes a drawer.
+  const isNarrow = screens.lg === false
   const pendingCounts = useMyPendingApprovalCount(location.pathname)
-
-  // Auto-close the mobile drawer whenever the route changes (nav-item click)
-  React.useEffect(() => {
-    setMobileOpen(false)
-  }, [location.pathname])
 
   const handleLogout = () => {
     dispatch(logout())
@@ -47,171 +38,114 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { key: 'profile', icon: <UserOutlined />, label: 'โปรไฟล์' },
     { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่า' },
     { key: 'change-password', icon: <LockOutlined />, label: 'เปลี่ยนรหัสผ่าน', onClick: () => setPwModalOpen(true) },
+    // Menu item widths only exist on the desktop bar.
+    ...(isNarrow ? [] : [{ key: 'reset-nav-widths', label: 'รีเซ็ตความกว้างเมนู', onClick: resetTopNavWidths }]),
     { type: 'divider' as const },
     { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true, onClick: handleLogout },
   ]
 
-  const logoBlock = (collapsedState: boolean) => (
-    <div style={{
-      height: 64,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: collapsedState ? 'center' : 'flex-start',
-      padding: collapsedState ? '0' : '0 20px',
-      borderBottom: '1px solid rgba(255,255,255,0.08)',
-      gap: 10,
-    }}>
-      {/* Logo + title are one link to the home route ("/", the dashboard — same for every role). */}
-      <Link
-        to="/"
-        className="erp-brand-link"
-        title="กลับหน้าหลัก"
-        aria-label="กลับหน้าหลัก"
-        style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
-      >
-        <BrandLogo variant={collapsedState ? 'sidebar-collapsed' : 'sidebar'} />
-        {!collapsedState && (
-          <div style={{ minWidth: 0, overflow: 'hidden' }}>
-            <div style={{
-              color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>ERP System</div>
-          </div>
-        )}
-      </Link>
+  // Logo + title are one link to the home route ("/", the dashboard — same for every role).
+  const brand = (
+    <Link
+      to="/"
+      className="erp-brand-link"
+      title="กลับหน้าหลัก"
+      aria-label="กลับหน้าหลัก"
+      style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
+    >
+      <BrandLogo variant="sidebar" />
+      <div style={{ minWidth: 0, overflow: 'hidden' }}>
+        <div style={{
+          color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2, fontFamily: 'Sarabun',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>ERP System</div>
+      </div>
+      {APP_ENV === 'uat' && (
+        <span style={{
+          flexShrink: 0, padding: '1px 8px', borderRadius: 6,
+          background: 'rgba(217,119,6,0.18)', border: '1px solid rgba(251,191,36,0.5)',
+          color: '#fbbf24', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, lineHeight: '18px',
+        }}>UAT</span>
+      )}
+    </Link>
+  )
+
+  const right = (
+    <>
+      <Badge count={pendingCounts.total} size="small" overflowCount={99}>
+        <Button
+          type="text"
+          className="tn-icon-btn"
+          aria-label="การแจ้งเตือน"
+          icon={<BellOutlined style={{ fontSize: 18 }} />}
+        />
+      </Badge>
+
+      <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
+        <div
+          className="tn-icon-btn"
+          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 8px', borderRadius: 8, transition: 'background 0.2s' }}
+        >
+          <Avatar
+            size={34}
+            style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', fontSize: 13, fontWeight: 600 }}
+          >
+            {user?.fullName?.charAt(0) || 'U'}
+          </Avatar>
+          {!isNarrow && (
+            <div style={{ lineHeight: 1.2 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>{user?.fullName || 'Admin'}</div>
+              <div style={{ fontSize: 11, color: '#93c5fd' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
+            </div>
+          )}
+        </div>
+      </Dropdown>
+    </>
+  )
+
+  const drawerFooter = (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <Avatar size={40} style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', fontWeight: 600 }}>
+          {user?.fullName?.charAt(0) || 'U'}
+        </Avatar>
+        <div style={{ lineHeight: 1.3, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#fff' }}>{user?.fullName || 'Admin'}</div>
+          <div style={{ fontSize: 12, color: '#93c5fd' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button style={{ flex: 1, minHeight: 44 }} icon={<LockOutlined />} onClick={() => setPwModalOpen(true)}>
+          เปลี่ยนรหัสผ่าน
+        </Button>
+        <Button style={{ flex: 1, minHeight: 44 }} danger icon={<LogoutOutlined />} onClick={handleLogout}>
+          ออกจากระบบ
+        </Button>
+      </div>
     </div>
   )
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      {/* ── Sidebar (desktop/tablet: fixed Sider, unchanged) ── */}
-      {!isMobile && (
-        <Sider
-          collapsible
-          collapsed={collapsed}
-          trigger={null}
-          width={260}
-          collapsedWidth={72}
-          theme="dark"
-          style={{
-            background: '#0f2d5e',
-            boxShadow: '4px 0 20px rgba(15,45,94,0.3)',
-            position: 'fixed',
-            height: '100vh',
-            zIndex: 100,
-            overflow: 'auto',
-          }}
-        >
-          {logoBlock(collapsed)}
-          <SidebarMenu collapsed={collapsed} />
-        </Sider>
-      )}
+      <TopNavMenu isNarrow={isNarrow} brand={brand} right={right} drawerFooter={drawerFooter} />
 
-      {/* ── Sidebar (mobile: Drawer, closed by default) ── */}
-      {isMobile && (
-        <Drawer
-          placement="left"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          closable={false}
-          width={260}
-          styles={{ body: { padding: 0, background: '#0f2d5e' }, content: { background: '#0f2d5e' } }}
-        >
-          {logoBlock(false)}
-          <SidebarMenu collapsed={false} />
-        </Drawer>
-      )}
+      {/* Content */}
+      <Content style={{
+        margin: isNarrow ? 12 : 24,
+        minHeight: 'calc(100vh - 112px)',
+      }}>
+        {children}
+      </Content>
 
-      {/* ── Main ── */}
-      <Layout style={{ marginLeft: isMobile ? 0 : (collapsed ? 72 : 260), transition: 'margin 0.2s' }}>
-        {/* Header */}
-        <Header style={{
-          position: 'sticky', top: 0, zIndex: 99,
-          background: '#fff',
-          padding: isMobile ? '0 12px' : '0 24px',
-          boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          height: isMobile ? 56 : 64,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-            <Button
-              type="text"
-              icon={isMobile ? <MenuOutlined /> : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
-              onClick={() => (isMobile ? setMobileOpen(true) : setCollapsed(!collapsed))}
-              style={{
-                width: 38, height: 38,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: 8, color: '#1d4ed8', fontSize: 18,
-                border: '0.5px solid #dbeafe', background: '#eff6ff',
-                flexShrink: 0,
-              }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
-              <div style={{
-                height: 6, width: 32, borderRadius: 3, flexShrink: 0,
-                background: 'linear-gradient(90deg, #2563eb, #60a5fa)',
-              }} />
-              <Text style={{ color: '#1e3a8a', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {isMobile ? 'ERP' : 'ระบบบริหารองค์กร'}
-              </Text>
-              {APP_ENV === 'uat' && (
-                <span style={{
-                  flexShrink: 0, padding: '1px 8px', borderRadius: 6,
-                  background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.35)',
-                  color: '#d97706', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, lineHeight: '18px',
-                }}>UAT</span>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16, flexShrink: 0 }}>
-            <Badge count={pendingCounts.total} size="small" overflowCount={99}>
-              <Button type="text" icon={<BellOutlined style={{ fontSize: 18, color: '#1d4ed8' }} />} />
-            </Badge>
-
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                padding: '6px 12px', borderRadius: 8,
-                transition: 'background 0.2s',
-              }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#eff6ff')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <Avatar
-                  size={34}
-                  style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', fontSize: 13, fontWeight: 600 }}
-                >
-                  {user?.fullName?.charAt(0) || 'U'}
-                </Avatar>
-                {!isMobile && (
-                  <div style={{ lineHeight: 1.2 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: '#1e3a8a' }}>{user?.fullName || 'Admin'}</div>
-                    <div style={{ fontSize: 11, color: '#60a5fa' }}>{user?.roles?.[0] ?? 'ไม่มีตำแหน่ง'}</div>
-                  </div>
-                )}
-              </div>
-            </Dropdown>
-          </div>
-        </Header>
-
-        {/* Content */}
-        <Content style={{
-          margin: isMobile ? 12 : 24,
-          minHeight: 'calc(100vh - 112px)',
-        }}>
-          {children}
-        </Content>
-
-        {/* Footer */}
-        <div style={{
-          textAlign: 'center', padding: '12px 24px',
-          color: '#93c5fd', fontSize: 12,
-          borderTop: '1px solid #dbeafe',
-          background: '#fff',
-        }}>
-          © 2026 ERP System — Genius Engineering
-        </div>
-      </Layout>
+      {/* Footer */}
+      <div style={{
+        textAlign: 'center', padding: '12px 24px',
+        color: '#93c5fd', fontSize: 12,
+        borderTop: '1px solid #dbeafe',
+        background: '#fff',
+      }}>
+        © 2026 ERP System — Genius Engineering
+      </div>
       <ChangePasswordModal open={pwModalOpen} onClose={() => setPwModalOpen(false)} />
     </Layout>
   )

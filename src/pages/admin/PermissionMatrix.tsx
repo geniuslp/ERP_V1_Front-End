@@ -5,6 +5,7 @@ import { ReloadOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons'
 import { useAppSelector } from '@/store'
 import PermissionGrid, { PermissionModuleGroup } from '@/components/permission/PermissionGrid'
 import PermissionCell from '@/components/permission/PermissionCell'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type {
   PermField,
@@ -233,13 +234,13 @@ const DeptTab: React.FC<{ token: string }> = ({ token }) => {
         <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>
           โหลดใหม่
         </Button>
-        <Select
+        <DepartmentSelect
+          includeInactive
           value={filterDept || undefined}
           onChange={(v) => setFilterDept(v ?? '')}
           placeholder="กรองตามแผนก"
           allowClear
-          style={{ width: 190 }}
-          options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
+          style={{ width: 240 }}
         />
         <div style={{ flex: 1 }} />
         <Button icon={<UndoOutlined />} onClick={handleCancelDraft} disabled={!hasDiff}>
@@ -620,16 +621,12 @@ const RoleTab: React.FC<{ token: string }> = ({ token }) => {
         <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>
           โหลดใหม่
         </Button>
-        <Select
+        <DepartmentSelect
+          includeInactive
           value={selectedDept ?? undefined}
           onChange={(v) => setSelectedDept(v ?? null)}
           placeholder="เลือกแผนกเพื่อจัดการสิทธิ์ตำแหน่ง"
-          style={{ width: 260 }}
-          showSearch
-          filterOption={(input, option) =>
-            String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-          }
-          options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
+          style={{ width: 300 }}
         />
         {selectedDept && (
           <Select

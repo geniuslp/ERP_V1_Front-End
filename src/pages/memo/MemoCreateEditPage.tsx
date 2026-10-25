@@ -13,6 +13,7 @@ import {
 import axios from 'axios'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 import PageHeader from '@/components/common/PageHeader'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
@@ -588,13 +589,7 @@ const MemoCreateEditPage: React.FC = () => {
       key: 'delete',
       width: 60,
       render: (_: any, record: EditableItem) => (
-        <Button
-          danger
-          size="small"
-          icon={<DeleteOutlined />}
-          disabled={items.length === 1}
-          onClick={() => removeItem(record.key)}
-        />
+        <ConfirmDeleteButton size="small" disabled={items.length === 1} onConfirm={() => removeItem(record.key)} />
       ),
     },
   ]

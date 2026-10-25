@@ -199,7 +199,7 @@ const InfoBox = ({ data }: { data: PettyCashPrintData }) => (
     <div>
       <div><b>โครงการ :</b>&nbsp;{data.project || '-'}</div>
       <div>
-        <b>รหัสแผนก :</b>&nbsp;{data.deptCode || '-'}&nbsp;&nbsp;&nbsp;<b>แผนก :</b>&nbsp;{data.dept || '-'}
+        <b>แผนก :</b>&nbsp;{[data.deptCode, data.dept].filter(Boolean).join(' ') || '-'}
       </div>
     </div>
     <div>

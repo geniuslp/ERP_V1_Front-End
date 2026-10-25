@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, Button, Space, message } from 'antd'
 import { UploadOutlined, DeleteOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 
@@ -182,9 +183,21 @@ const SignatureUpload: React.FC<SignatureUploadProps> = ({ userId, hasSignature,
         <Button icon={<UploadOutlined />} onClick={handlePickFile} loading={uploading}>
           อัปโหลด/เปลี่ยนรูป
         </Button>
-        <Button icon={<DeleteOutlined />} danger onClick={handleDelete} disabled={!previewUrl} loading={deleting}>
-          ลบ
-        </Button>
+        {isEdit ? (
+          // Edit mode deletes the saved signature on the server, so it asks first.
+          <ConfirmDeleteButton
+            onConfirm={handleDelete}
+            disabled={!previewUrl}
+            loading={deleting}
+            text="ยืนยันการลบลายเซ็น? การลบไม่สามารถย้อนกลับได้"
+          >
+            ลบ
+          </ConfirmDeleteButton>
+        ) : (
+          <Button icon={<DeleteOutlined />} danger onClick={handleDelete} disabled={!previewUrl} loading={deleting}>
+            ลบ
+          </Button>
+        )}
       </Space>
       <div style={{ marginTop: 8, fontSize: 12, color: '#60a5fa' }}>แนะนำ PNG พื้นหลังโปร่งใส</div>
       {isEdit && (

@@ -82,7 +82,7 @@ completed → green
 ## 📐 Spacing & Layout
 
 ### Layout Dimensions
-- **Sidebar width:** 260px (expanded) / 72px (collapsed)
+- **Top navigation bar:** 64px tall (sticky; 56px below 992px) — ไม่มี Sidebar แล้ว เนื้อหาใช้ความกว้างเต็ม
 - **Header height:** 64px (sticky)
 - **Content margin:** 24px (all sides)
 - **Footer height:** ~45px
@@ -216,8 +216,10 @@ const ResizableTitle: React.FC<...> = (props) => {
 ทุกครั้งที่ refresh) ยกเว้นระบุไว้เป็นอย่างอื่น
 
 ### Row tint (สี background แถวตามสถานะ)
-ใช้กับตาราง list/history ที่อยากให้ user เห็นสถานะแบบเร็ว ๆ โดยไม่ต้องมี legend/label บนจอ (สีต้องอ่อน
-พอให้ตัวหนังสือใน cell ยังอ่านออกชัดเจน) — มี 2 วิธีที่ใช้อยู่ในโค้ดจริง เลือกให้ตรงกับที่หน้านั้นใช้อยู่แล้ว
+ใช้กับตาราง list/history ที่อยากให้ user เห็นสถานะแบบเร็ว ๆ (สีต้องอ่อนพอให้ตัวหนังสือใน cell ยังอ่านออกชัดเจน)
+— `MemoListPage.tsx`, `PRHistoryPage.tsx` และ `POHistoryPage.tsx` แสดง legend ใต้แถว filter และเหนือตารางผ่าน component กลาง
+`components/common/RowTintLegend.tsx` โดยสีของ legend ต้องมาจากค่าคงที่ชุดเดียวกับแถว
+(`ROW_TINT_CLASS` / `ROW_TINT_SWATCH` ใน `constants/rowTint.ts`, ค่าสีตรงกับ `.row-tint-*` ใน `index.css`) — มี 2 วิธีที่ใช้อยู่ในโค้ดจริง เลือกให้ตรงกับที่หน้านั้นใช้อยู่แล้ว
 ก่อนเพิ่ม tint ใหม่:
 
 1. **`onRow` inline style (ค่าเริ่มต้น แนะนำสำหรับหน้าใหม่)** — ใช้ได้ตรง ๆ ไม่ต้องพึ่ง CSS เพิ่ม เพราะ
@@ -235,7 +237,9 @@ const ResizableTitle: React.FC<...> = (props) => {
    .my-row-tint:hover > td { background: #dcfce7 !important; }
    ```
 
-โทนสีที่ใช้จริง (ไม่ใช่ legend, ใช้เป็นสี background เท่านั้น):
+(หมายเหตุ: ค่าสีปัจจุบันของ `.row-tint-*` อยู่ใน `index.css` ซึ่งอาจต่างจากรายการด้านล่าง ให้ยึด `index.css` เป็นหลัก)
+
+โทนสีที่ใช้จริง (ใช้เป็นสี background เท่านั้น):
 - Success/complete: `#f6ffed` (เขียวอ่อน)
 - Pending/รอ: `#f5f5f5` + `borderLeft: 3px solid #8c8c8c` (เทา)
 - Rejected/partial ปัญหา: `#fff1f0` (แดง/ส้มอ่อน)
@@ -246,6 +250,12 @@ Pattern สำหรับฟอร์มที่มีรายการย่
 (ไม่ผูกกับ Ant Design `Form.List`), แต่ละ sub-block มีปุ่ม "+ เพิ่มรายการ" ต่อท้ายตาราง และปุ่มลบต่อแถว
 ดู `CLAUDE.md` session 2026-09-21 สำหรับ use case ที่สอง (ICPoReceiveModal ก็จะใช้ pattern
 เดียวกันถ้ามีรายการย่อยแบบเพิ่ม/ลบในอนาคต)
+
+### Numbered section with sub-cards (WO form 7.x / 8.x)
+หัวข้อที่มีหลายส่วนย่อยในฟอร์มเดียว (เช่น WO หัวข้อ 7 เงื่อนไขการจ่ายเงิน, หัวข้อ 8 ระยะเวลาสัญญา): การ์ดหลักใช้ Card style มาตรฐาน (`borderRadius: 12`, เงา navy)
+ส่วนย่อยเป็น `<Card size="small" title="7.1 …">` ซ้อนในการ์ดหลัก ด้วย `subCardStyle = { borderRadius: 10, border: '1px solid #e5e7eb', boxShadow: 'none', marginBottom: 16 }`
+(บล็อกสุดท้ายใช้ `marginBottom: 0`). ชื่อ sub-block ขึ้นต้นด้วยเลขหัวข้อ เช่น "7.5 …", "8.1 เบี้ยปรับ" — ไม่ใช้ช่องธรรมดาเรียงในการ์ดเดียวเมื่อสเก็ตช์/สเปกแบ่งเป็นข้อย่อย
+(`subCardStyle` ถูกประกาศซ้ำใน `WOPaymentConditionsSection.tsx`, `WorkOrderCreatePage.tsx`, `WOContractorBillTab.tsx` — ยังไม่มี shared constant)
 
 ---
 
@@ -276,19 +286,58 @@ Row: Col-16 (Table ล่าสุด) + Col-8 (Progress สถานะ)
 
 ---
 
-## 🖼️ Sidebar Design
+## 🧭 Top Navigation
+
+เมนูหลักอยู่ที่แถบด้านบน (`components/layout/TopNavMenu.tsx`, ข้อมูลจาก `topNavData.ts`) — แทน Sidebar เดิม
+(`SidebarMenu.tsx` ยังอยู่แต่ไม่ได้ใช้ เก็บไว้ rollback). ข้อมูล/สิทธิ์/ลำดับเมนูเหมือนเดิมทุกอย่าง
+(`GET /menus` ที่กรองตามสิทธิ์แล้ว เรียงตาม `order`).
 
 ```
-Background: #0f2d5e (navy)
-Submenu bg: #09203f (navy-dark)
-Item color: #bfdbfe (primary-200)
-Item hover: rgba(255,255,255,0.08)
-Item selected: linear-gradient(135deg, #2563eb, #1d4ed8)
+Bar: sticky, height 64px (56px ต่ำกว่า 992px), background #0f2d5e,
+     box-shadow 0 2px 12px rgba(15,45,94,0.3), z-index 100
+ซ้าย:  โลโก้ + "ERP System" (ลิงก์กลับหน้าหลัก) + ป้าย UAT (ถ้า APP_ENV=uat)
+กลาง:  เมนูระดับบนสุด — ตัวหนังสือล้วน ไม่มีไอคอนในเมนู (ยกเว้นลูกศร/chevron)
+ขวา:   กระดิ่งแจ้งเตือน (badge เดิม) + user dropdown เดิม
 
-Logo area:
-  - กล่องสีน้ำเงิน gradient ตัว "E" (36x36px, borderRadius 10)
-  - ชื่อ "ERP System" สีขาว bold
-  - "Enterprise Resource" สีน้ำเงินอ่อน
+Top-level item: text #bfdbfe, 14px, weight 500, padding 8px 14px, radius 8
+  hover    rgba(255,255,255,0.08) + ตัวหนังสือขาว
+  active   linear-gradient(135deg,#2563eb,#1d4ed8) + ขาว + weight 600
+           (item ที่เป็นเจ้าของ route ปัจจุบัน; ใช้ prefix ของ menu_path ที่ "ยาวที่สุด"ชนะ,
+            path แบบ /ic/projects/:id/... ตัดตั้งแต่ ":" เป็นต้นไป)
+  มี children → chevron เล็ก, กดแล้วเปิด dropdown (ไม่ navigate); ไม่มี children → ลิงก์
+
+Label บนแถบ (display only, ไม่แก้ข้อมูลเมนู): map ตาม menu_code
+  (MENU_PR→Office Service, MENU_PO→PO/WO, MENU_IC→Inventory, MENU_FINANCE→Accounts Payable)
+  ไม่งั้นใช้ส่วนของ menu_name ก่อนตัวอักษรไทยตัวแรก; ชื่อเต็มอยู่ใน title/tooltip
+  และเป็นหัวบรรทัดใน dropdown
+
+Dropdown: เปิดด้วย click และ hover (หน่วง ~150ms ทั้งเปิด/ปิด), ปิดด้วย Escape / คลิกนอก / เปลี่ยน route
+  render ผ่าน portal (position: fixed จาก getBoundingClientRect ของ trigger) เพื่อไม่ถูก overflow ของแถบตัด;
+  background #fff, radius 12, shadow 0 8px 30px rgba(15,45,94,0.18), padding 8, min-width 260,
+  max-height calc(100vh - 96px) + overflow auto, z-index 900 (เหนือเนื้อหา ต่ำกว่า antd modal)
+  child: padding 10px 12px, radius 8, ตัวหนังสือ #1e3a8a, hover #eff6ff;
+  child ของ route ปัจจุบัน: #eff6ff + #1d4ed8 + weight 600; ระดับที่ 3 แสดงเป็นหัวกลุ่มเล็ก ๆ
+
+เมนูยาว (desktop ≥ 992px): แถบกลางเลื่อนแนวนอน (ซ่อน scrollbar, smooth), มีปุ่มลูกศร ซ้าย/ขวา
+  (<button> 36px, aria-label "เลื่อนไปทางซ้าย"/"เลื่อนไปทางขวา") โผล่เฉพาะเมื่อ item กว้างกว่าพื้นที่,
+  disabled เมื่อสุดทาง; คลิก = เลื่อน ~200px (หรือ 60% ของความกว้าง), กดค้าง = เลื่อนต่อเนื่อง;
+  wheel / Shift+wheel เลื่อนแนวนอน; เปลี่ยน route แล้ว scroll item ที่ active เข้าจอ; ขอบจางเมื่อมีเนื้อหาซ่อน;
+  ถ้าแถบเลื่อนตอน dropdown เปิด → ปิด dropdown
+
+Resizable items (desktop เท่านั้น): ลาก handle ขอบขวาของ item (~10px, col-resize, เส้นบางโผล่ตอน hover)
+  ปรับความกว้าง 64–320px; ความกว้างเริ่มต้น = พอดี label, แคบกว่า label → ellipsis (ชื่อเต็มใน title);
+  ดับเบิลคลิก handle = reset item นั้น; เมนูผู้ใช้มี "รีเซ็ตความกว้างเมนู" = reset ทั้งหมด
+  เก็บใน localStorage key `erp.topnav.widths.v1` (map menu_code → px, ห่อ try/catch — ใช้งานได้แม้ storage ใช้ไม่ได้)
+  ไม่มี keyboard resize
+
+ต่ำกว่า 992px: ซ่อน item บนแถบ แสดงปุ่มเมนู (44px) เปิด drawer เต็มความกว้างใต้แถบ:
+  พื้น #0f2d5e, item สูง ≥ 44px, parent เป็น accordion (submenu พื้น #09203f เยื้องเข้า),
+  user block อยู่ล่างสุด, backdrop rgba(9,32,63,0.55) กดแล้วปิด, ปิดเมื่อเปลี่ยน route;
+  ไม่มีลูกศรเลื่อนและไม่มี resize
+
+A11y: <nav aria-label="เมนูหลัก">, aria-current="page" บนลิงก์ที่ active, aria-haspopup/aria-expanded บน parent,
+  Enter/Space เปิด, ArrowDown/Up/Home/End ใน dropdown, Escape ปิดแล้วคืน focus ให้ trigger,
+  focus ring สีฟ้า #60a5fa
 ```
 
 ---

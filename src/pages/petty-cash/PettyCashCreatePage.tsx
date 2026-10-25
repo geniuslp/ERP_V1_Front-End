@@ -8,6 +8,7 @@ import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import PanelTabs from '@/components/common/PanelTabs'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 import ApproverPickerModal, { type ChosenApprover } from '@/components/pettyCash/ApproverPickerModal'
 import PettyCashSubmitApprove, { type SubmitApproveSummary } from '@/components/pettyCash/PettyCashSubmitApprove'
@@ -123,7 +124,8 @@ const PettyCashCreatePage: React.FC = () => {
   const [remarksError, setRemarksError] = useState('')
 
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
-  const [departments, setDepartments] = useState<LookupOption[]>([])
+  // dept_name is filled from the selected department; it also names a saved code that is no longer active.
+  const savedDeptName: string | undefined = Form.useWatch('dept_name', form)
   // Project dropdown: GET /master/projects/options (all ACTIVE projects); the document's own project is merged in when it is CLOSED/INACTIVE.
   const { options: projects } = useProjectOptions({}, headerProjectCode)
 
@@ -160,12 +162,6 @@ const PettyCashCreatePage: React.FC = () => {
             }
           }))
       } catch { message.error('โหลดรายชื่อพนักงานไม่สำเร็จ') }
-      try {
-        const res = await axios.get(`${BASE_URL}/departments`, { headers })
-        setDepartments(unwrapList(res.data).map((d: any) => ({
-          value: d.dept_code, label: d.dept_code, name: d.dept_name ?? '',
-        })))
-      } catch { message.error('โหลดรายชื่อแผนกไม่สำเร็จ') }
     }
     load()
   }, [accessToken])
@@ -760,19 +756,11 @@ const PettyCashCreatePage: React.FC = () => {
                 }),
               ]}
             >
-              <Select
-                placeholder="เลือกแผนก"
-                showSearch
+              <DepartmentSelect
                 allowClear
-                options={departments}
-                // The label shows only dept_code, so search both code and name.
-                filterOption={(input, option) => {
-                  const q = input.toLowerCase()
-                  return String(option?.value ?? '').toLowerCase().includes(q)
-                    || String((option as LookupOption | undefined)?.name ?? '').toLowerCase().includes(q)
-                }}
-                onChange={(code?: string) => {
-                  form.setFieldValue('dept_name', departments.find((d) => d.value === code)?.name ?? '')
+                fallbackName={savedDeptName}
+                onChange={(_code, dept) => {
+                  form.setFieldValue('dept_name', dept?.dept_name ?? '')
                 }}
               />
             </Form.Item>

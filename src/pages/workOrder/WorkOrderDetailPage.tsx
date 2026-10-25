@@ -207,8 +207,8 @@ const WorkOrderDetailPage: React.FC = () => {
           <Descriptions.Item label="วันที่เริ่มงาน">{dateFmt(wo.start_date)}</Descriptions.Item>
           <Descriptions.Item label="ระยะเวลา">{wo.duration_days != null ? `${wo.duration_days} วัน` : '—'}</Descriptions.Item>
           <Descriptions.Item label="วันที่สิ้นสุด">{dateFmt(wo.end_date)}</Descriptions.Item>
-          <Descriptions.Item label="ค่าปรับ">{wo.penalty_pct_per_day != null ? `${wo.penalty_pct_per_day}% / วัน` : '—'}</Descriptions.Item>
-          <Descriptions.Item label="ระยะเวลารับประกัน">{wo.warranty_years != null ? `${wo.warranty_years} ปี` : '—'}</Descriptions.Item>
+          <Descriptions.Item label="ค่าปรับ">{wo.has_penalty ? 'ปรับวันละ 1.00% ของมูลค่างาน' : 'ไม่มี'}</Descriptions.Item>
+          <Descriptions.Item label="ประกันผลงาน 1 ปี">{wo.warranty_note || '—'}</Descriptions.Item>
         </Descriptions>
       </Card>
 

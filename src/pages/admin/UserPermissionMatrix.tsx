@@ -4,6 +4,7 @@ import { Button, Space, Modal, message, Badge, Select, Skeleton } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import { useAppSelector } from '@/store'
 import PageHeader from '@/components/common/PageHeader'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import PermissionCell from '@/components/permission/PermissionCell'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { PermField, PermMenu, EffectivePermission, UserPermBatchPayload, RoleMenuPermission } from '@/types/permission.types'
@@ -278,9 +279,13 @@ const UserPermissionMatrix: React.FC = () => {
             </span>
             <Space>
               {hasDiff && (
-                <Button danger onClick={handleReset}>
+                <ConfirmDeleteButton
+                  icon={null}
+                  text="ยืนยันการรีเซ็ตสิทธิ์ Custom ของผู้ใช้นี้? การรีเซ็ตไม่สามารถย้อนกลับได้"
+                  onConfirm={handleReset}
+                >
                   รีเซ็ต Custom
-                </Button>
+                </ConfirmDeleteButton>
               )}
               <Badge count={hasDiff ? diffMenuIds.length : 0} size="small" offset={[-4, 4]}>
                 <Button

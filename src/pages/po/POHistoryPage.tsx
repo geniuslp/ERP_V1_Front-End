@@ -15,7 +15,8 @@ import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
-import { ROW_TINT_CLASS } from '@/constants/rowTint'
+import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
+import RowTintLegend from '@/components/common/RowTintLegend'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS, isOhOrderType } from '@/constants/orderTypes'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
@@ -29,6 +30,14 @@ const { Text } = Typography
 // the first matching rule wins when a PO could match more than one (e.g. a
 // PARTIALLY_RECEIVED PO that is also PENDING_REAPPROVAL). No legend/label text
 // on screen, background tint only, same approach as MemoListPage.tsx / PRHistoryPage.tsx.
+// Legend entries for getRowClassName below — labels are the same Thai texts POStatusBadge shows
+// (gray = approval status, orange/green = receive status). Statuses without a tint are not listed.
+const ROW_TINT_LEGEND = [
+  { ...ROW_TINT_SWATCH.gray, label: 'รออนุมัติ / รออนุมัติอีกครั้ง' },
+  { ...ROW_TINT_SWATCH.orange, label: 'รับของบางส่วน' },
+  { ...ROW_TINT_SWATCH.green, label: 'รับของครบแล้ว' },
+]
+
 const getRowClassName = (record: POListItem): string => {
   if (record.status_receive === 'PARTIALLY_RECEIVED') return ROW_TINT_CLASS.orange
   if (record.status === 'PENDING_APPROVAL' || record.status === 'PENDING_REAPPROVAL') {
@@ -416,6 +425,7 @@ const POHistoryPage: React.FC = () => {
           options={ORDER_TYPE_OPTIONS}
           onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
         />
+        <RowTintLegend items={ROW_TINT_LEGEND} />
         <Table
           rowKey="po_id"
           loading={loading}

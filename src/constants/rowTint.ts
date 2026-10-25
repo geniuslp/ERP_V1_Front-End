@@ -11,4 +11,14 @@ export const ROW_TINT_CLASS = {
   gray: 'row-tint-gray',
 } as const
 
+// Legend swatch colors — must equal the fill / left-bar colors of the matching
+// ".row-tint-*" rules in src/index.css (the one place a palette change is made;
+// update both together). Used by RowTintLegend so legend and rows cannot drift.
+export const ROW_TINT_SWATCH = {
+  green: { color: '#d9f7be', borderColor: '#52c41a' },
+  orange: { color: '#ffe7ba', borderColor: '#fa8c16' },
+  red: { color: '#ffccc7', borderColor: '#f5222d' },
+  gray: { color: '#e5e7eb', borderColor: '#8c8c8c' },
+} as const
+
 export type RowTintCategory = keyof typeof ROW_TINT_CLASS

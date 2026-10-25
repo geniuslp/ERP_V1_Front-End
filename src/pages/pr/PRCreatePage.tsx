@@ -22,8 +22,7 @@ import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { isOhOrderType, OH_JOB_CODE } from '@/constants/orderTypes'
 import OrderTypeSelect from '@/components/common/OrderTypeSelect'
-import { permissionMatrixService } from '@/services/permissionMatrix.service'
-import type { Department } from '@/types/permission.types'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import { isExemptMatCode } from '@/utils/matCode'
 import {
   COST_CODE_REQUIRED_MESSAGE,
@@ -168,10 +167,8 @@ const PRCreatePage: React.FC = () => {
   const itemsTableRef = useRef<PRItemsTableHandle>(null)
   const [users, setUsers] = useState<User[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
-  // Same master data / service call as the "แผนก" dropdown on the Add User
-  // page (UsersPage.tsx) — permissionMatrixService.getDepartments.
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [departmentsLoading, setDepartmentsLoading] = useState(false)
+  // dept_name of the saved PR (GET /pr/:id joins it) — names a dept_code that is no longer active.
+  const [savedDeptName, setSavedDeptName] = useState<string | undefined>()
   const [prNumber, setPrNumber] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [initialLineItems, setInitialLineItems] = useState<InitialLineItem[] | undefined>(undefined)
@@ -294,14 +291,6 @@ const PRCreatePage: React.FC = () => {
     fetchUsers()
   }, [])
 
-  useEffect(() => {
-    setDepartmentsLoading(true)
-    permissionMatrixService.getDepartments(accessToken as string)
-      .then(setDepartments)
-      .catch(() => message.error('โหลดรายชื่อแผนกไม่สำเร็จ'))
-      .finally(() => setDepartmentsLoading(false))
-  }, [])
-
 
 
   // The backend now generates pr_no on save (GET /pr/reserve-number is
@@ -352,6 +341,7 @@ const PRCreatePage: React.FC = () => {
           requested_by: raw.requester_id ?? raw.requested_by,
           dept_code: raw.dept_code || undefined,
         })
+        setSavedDeptName(raw.dept_name ?? undefined)
         setRemark(raw.remarks ?? '')
         setLinkedMemoId(raw.memo_id != null ? Number(raw.memo_id) : null)
         setInitialLineItems(
@@ -464,6 +454,11 @@ const PRCreatePage: React.FC = () => {
     form.setFieldValue('memo_id', memo.id)
     form.setFieldValue('memo_no_ref', memo.memoNo)
     form.setFieldValue('project_code', (memo as any).projectCode ?? (memo as any).project_code)
+    // Job follows the Memo's job (stays user-editable; OH types keep their fixed 'G').
+    const memoJob = (memo as any).job_code ?? memo.jobCode
+    if (memoJob && !isOhOrderType(form.getFieldValue('order_type'))) {
+      form.setFieldValue('job_code', memoJob)
+    }
     if (memo.deliveryLocation) {
       form.setFieldValue('location_text', memo.deliveryLocation)
     }
@@ -976,20 +971,12 @@ const PRCreatePage: React.FC = () => {
                   name="dept_code"
                   noStyle
                 >
-                  <Select
+                  <DepartmentSelect
                     placeholder="- เลือกแผนก -"
                     style={{ width: '100%' }}
-                    loading={departmentsLoading}
-                    showSearch
                     allowClear
                     disabled={!!selectedMemo}
-                    filterOption={(input, option) =>
-                      String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={[
-                      { value: '', label: '- ไม่ระบุ -' },
-                      ...departments.map((d) => ({ value: d.dept_code, label: d.dept_name })),
-                    ]}
+                    fallbackName={savedDeptName}
                     onChange={(v) => {
                       // Defensive: department can only be enabled/changeable
                       // while selectedMemo is already null, so this should

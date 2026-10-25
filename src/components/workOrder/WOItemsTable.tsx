@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Table, Button, InputNumber, Input, Space, Select } from 'antd'
 import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import { calcDisc } from '@/utils/poCalc'
 import { formatCostCodeDisplay } from '@/utils/costCode'
@@ -288,7 +289,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
       width: 40,
       align: 'center' as const,
       render: (_: unknown, r: WOLineItem) => (
-        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(r.key)} />
+        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeItem(r.key)} />
       ),
     },
   ]

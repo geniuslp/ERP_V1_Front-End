@@ -783,6 +783,38 @@ persistence not verified.
   `/master/job-types`, WHT defaults from `/work-order/wht-defaults`). The remaining violation is the
   warehouse-project code list (TODO above).
 
+## 🧭 Session learnings (2026-10-25) — WO form 7.5 / 8.1 / 8.2, new submenu + page "บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" [Frontend]
+
+> Verified: `tsc --noEmit` ไม่มี error ในไฟล์ที่แตะ. **ไม่ได้เปิดเบราว์เซอร์ / ไม่ได้ยิง API จริง** — ทุกอย่างด้านล่างเขียนตามสเก็ตช์มือที่ผู้ใช้ให้
+> (ลายมืออ่านยากบางจุด ดู "ที่เดา" ท้ายหัวข้อ). Backend/SQL ดู `erp-api` `CLAUDE.md` หัวข้อ session 2026-10-25 (migrations 017–021).
+
+**WO create form (`WorkOrderCreatePage.tsx`, `WOPaymentConditionsSection.tsx`)**
+- หัวข้อ 8 มี sub-block 2 อัน (สไตล์เดียวกับ 7.x — `subCardStyle`: radius 10, border `#e5e7eb`, ไม่มีเงา, ซ้ำกับค่าในไฟล์ section เพราะไม่มี shared): **8.1 เบี้ยปรับ** =
+  Radio มี/ไม่มี (`has_penalty`, ข้อความ "ปรับวันละ 1.00% ของมูลค่างาน" คงที่ ไม่ส่งอัตรา) และ **8.2 ประกันผลงาน 1 ปี** = TextArea (`warranty_note`, max 2000).
+  ช่อง "ระยะเวลารับประกัน (ปี)" (`warranty_years`) เอาออกจากฟอร์ม. `WorkOrderDetailPage.tsx` / `WorkOrderPrintStandard.tsx` อ่านค่าใหม่แล้ว (8.1/8.2); `WorkOrderPrintView.tsx` ไม่ได้ตรวจ.
+- **7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ)** = ช่อง `other_deduction_note` ถูกย้ายเข้าการ์ดหัวข้อ 7 ผ่าน prop `otherSlot` ของ `WOPaymentConditionsSection` (เดิมเป็นการ์ดแยกนอกหัวข้อ 7).
+- บล็อก **"ค่าปรับ" ถูกซ่อนจาก UI หัวข้อ 7** (ตามสั่ง "เอาออกก่อน") แต่ state/props (`penalties`, `onPenaltiesChange`) และการโหลด/บันทึก
+  `payment-conditions` ยังอยู่ — WO เก่าที่มีรายการค่าปรับจะส่งค่าเดิมกลับตอน save (ไม่หาย แต่แก้จากหน้านี้ไม่ได้). ถ้าจะลบจริงต้องลบ state + save wiring ด้วย.
+
+**เมนู + route**: เมนู `MENU_WO_CONTRACTOR_LOG` อยู่ใต้ `MENU_PO` ("PO/WO"), ลำดับ 9 ก่อน Budget Cost (เมนู sidebar มาจาก backend `GET /menus` ล้วน; ต้อง grant สิทธิ์ใน permission matrix ก่อนถึงจะเห็น).
+Routes ใน `App.tsx`: `/work-order/contractor-log` (สร้างใหม่) และ `/work-order/contractor-log/:id` (แก้ไข) — ทั้งคู่ `RequirePermission menuCode="MENU_WO_CONTRACTOR_LOG" action="read"`
+(ใช้ `read` เพื่อให้ผู้ที่เห็นเมนูเข้าได้; ยังไม่แยก write/edit เหมือน PO create). icon map ใน `SidebarMenu.tsx`.
+
+**หน้า `WorkOrderContractorLogPage.tsx`** (2 tab; PageHeader "บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง")
+- **Tab 1 ข้อมูลเอกสาร**: เลือก WO (Select ค้นหา remote `GET /work-order?status=APPROVED&search=`, เฉพาะ WO ที่อนุมัติแล้ว; ตอนแก้ไขจะ merge WO เดิมเข้า option แม้ไม่ APPROVED แล้ว) →
+  ผู้รับจ้าง / โครงการ-แผนก / ลักษณะสัญญา เติมอัตโนมัติ (read-only, ไม่เก็บใน DB) → ตาราง Contract/Advance/Retention (กรอกเองทุกช่อง; Contract เติม 100% + `contract_amount` ของ WO ตอนเลือก WO)
+  → ช่อง PJ (เลือกโครงการ, `useProjectOptions`). ปุ่ม "ประเภทวางบิล" = สลับไป tab 2. ปุ่ม "บันทึก" (ที่ footer เฉพาะ tab 1; สเก็ตช์ไม่มี) → `POST/PUT /wo-contractor-log`,
+  บันทึกครั้งแรกแล้ว `navigate` ไป `/…/:id` (replace). ยังไม่มีหน้า list — เข้าเรื่องที่บันทึกไว้ได้ด้วย URL ที่มี id เท่านั้น.
+- **Tab 2 ประเภทรับวางบิล** = component `src/components/workOrder/WOContractorBillTab.tsx` (ต้องบันทึก tab 1 ก่อน ไม่งั้นแสดง Alert): ตารางรายการ bill ของเอกสารนี้ (คลิกแถวเพื่อแก้, "สร้างรายการใหม่"),
+  ฟอร์ม (ประเภทรับวางบิล ADV/Progress/Retention, งวดที่, AP Voucher No.* [พื้นเหลือง], PAY TO, Credit Term [AUTO จาก `supplier.payment_terms`], รายละเอียด),
+  ตาราง invoice (เพิ่ม/ลบแถว: ใบกำกับภาษี/INVOICE NO., INVOICE DATE, วันที่ส่งมอบงาน, วันที่วางบิล, วันที่จ่าย), ตาราง "สรุปรายการเบิก" 7 บรรทัด + รวมเป็นเงิน (1) + จ่ายสุทธิ,
+  ปุ่ม DRAFT / SAVE (บันทึก `status` DRAFT|SAVED) / PRINT (disabled — ยังไม่มี layout). บรรทัด "เงินงวดนี้" (Progress) เลือกงวดจาก `GET /work-order/:woId/payment-conditions` → เติมยอดงวดนั้น.
+  สูตรอยู่ในตัว component (`calc` useMemo) และ backend คำนวณ `subtotal`/`net_amount` ซ้ำเองทุกครั้ง (ค่าที่ client ส่งสองตัวนั้นถูกเมิน).
+- **ที่เดาจากสเก็ตช์ (ขอให้ผู้ใช้ยืนยัน)**: ป้ายคอลัมน์ "วันที่ส่งมอบงาน"; ฐานคำนวณ (หัก ADV/Retention คิดจากยอดก่อนหัก, VAT/WHT คิดหลังหักเงินล่วงหน้า — เช็คตรงกับตัวเลขตัวอย่าง 4,430,000);
+  ชนิดหัก ณ ที่จ่าย (ค่าจ้างรับเหมา 3%, ค่าบริการ 3%, ค่าเช่า 5%, ค่าขนส่ง 1%); ช่อง "3/5/1" ข้างบรรทัด 5 ในสเก็ตช์ (ไม่ได้ทำเป็นอะไร ใช้ช่อง % กรอกเอง); "ปรับ PAGE (A)" ที่มุมล่างสเก็ตช์ (ไม่ได้ทำ);
+  bill แบบ Retention ใช้ฟอร์มเดียวกับ Progress โดยกรอกยอด "เงินงวดนี้" เอง. สถานะ SAVED ยังไม่ล็อกการแก้ไข. AP Voucher No. ยังไม่จำกัดสิทธิ์เฉพาะฝ่ายบัญชี.
+- **Gotcha**: `Tabs` ของ antd ไม่ unmount tab ที่เปิดไปแล้ว — bill ใหม่ที่ยังไม่บันทึกจะถูกรีเซ็ตเป็นค่า default ถ้าแก้ค่า default จาก tab 1 (Advance/Retention %) ระหว่างนั้น (`newForm` เปลี่ยน → effect `setF(newForm())`).
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

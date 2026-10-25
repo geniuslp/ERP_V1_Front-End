@@ -236,12 +236,12 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">8.1 เบี้ยปรับ {data.penalty_pct_per_day ?? 0}% ของมูลค่างาน ต่อวัน</td>
+        <td className="sub">8.1 เบี้ยปรับ {data.has_penalty ? 'ปรับวันละ 1.00% ของมูลค่างาน' : 'ไม่มี'}</td>
       </tr>
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">8.2 ประกันผลงาน {data.warranty_years ?? 0} ปี</td>
+        <td className="sub">8.2 ประกันผลงาน 1 ปี{data.warranty_note ? ` : ${data.warranty_note}` : ''}</td>
       </tr>
 
       <tr>

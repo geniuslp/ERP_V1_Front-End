@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Modal, Table, Tooltip } from 'antd'
+import { Modal, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
@@ -7,6 +7,8 @@ import api from '@/services/api'
 
 // Row of GET /po/cost-budget/:projectCode/cost-codes/:costSubgroupId/po-lines
 interface CostCodePoLine {
+  // 'PC' rows: po_id/po_no/po_status hold the petty cash header id / document number / status.
+  source?: 'PO' | 'PC'
   po_id: number
   po_no: string
   project_code: string
@@ -24,7 +26,8 @@ interface CostCodePoLine {
 export interface CostCodePoLinesTarget {
   projectCode: string
   projectName: string
-  subgroupId: number
+  // 'none' = the unassigned petty cash row
+  subgroupId: number | 'none'
   costCode: string
   description: string
 }
@@ -37,6 +40,7 @@ interface Props {
 const MIN_COL_WIDTH = 80
 const DEFAULT_WIDTHS: Record<string, number> = {
   // Sum 1120 ~ the modal body at 1170px (was 1010 at 900px), so the extra width is used.
+  source: 100,
   po_no: 170,
   project_name: 240,
   item_name: 320,
@@ -122,13 +126,30 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
 
   const columns: ColumnsType<CostCodePoLine> = [
     {
-      title: 'PO',
+      title: 'ประเภท',
+      dataIndex: 'source',
+      key: 'source',
+      ...col('source'),
+      render: (v: 'PO' | 'PC' | undefined) =>
+        v === 'PC' ? (
+          <Tag color="orange" style={{ margin: 0 }}>เงินสดย่อย</Tag>
+        ) : (
+          <Tag color="blue" style={{ margin: 0 }}>PO</Tag>
+        ),
+    },
+    {
+      title: 'เลขที่เอกสาร',
       dataIndex: 'po_no',
       key: 'po_no',
       ...col('po_no'),
-      // PO detail route (opened in a new tab, without the approval-scoping flag).
+      // Detail routes open in a new tab (PO without the approval-scoping flag).
       render: (v: string, r) => (
-        <a href={`/po/approval/${r.po_id}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+        <a
+          href={r.source === 'PC' ? `/petty-cash/${r.po_id}` : `/po/approval/${r.po_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontWeight: 600 }}
+        >
           {v}
         </a>
       ),
@@ -187,7 +208,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       title={
         target ? (
           <div>
-            <div>{`รายการ PO - ${target.costCode} ${target.description ?? ''}`.trim()}</div>
+            <div>{`รายการ PO / เงินสดย่อย - ${target.costCode} ${target.description ?? ''}`.trim()}</div>
             <div style={{ fontSize: 12, fontWeight: 400, color: '#60a5fa', marginTop: 2 }}>
               {`${target.projectCode} ${(target.projectName ?? '').replace(/\s+/g, ' ')}`.trim()}
             </div>
@@ -198,7 +219,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       }
     >
       <Table
-        rowKey={(r) => `${r.po_id}-${r.line_no}`}
+        rowKey={(r) => `${r.source ?? 'PO'}-${r.po_id}-${r.line_no}`}
         size="small"
         loading={loading}
         columns={columns}
@@ -208,7 +229,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
         // 55vh x 1.3 = ~72vh, capped to the viewport minus the modal chrome (max 90vh).
         scroll={{ x: scrollX, y: 'min(72vh, calc(100vh - 260px))' }}
         locale={{
-          emptyText: loading ? ' ' : error ? <span style={{ color: '#dc2626' }}>{error}</span> : 'ไม่มีรายการ PO ภายใต้รหัสต้นทุนนี้',
+          emptyText: loading ? ' ' : error ? <span style={{ color: '#dc2626' }}>{error}</span> : 'ไม่มีรายการ PO หรือเงินสดย่อยภายใต้รหัสต้นทุนนี้',
         }}
       />
     </Modal>

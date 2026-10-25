@@ -7,6 +7,7 @@ import { PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined } from '@a
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import { useAppSelector } from '@/store'
 import { mockReservations, mockStockItems } from '@/utils/mockStockData'
 import type { Reservation, ReservationStatus } from '@/types/stock'
@@ -114,9 +115,12 @@ const ReservationPage: React.FC = () => {
       width: 80,
       render: (_: any, record: Reservation) => (
         record.status !== 'CANCELLED' && record.status !== 'FULFILLED' ? (
-          <Tooltip title="Cancel">
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleCancel(record.id)} />
-          </Tooltip>
+          <ConfirmDeleteButton
+            size="small"
+            title="Cancel"
+            text="ยืนยันการยกเลิกการจอง? การยกเลิกไม่สามารถย้อนกลับได้"
+            onConfirm={() => handleCancel(record.id)}
+          />
         ) : null
       ),
     },

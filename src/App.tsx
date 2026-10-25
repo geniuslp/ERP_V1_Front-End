@@ -36,6 +36,7 @@ const WorkOrderListPage = lazy(() => import('@/pages/workOrder/WorkOrderListPage
 const WorkOrderCreatePage = lazy(() => import('@/pages/workOrder/WorkOrderCreatePage'))
 const WorkOrderDetailPage = lazy(() => import('@/pages/workOrder/WorkOrderDetailPage'))
 const WorkOrderApprovalListPage = lazy(() => import('@/pages/workOrder/WorkOrderApprovalListPage'))
+const WorkOrderContractorLogPage = lazy(() => import('@/pages/workOrder/WorkOrderContractorLogPage'))
 const PettyCashListPage = lazy(() => import('@/pages/petty-cash/PettyCashListPage'))
 const PettyCashCreatePage = lazy(() => import('@/pages/petty-cash/PettyCashCreatePage'))
 const PettyCashDetailPage = lazy(() => import('@/pages/petty-cash/PettyCashDetailPage'))
@@ -51,6 +52,7 @@ const MaterialDetailPage = lazy(() => import('@/pages/master/MaterialDetailPage'
 const CostCodePage = lazy(() => import('@/pages/master/CostCodePage'))
 const LocationPage = lazy(() => import('@/pages/master/LocationPage'))
 const SupplierPage = lazy(() => import('@/pages/master/SupplierPage'))
+const DepartmentMasterPage = lazy(() => import('@/pages/master/DepartmentMasterPage'))
 const CustomerPage = lazy(() => import('@/pages/master/CustomerPage'))
 const StockProjectListPage = lazy(() => import('@/pages/stock-project/StockProjectListPage'))
 const StockProjectDetailPage = lazy(() => import('@/pages/stock-project/StockProjectDetailPage'))
@@ -163,6 +165,12 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/po/approval" element={<POApprovalListPage />} />
               <Route path="/po/approval/:id" element={<POApprovalDetailPage />} />
+              <Route path="/work-order/contractor-log" element={
+                <RequirePermission menuCode="MENU_WO_CONTRACTOR_LOG" action="read"><WorkOrderContractorLogPage /></RequirePermission>
+              } />
+              <Route path="/work-order/contractor-log/:id" element={
+                <RequirePermission menuCode="MENU_WO_CONTRACTOR_LOG" action="read"><WorkOrderContractorLogPage /></RequirePermission>
+              } />
               <Route path="/work-order/list" element={
                 <RequirePermission menuCode="MENU_WO_LIST" action="read"><WorkOrderListPage /></RequirePermission>
               } />
@@ -210,6 +218,9 @@ const AppRoutes: React.FC = () => (
               <Route path="/master/location" element={<LocationPage />} />
               <Route path="/master/supplier" element={<SupplierPage />} />
               <Route path="/master/customer" element={<CustomerPage />} />
+              <Route path="/master/departments" element={
+                <RequirePermission menuCode="MENU_ADMIN_DEPARTMENTS" action="read"><DepartmentMasterPage /></RequirePermission>
+              } />
               <Route path="/master/stock" element={
                 <RequirePermission menuCode="master-stock" action="read"><StockProjectListPage /></RequirePermission>
               } />

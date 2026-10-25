@@ -8,10 +8,15 @@ import { formatCostCodeDisplay } from '@/utils/costCode'
 import CostCodePoLinesModal, { type CostCodePoLinesTarget } from './CostCodePoLinesModal'
 
 export interface CostBudgetDetailLine {
-  subgroup_id: number
+  subgroup_id: number | null
   cost_code: string
   description: string
   budget: number
+  // pu_cost = po_cost + pc_cost (petty cash charged to the cost code)
+  po_cost?: number
+  pc_cost?: number
+  // Petty cash with no cost code; always the last row, row_type stays 'ITEM' on purpose.
+  is_unassigned?: boolean
   pu_cost: number
   pu_bal: number
   ac_cost: number
@@ -25,6 +30,9 @@ export type CostBudgetRowType = 'MAJOR' | 'HEAD' | 'ITEM'
 // MAJOR/HEAD rows are not selectable and have no POs, so only ITEM rows open the PO list.
 const isItemRow = (r: CostBudgetDetailLine) => r.row_type === 'ITEM'
 
+// The unassigned row has subgroup_id null, so it needs its own table key / modal id ("none").
+const rowKeyOf = (r: CostBudgetDetailLine) => (r.is_unassigned ? 'none' : String(r.subgroup_id))
+
 // Row-type colours (applied via .cb-row-major / .cb-row-head in the scoped <style> below):
 // Major = purple, Head = amber. The same hues feed the legend swatches.
 const ROW_COLOR = {
@@ -36,6 +44,8 @@ const INDENT: Record<CostBudgetRowType, number> = { MAJOR: 0, HEAD: 16, ITEM: 32
 
 export interface CostBudgetDetailTotals {
   budget: number
+  po_cost?: number
+  pc_cost?: number
   pu_cost: number
   pu_bal: number
   ac_cost: number
@@ -124,8 +134,8 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
   }, [projectCode])
 
   // Running number for ITEM rows only, from the full API list (stable; MAJOR/HEAD get none).
-  const itemNo = new Map<number, number>()
-  ;(data?.rows ?? []).filter(isItemRow).forEach((r, i) => itemNo.set(r.subgroup_id, i + 1))
+  const itemNo = new Map<string, number>()
+  ;(data?.rows ?? []).filter(isItemRow).forEach((r, i) => itemNo.set(rowKeyOf(r), i + 1))
 
   const bal = (v: number) => <span style={{ color: v < 0 ? '#dc2626' : undefined }}>{thb(v)}</span>
 
@@ -139,7 +149,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       // (colour alone must not be the only cue).
       render: (_: unknown, r) =>
         isItemRow(r) ? (
-          itemNo.get(r.subgroup_id) ?? ''
+          r.is_unassigned ? '' : itemNo.get(rowKeyOf(r)) ?? ''
         ) : (
           <Tooltip title={ROW_TYPE_LABEL[r.row_type]}>
             <span aria-label={ROW_TYPE_LABEL[r.row_type]} style={{ display: 'inline-block', minWidth: 32, minHeight: 20 }} />
@@ -151,7 +161,11 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       dataIndex: 'cost_code',
       key: 'cost_code',
       width: 182,
-      render: (v: string, r) => !isItemRow(r) ? (
+      render: (v: string, r) => r.is_unassigned ? (
+        <span className="cb-item-link" style={{ paddingLeft: INDENT.ITEM, color: '#6b7280', fontStyle: 'italic', cursor: 'pointer' }}>
+          ไม่ระบุรหัสต้นทุน
+        </span>
+      ) : !isItemRow(r) ? (
         <span style={{ paddingLeft: INDENT[r.row_type], fontWeight: 700, whiteSpace: 'nowrap' }}>
           {formatCostCodeDisplay(v)}
         </span>
@@ -166,10 +180,35 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
-      render: (v: string, r) => (isItemRow(r) ? v : <span style={{ fontWeight: 700 }}>{v}</span>),
+      render: (v: string, r) =>
+        r.is_unassigned ? (
+          <span style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>เงินสดย่อยที่ยังไม่ระบุรหัสต้นทุน</span>
+        ) : isItemRow(r) ? (
+          v
+        ) : (
+          <span style={{ fontWeight: 700 }}>{v}</span>
+        ),
     },
     { title: 'Budget', dataIndex: 'budget', key: 'budget', align: 'right', render: (v: number) => thb(v) },
-    { title: 'Pu.Cost', dataIndex: 'pu_cost', key: 'pu_cost', align: 'right', render: (v: number) => thb(v) },
+    {
+      title: 'Pu.Cost',
+      dataIndex: 'pu_cost',
+      key: 'pu_cost',
+      align: 'right',
+      render: (v: number, r) => {
+        const po = r.po_cost ?? 0
+        const pc = r.pc_cost ?? 0
+        // Split only when the API sent it; petty cash part hidden when 0.
+        if (r.po_cost == null && r.pc_cost == null) return thb(v)
+        const split = `PO ${thb(po)}${pc ? ` / เงินสดย่อย ${thb(pc)}` : ''}`
+        return (
+          <div>
+            <div>{thb(v)}</div>
+            <div style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{split}</div>
+          </div>
+        )
+      },
+    },
     { title: 'Pu.Bal', dataIndex: 'pu_bal', key: 'pu_bal', align: 'right', render: bal },
     { title: 'Ac.Cost', dataIndex: 'ac_cost', key: 'ac_cost', align: 'right', render: (v: number) => thb(v) },
     { title: 'Ac.Bal', dataIndex: 'ac_bal', key: 'ac_bal', align: 'right', render: bal },
@@ -253,7 +292,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
         </div>
         <Table
           className="cb-table"
-          rowKey="subgroup_id"
+          rowKey={(r) => `${r.row_type}-${rowKeyOf(r)}`}
           rowClassName={(r) => (r.row_type === 'MAJOR' ? 'cb-row-major' : r.row_type === 'HEAD' ? 'cb-row-head' : '')}
           onRow={(r) => {
             if (isItemRow(r)) {
@@ -265,8 +304,8 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
                   setPoTarget({
                     projectCode,
                     projectName: data?.project?.project_name ?? '',
-                    subgroupId: r.subgroup_id,
-                    costCode: formatCostCodeDisplay(r.cost_code),
+                    subgroupId: r.is_unassigned ? 'none' : (r.subgroup_id as number),
+                    costCode: r.is_unassigned ? '' : formatCostCodeDisplay(r.cost_code),
                     description: r.description,
                   })
                 },

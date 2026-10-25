@@ -142,6 +142,8 @@ export interface WorkOrder {
   end_date?: string
   penalty_pct_per_day?: number
   warranty_years?: number
+  has_penalty?: boolean // 8.1 เบี้ยปรับ มี/ไม่มี — fixed 1.00% of contract value per day
+  warranty_note?: string // 8.2 ประกันผลงาน (free text)
 
   // ── Cost-code line items (mirrors PO's use_discount/discount_type/use_vat/
   // use_wht header flags + per-line discount/wht_rate — see WorkOrderLine) ──

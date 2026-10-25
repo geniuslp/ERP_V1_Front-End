@@ -2,6 +2,7 @@ import React from 'react'
 import { Table, Button, Tooltip, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import type { PettyCashLineForm } from '@/types/pettyCash'
 
 export type LineModalMode = 'view' | 'edit' | 'add'
@@ -53,9 +54,7 @@ const PettyCashLineSummaryTable: React.FC<Props> = ({ items, canEdit, onOpenLine
             </Tooltip>
           )}
           {canEdit && (
-            <Tooltip title="ลบ">
-              <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(i)} />
-            </Tooltip>
+            <ConfirmDeleteButton type="text" size="small" title="ลบ" onConfirm={() => onDelete(i)} />
           )}
         </span>
       ),

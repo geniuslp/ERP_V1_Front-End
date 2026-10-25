@@ -32,6 +32,7 @@ export const ROUTES = {
     COST_CODE: '/master/cost-code',
     LOCATION: '/master/location',
     SUPPLIER: '/master/supplier',
+    DEPARTMENTS: '/master/departments',
     STOCK: '/master/stock',
     PROJECTS: '/master/projects',
     PROJECTS_CREATE: '/master/projects/create',

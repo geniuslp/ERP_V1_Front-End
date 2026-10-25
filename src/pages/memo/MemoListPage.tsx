@@ -13,7 +13,8 @@ import PageHeader from '@/components/common/PageHeader'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 import type { Memo, MemoStatus } from '@/types'
-import { ROW_TINT_CLASS } from '@/constants/rowTint'
+import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
+import RowTintLegend from '@/components/common/RowTintLegend'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -400,20 +401,13 @@ const MemoListPage: React.FC = () => {
           </Button>
         </Space>
 
-        <Space size={16} style={{ marginBottom: 12 }}>
-          <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#e5e7eb', border: '1px solid #8c8c8c', display: 'inline-block' }} />
-            <span style={{ fontSize: 13, color: '#595959' }}>รออนุมัติ</span>
-          </Space>
-          <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#d9f7be', border: '1px solid #52c41a', display: 'inline-block' }} />
-            <span style={{ fontSize: 13, color: '#595959' }}>อนุมัติแล้ว</span>
-          </Space>
-          <Space size={6}>
-            <span style={{ width: 12, height: 12, borderRadius: 2, background: '#ffccc7', border: '1px solid #f5222d', display: 'inline-block' }} />
-            <span style={{ fontSize: 13, color: '#595959' }}>ถูกปฏิเสธ</span>
-          </Space>
-        </Space>
+        <RowTintLegend
+          items={[
+            { ...ROW_TINT_SWATCH.gray, label: 'รออนุมัติ' },
+            { ...ROW_TINT_SWATCH.green, label: 'อนุมัติแล้ว' },
+            { ...ROW_TINT_SWATCH.red, label: 'ถูกปฏิเสธ' },
+          ]}
+        />
 
         <Table
           rowKey="id"

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin, Modal, DatePicker, message } from 'antd'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import {
   SearchOutlined, DeleteOutlined, LinkOutlined, FileTextOutlined,
   CalculatorOutlined, LeftOutlined, RightOutlined, CloseCircleFilled, HistoryOutlined,
@@ -687,13 +688,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
                 />
               </Badge>
             </Tooltip>
-            <Button
-              type="text"
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={() => removeItem(r.key)}
-            />
+            <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeItem(r.key)} />
           </Space>
         )
       },

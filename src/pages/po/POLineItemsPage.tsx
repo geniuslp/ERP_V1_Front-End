@@ -9,7 +9,7 @@ import 'react-resizable/css/styles.css'
 import * as XLSX from 'xlsx'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
-import { permissionMatrixService } from '@/services/permissionMatrix.service'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import { listPOs, exportPOs, getPODetail } from '@/services/poService'
 import type { POListFilters } from '@/services/poService'
 import type { POListItem, PODetail, POLine } from '@/types/po'
@@ -79,11 +79,6 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   net_amount: 130, credit: 100, project: 220, pay_status: 160, receive_status: 120, remarks: 200,
 }
 
-interface DeptOption {
-  value: string
-  label: string
-}
-
 const POLineItemsPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
 
@@ -94,7 +89,6 @@ const POLineItemsPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
 
-  const [deptOptions, setDeptOptions] = useState<DeptOption[]>([])
   const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS)
   const handleColResize = (key: string) => (_e: React.SyntheticEvent, data: ResizeCallbackData) =>
     setColWidths((w) => ({ ...w, [key]: data.size.width }))
@@ -109,19 +103,6 @@ const POLineItemsPage: React.FC = () => {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detail, setDetail] = useState<PODetail | null>(null)
-
-  useEffect(() => {
-    permissionMatrixService
-      .getDepartments(accessToken)
-      .then((list) =>
-        setDeptOptions(
-          list
-            .filter((d) => d.is_active !== false)
-            .map((d) => ({ value: d.dept_code, label: d.dept_name ? `${d.dept_code} — ${d.dept_name}` : d.dept_code })),
-        ),
-      )
-      .catch(() => message.error('โหลดรายชื่อแผนกไม่สำเร็จ'))
-  }, [accessToken])
 
   const errText = (err: any, fallback: string) =>
     err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback
@@ -386,14 +367,11 @@ const POLineItemsPage: React.FC = () => {
             />
           </Col>
           <Col xs={24} md={6}>
-            <Select
+            <DepartmentSelect
               placeholder="แผนกผู้ขอซื้อ"
               value={deptInput}
               onChange={(v) => setDeptInput(v)}
-              options={deptOptions}
               allowClear
-              showSearch
-              optionFilterProp="label"
               style={{ width: '100%' }}
             />
           </Col>

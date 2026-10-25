@@ -3,6 +3,8 @@ import { storageKey } from '@/config/env'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Avatar, message } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
@@ -445,7 +447,13 @@ const UsersPage: React.FC = () => {
       <Space>
         <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>แก้ไข</Button>
         <Button size="small" icon={<KeyOutlined />} onClick={() => openPasswordReset(r)}>เปลี่ยน Password</Button>
-        <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(r.key)}>ลบ</Button>
+        <ConfirmDeleteButton
+          size="small"
+          text={`ยืนยันการลบผู้ใช้ ${r.username ?? ''}? การลบไม่สามารถย้อนกลับได้`}
+          onConfirm={() => handleDelete(r.key)}
+        >
+          ลบ
+        </ConfirmDeleteButton>
       </Space>
     )},
   ]
@@ -468,10 +476,9 @@ const UsersPage: React.FC = () => {
           <Form.Item label="อีเมล" name="email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
           {!editing && <Form.Item label="รหัสผ่าน" name="password" rules={[{ required: true }]}><Input.Password /></Form.Item>}
           <Form.Item label="แผนก" name="deptCode" rules={[{ required: true }]}>
-            <Select
-              options={departments.map((d) => ({ value: d.dept_code, label: d.dept_name }))}
-              onChange={handleDeptChange}
-              placeholder="เลือกแผนก"
+            <DepartmentSelect
+              onChange={(code) => { if (code) handleDeptChange(code) }}
+              fallbackName={editing?.department}
             />
           </Form.Item>
           <Form.Item label="บทบาท" name="roleIds" rules={[{ required: true, type: 'array', min: 1 }]}>

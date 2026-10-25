@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Card, Table, Button, Input, InputNumber, Space, message, Spin, Switch, Tooltip, Badge, Modal } from 'antd'
 import { PlusOutlined, SearchOutlined, DeleteOutlined, CloseCircleFilled, FileTextOutlined } from '@ant-design/icons'
+import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import axios from 'axios'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
@@ -619,13 +620,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
                       />
                     </Badge>
                   </Tooltip>
-                  <Button
-                    type="text"
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={() => removeItem(r.key)}
-                  />
+                  <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeItem(r.key)} />
                 </Space>
               )
             },
