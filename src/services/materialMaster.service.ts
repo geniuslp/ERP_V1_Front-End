@@ -109,13 +109,11 @@ export const materialMasterService = {
   },
 
   // ── Rename the shared master lookup values (edits the shared record, not
-  // this material's link to it) — confirmed endpoints/body field names.
-  // Note these paths deliberately differ from the GET endpoints above (e.g.
-  // group rename is /master/mat-groups/:id, PUT, while fetching groups uses
-  // /groups) — that's the confirmed backend contract for this feature, not
-  // a typo; don't "fix" them to match the GET paths.
+  // this material's link to it). Paths match erp-api routes.go:
+  // PUT /master/groups | subgroups | mat-names | specs | brands | units /:id. (An earlier version called
+  // /master/mat-groups and /master/spec-sizes, which do not exist - group and spec renames returned 404.)
   renameGroup: async (token: string, id: number, group_name: string): Promise<void> => {
-    await axios.put(`${BASE_URL}/master/mat-groups/${id}`, { group_name }, { headers: authHeader(token) })
+    await axios.put(`${BASE_URL}/master/groups/${id}`, { group_name }, { headers: authHeader(token) })
   },
   renameSubgroup: async (token: string, id: number, subgroup_name: string): Promise<void> => {
     await axios.put(`${BASE_URL}/master/subgroups/${id}`, { subgroup_name }, { headers: authHeader(token) })
@@ -124,7 +122,7 @@ export const materialMasterService = {
     await axios.put(`${BASE_URL}/master/mat-names/${id}`, { mat_name }, { headers: authHeader(token) })
   },
   renameSpec: async (token: string, id: number, spec_description: string): Promise<void> => {
-    await axios.put(`${BASE_URL}/master/spec-sizes/${id}`, { spec_description }, { headers: authHeader(token) })
+    await axios.put(`${BASE_URL}/master/specs/${id}`, { spec_description }, { headers: authHeader(token) })
   },
   renameBrand: async (token: string, id: number, brand_name: string): Promise<void> => {
     await axios.put(`${BASE_URL}/master/brands/${id}`, { brand_name }, { headers: authHeader(token) })
