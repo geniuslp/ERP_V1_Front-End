@@ -511,6 +511,50 @@ const POApprovalDetailPage: React.FC = () => {
           scroll={{ x: 900 }}
           locale={{ emptyText: 'ไม่มีรายการ' }}
         />
+
+        {/* Totals — same block as the line items, same rows as the PO create page's summary
+            (ยอดรวมก่อนลด / ส่วนลด / VAT 7% / WHT / ยอดรวมสุทธิ). Uses the amounts stored on the PO. */}
+        {(() => {
+          const money = (v: number) => `฿ ${(v ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          const headerDisc = po.use_discount ? po.discount_amount ?? 0 : 0
+          const lineAmtDisc = sumLineAmtDiscounts(
+            (po.lines ?? []).map((l) => ({ discType: l.disc_type, disc: l.discount ?? 0, qty: l.qty_ordered, unitPrice: l.unit_price })),
+          )
+          const totalDisc = headerDisc + lineAmtDisc
+          const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }
+          return (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 260 }}>
+                <div style={rowStyle}>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>ยอดรวมก่อนลด</span>
+                  <span style={{ fontSize: 12, fontWeight: 500 }}>{money(po.total_amount)}</span>
+                </div>
+                {(po.use_discount || totalDisc > 0) && (
+                  <div style={rowStyle}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>- {money(totalDisc)}</span>
+                  </div>
+                )}
+                {po.use_vat && (
+                  <div style={rowStyle}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>VAT 7%</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#ca8a04' }}>+ {money(po.vat_amount)}</span>
+                  </div>
+                )}
+                {po.use_wht && (
+                  <div style={rowStyle}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>WHT</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#dc2626' }}>- {money(po.wht_amount ?? 0)}</span>
+                  </div>
+                )}
+                <div style={{ ...rowStyle, borderTop: '0.5px solid #dbeafe', marginTop: 4, paddingTop: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>ยอดรวมสุทธิ</span>
+                  <span style={{ fontSize: 15, fontWeight: 500, color: '#1e40af' }}>{money(po.net_amount)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {po.attachments && 'memo' in po.attachments && (

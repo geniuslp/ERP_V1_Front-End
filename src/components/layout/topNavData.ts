@@ -78,6 +78,22 @@ export function shortLabel(node: Pick<PermMenu, 'menu_code' | 'menu_name'>): str
   return head || name.trim()
 }
 
+// ── Numbering ──────────────────────────────────────────────────────────────────────────────────
+/** 1, 2, 3... for the clickable entries of ONE main menu, in display order (group headings are not numbered).
+ *  Each main menu starts again at 1. */
+export function numberLeaves(top: NavNode): Map<string, number> {
+  const out = new Map<string, number>()
+  let n = 0
+  const visit = (nodes: NavNode[]) => {
+    for (const c of nodes) {
+      if (c.children.length > 0) visit(c.children)
+      else out.set(c.menu_code, ++n)
+    }
+  }
+  visit(top.children)
+  return out
+}
+
 // ── Active route ────────────────────────────────────────────────────────────────────────────────
 /** "/ic/projects/:projectId/po-receive" -> "/ic/projects" (the part before ":"), trailing slash removed. */
 export const normalizeMenuPath = (p?: string): string => {

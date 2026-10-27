@@ -118,11 +118,12 @@ export interface PettyCashRequisition {
   attachments?: PettyCashAttachment[]
 }
 
-// Exactly the line keys the backend accepts (no qty / unit_price / discount / wht_rate).
+// Exactly the line keys the backend accepts (no unit_price / discount / wht_rate).
 export interface CreatePettyCashLineItem {
   project_code?: string
   mat_code?: string
   description: string
+  qty?: number // จำนวน (default 1); amount stays the money total
   unit: string // หน่วย, free text (max 50)
   cost_subgroup_id?: number | null
   remarks: string
@@ -160,6 +161,7 @@ export interface PettyCashLineForm {
   mat_code: string
   mat_name_th: string
   description: string
+  qty: number // จำนวน (default 1)
   unit: string // หน่วย — filled from the material master when picked, editable
   cost_subgroup_id: number | null
   cost_code: string

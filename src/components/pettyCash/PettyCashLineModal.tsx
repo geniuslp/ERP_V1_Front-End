@@ -118,6 +118,7 @@ const PettyCashLineModal: React.FC<Props> = ({
     return {
       mat_code: l?.mat_code ?? '',
       description: l?.description ?? '',
+      qty: l?.qty ?? 1,
       unit: l?.unit ?? '',
       cost_subgroup_id: l?.cost_subgroup_id ?? null,
       cost_code: l?.cost_code ?? '',
@@ -435,6 +436,7 @@ const PettyCashLineModal: React.FC<Props> = ({
       mat_code: v.mat_code ?? '',
       mat_name_th: v.mat_code ? (initial && initial.mat_code === v.mat_code ? initial.mat_name_th : v.description ?? '') : '',
       description: String(v.description ?? '').trim(),
+      qty: Number(v.qty) > 0 ? Number(v.qty) : 1,
       unit: String(v.unit ?? '').trim(),
       cost_subgroup_id: v.cost_subgroup_id ?? null,
       cost_code: v.cost_subgroup_id ? (v.cost_code ?? '') : '',
@@ -551,7 +553,7 @@ const PettyCashLineModal: React.FC<Props> = ({
               />
             </Form.Item>
           </Col>
-          <Col xs={24} lg={12} style={{ minWidth: 0 }}>
+          <Col xs={24} lg={18} style={{ minWidth: 0 }}>
             <Form.Item
               name="description"
               label="MatName"
@@ -567,11 +569,6 @@ const PettyCashLineModal: React.FC<Props> = ({
               ]}
             >
               <Input style={{ width: '100%', maxWidth: 560 }} placeholder="ชื่อรายการ (พิมพ์เองได้ถ้าไม่มีรหัสวัสดุ)" />
-            </Form.Item>
-          </Col>
-          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
-            <Form.Item name="unit" label="หน่วย" rules={[{ required: true, whitespace: true, message: 'กรุณาระบุหน่วย' }, maxRunes(50, 'หน่วย')]}>
-              <Input style={{ width: '100%', maxWidth: 200 }} placeholder="เช่น เส้น, ชิ้น" />
             </Form.Item>
           </Col>
         </Row>
@@ -597,6 +594,18 @@ const PettyCashLineModal: React.FC<Props> = ({
               <Tooltip title={costDisplayName || undefined}>
                 <Input readOnly disabled value={costDisplayName} style={{ width: '100%', maxWidth: 340, textOverflow: 'ellipsis' }} />
               </Tooltip>
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="qty" label="จำนวน" rules={[{ required: true, type: 'number', min: 0.01, message: 'กรุณาระบุจำนวน' }]}>
+              <InputNumber style={{ width: '100%', maxWidth: 260 }} min={0} precision={2} controls={false} placeholder="เช่น 1" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="unit" label="หน่วย" rules={[{ required: true, whitespace: true, message: 'กรุณาระบุหน่วย' }, maxRunes(50, 'หน่วย')]}>
+              <Input style={{ width: '100%', maxWidth: 260 }} placeholder="เช่น เส้น, ชิ้น" />
             </Form.Item>
           </Col>
         </Row>

@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { DownOutlined, LeftOutlined, MenuOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
 import {
   PARAM_REQUIRED_MENU_CODES, TOPNAV_MAX_WIDTH, TOPNAV_MIN_WIDTH, TOPNAV_WIDTHS_RESET_EVENT,
-  findActive, loadTopNavWidths, saveTopNavWidths, shortLabel, useNavTree, type NavNode,
+  findActive, numberLeaves, loadTopNavWidths, saveTopNavWidths, shortLabel, useNavTree, type NavNode,
 } from './topNavData'
 
 // Top navigation bar (replaces the sidebar). Desktop (>=992px): a horizontally scrollable strip of text-only
@@ -373,13 +373,16 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
   // ── Render ──
   const openNode = openCode ? tree.find((n) => n.menu_code === openCode) : undefined
 
+  // dropdown entries are numbered 1, 2, 3... per main menu
+  const entryNumbers = openNode ? numberLeaves(openNode) : new Map<string, number>()
   const renderEntry = (n: NavNode) => {
+    const label = `${entryNumbers.get(n.menu_code) ?? ''}. ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
     if (PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
         <span key={n.id} data-nav-entry role="menuitem" aria-disabled="true" tabIndex={-1} className="tn-child"
           title={PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
-          {n.menu_name}
+          {label}
         </span>
       )
     }
@@ -387,7 +390,7 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
       <Link key={n.id} to={n.menu_path} data-nav-entry role="menuitem" title={n.menu_name}
         aria-current={isActive ? 'page' : undefined}
         className={`tn-child${isActive ? ' tn-child-active' : ''}`}>
-        {n.menu_name}
+        {label}
       </Link>
     )
   }
@@ -571,20 +574,21 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const renderLeaf = (n: NavNode) => {
+  const renderLeaf = (n: NavNode, nums: Map<string, number>) => {
+    const label = `${nums.get(n.menu_code) ?? ''}. ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
     if (PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
         <span key={n.id} className="tn-drawer-item" aria-disabled="true"
           title={PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
-          {n.menu_name}
+          {label}
         </span>
       )
     }
     return (
       <Link key={n.id} to={n.menu_path} aria-current={isActive ? 'page' : undefined}
         className={`tn-drawer-item${isActive ? ' tn-active' : ''}`}>
-        {n.menu_name}
+        {label}
       </Link>
     )
   }
@@ -649,16 +653,19 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
                     </button>
                     {isOpen && (
                       <div id={`tn-sub-${n.id}`} className="tn-drawer-sub">
-                        {n.children.map((c) =>
-                          c.children.length > 0 ? (
-                            <div key={c.id}>
-                              <div className="tn-drawer-head">{c.menu_name}</div>
-                              {c.children.map(renderLeaf)}
-                            </div>
-                          ) : (
-                            renderLeaf(c)
-                          ),
-                        )}
+                        {(() => {
+                          const nums = numberLeaves(n)
+                          return n.children.map((c) =>
+                            c.children.length > 0 ? (
+                              <div key={c.id}>
+                                <div className="tn-drawer-head">{c.menu_name}</div>
+                                {c.children.map((x) => renderLeaf(x, nums))}
+                              </div>
+                            ) : (
+                              renderLeaf(c, nums)
+                            ),
+                          )
+                        })()}
                       </div>
                     )}
                   </div>
