@@ -50,14 +50,19 @@ const RequisitionForm: React.FC<Props> = ({ mode, borrowId }) => {
   useEffect(() => {
     const fetchWarehouses = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/warehouse`, {
+        // GET /master/warehouses (the route that exists; the old /warehouse path returned 404 so this always fell
+        // back to a hardcoded warehouse)
+        const res = await axios.get(`${BASE_URL}/master/warehouses`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        const list = res.data?.data ?? []
+        const raw = res.data?.data?.data ?? res.data?.data ?? res.data ?? []
+        const list = Array.isArray(raw) ? raw : []
         const opts = list.map((w: any) => ({ value: w.warehouse_code, label: w.warehouse_name ? `${w.warehouse_code} — ${w.warehouse_name}` : w.warehouse_code }))
-        setWarehouseOptions(opts.length > 0 ? opts : [{ value: 'WH01', label: 'WH01' }])
+        setWarehouseOptions(opts)
       } catch {
-        setWarehouseOptions([{ value: 'WH01', label: 'WH01' }])
+        // no hardcoded fallback warehouse: a wrong code would find no stock
+        setWarehouseOptions([])
+        message.error('โหลดรายชื่อคลังไม่สำเร็จ')
       }
     }
     fetchWarehouses()

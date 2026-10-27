@@ -41,6 +41,7 @@ interface PreviewRow {
   current_qty: number | null
   new_qty: number
   is_new: boolean
+  merged_rows?: number[] // Add mode: the file rows of this code that were summed into this one
   status: 'ok' | 'code_not_found' | 'other_warehouse' | 'invalid_qty' | 'duplicate'
   message?: string
 }
@@ -62,7 +63,7 @@ const STATUS_LABEL: Record<PreviewRow['status'], { text: string; color: string }
 
 const MODE_TEXT: Record<Mode, { title: string; hint: string }> = {
   update: { title: 'Upload Update (เขียนทับยอด)', hint: 'ยอดคงเหลือจะถูกตั้งเป็นจำนวนในไฟล์' },
-  add: { title: 'Upload Add (เติมเข้าคลัง)', hint: 'จำนวนในไฟล์จะถูกบวกเพิ่มจากยอดเดิม เช่น รับของคืนจากหน้างานกลับเข้าสต็อก' },
+  add: { title: 'Upload Add (เติมเข้าคลัง)', hint: 'จำนวนในไฟล์จะถูกบวกเพิ่มจากยอดเดิม เช่น รับของคืนจากหน้างานกลับเข้าสต็อก ถ้ารหัสวัสดุเดียวกันอยู่หลายแถว ระบบจะรวมจำนวนให้' },
 }
 
 const qtyFmt = (v: number | null | undefined) =>
@@ -144,6 +145,9 @@ const WarehouseUploadModal: React.FC<UploadModalProps> = ({ mode, warehouse, war
         <span title={r.message}>
           <Tag color={STATUS_LABEL[s].color}>{STATUS_LABEL[s].text}</Tag>
           {s === 'ok' && r.is_new && <Tag color="blue">รายการใหม่</Tag>}
+          {r.merged_rows && r.merged_rows.length > 1 && (
+            <Tag color="purple" title={`รวมยอดจากแถว ${r.merged_rows.join(', ')}`}>รวม {r.merged_rows.length} แถว</Tag>
+          )}
         </span>
       ),
     },
@@ -233,7 +237,6 @@ const WarehouseStockUploadPage: React.FC = () => {
   const [warehouse, setWarehouse] = useState<string | undefined>()
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [onlyWithStock, setOnlyWithStock] = useState(false)
   const [rows, setRows] = useState<StockRow[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -261,7 +264,7 @@ const WarehouseStockUploadPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/stock/warehouse-items`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { warehouse_code: warehouse, search: search || undefined, only_with_stock: onlyWithStock, page: p, page_size: pageSize },
+        params: { warehouse_code: warehouse, search: search || undefined, page: p, page_size: pageSize },
       })
       const d = res.data?.data
       setRows(Array.isArray(d?.data) ? d.data : [])
@@ -272,7 +275,7 @@ const WarehouseStockUploadPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [warehouse, search, onlyWithStock, pageSize, accessToken])
+  }, [warehouse, search, pageSize, accessToken])
 
   useEffect(() => { load(1) }, [load])
 
@@ -330,13 +333,6 @@ const WarehouseStockUploadPage: React.FC = () => {
               onChange={(e) => setSearchInput(e.target.value)}
               onPressEnter={() => setSearch(searchInput.trim())}
               onBlur={() => setSearch(searchInput.trim())}
-            />
-            <Select
-              style={{ width: 180 }}
-              disabled={!warehouse}
-              value={onlyWithStock ? 'stock' : 'all'}
-              onChange={(v) => setOnlyWithStock(v === 'stock')}
-              options={[{ value: 'all', label: 'ทุกรายการ' }, { value: 'stock', label: 'เฉพาะที่มีของ' }]}
             />
           </Space>
           <Space wrap size={12}>
