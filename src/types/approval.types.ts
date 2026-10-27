@@ -20,6 +20,8 @@ export interface ApprovalRole {
   role_code: string
   role_name: string
   description?: string
+  // GET /roles returns the owning department; null = company-level role (Director, Executive Director, Managing Director, Board).
+  dept_code?: string | null
   is_active: boolean
 }
 

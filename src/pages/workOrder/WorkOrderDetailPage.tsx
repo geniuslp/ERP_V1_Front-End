@@ -296,7 +296,7 @@ const WorkOrderDetailPage: React.FC = () => {
         okButtonProps={{ danger: true }}
         cancelText="ยกเลิก"
       >
-        <Form form={rejectForm} layout="vertical">
+        <Form autoComplete="off" form={rejectForm} layout="vertical">
           <Form.Item label="เหตุผล" name="reason" rules={[{ required: true, message: 'กรุณาระบุเหตุผล' }]}>
             <Input.TextArea rows={3} />
           </Form.Item>

@@ -332,7 +332,7 @@ const StockTransactionPage: React.FC = () => {
         width={560}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="Transaction Type" name="txnType" rules={[{ required: true }]}>
             <Select options={['IN', 'OUT', 'TRANSFER', 'ADJUST'].map((v) => ({ value: v, label: v }))} />
           </Form.Item>

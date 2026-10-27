@@ -23,6 +23,7 @@ import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WAREHOUSE_PROJECT_CODES } from '@/constants/warehouseProjects'
 import { useJobTypes } from '@/hooks/useJobTypeNames'
+import { isTradeJobCode } from '@/constants/jobTypes'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 
 // "เจ้าของโครงการ (ผู้ว่าจ้าง)" — only the head-office option is offered; sent as employer_name.
@@ -338,7 +339,7 @@ const WorkOrderCreatePage: React.FC = () => {
         setLoadedStatus(wo.status)
         setLoadedContractAmount(wo.contract_amount != null ? Number(wo.contract_amount) : undefined)
         const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
-        setLegacyWorkSystem(storedSystems.filter((v) => !v.startsWith('M')))
+        setLegacyWorkSystem(storedSystems.filter((v) => !isTradeJobCode(v)))
         form.setFieldsValue({
           ...wo,
           approver_id: wo.approver_id != null ? Number(wo.approver_id) : undefined,
@@ -653,7 +654,7 @@ const WorkOrderCreatePage: React.FC = () => {
             forceRender: true,
             children: (
               <>
-              <Form
+              <Form autoComplete="off"
                 form={form}
                 layout="vertical"
                 initialValues={{
@@ -794,7 +795,7 @@ const WorkOrderCreatePage: React.FC = () => {
                           placeholder="เลือกงานระบบ"
                           options={[
                             ...jobTypes
-                              .filter((j) => j.job_code.startsWith('M'))
+                              .filter((j) => isTradeJobCode(j.job_code))
                               .map((j) => ({ value: j.job_code, label: `${j.job_code} - ${j.job_name}` })),
                             ...legacyWorkSystem.map((v) => ({ value: v, label: `${WO_WORK_SYSTEM_LABEL[v] ?? v} (ค่าเดิม)` })),
                           ]}
@@ -1016,7 +1017,7 @@ const WorkOrderCreatePage: React.FC = () => {
               <>
               {/* Cost Code line items — same POItemsTable + TaxSidebarPanel layout PO's
                   create page uses (table + collapsible tax sidebar side by side),
-                  reused exactly rather than rebuilt. Lives outside the antd <Form>
+                  reused exactly rather than rebuilt. Lives outside the antd <Form autoComplete="off">
                   since `items` is plain React state, same pattern as POCreatePage. */}
               <Card
                 title={<span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>รายการ Cost Code</span>}
@@ -1051,9 +1052,9 @@ const WorkOrderCreatePage: React.FC = () => {
                   />
                 </div>
                 {/* ผู้อนุมัติ — bottom of page 2 (below line items / totals, above the action bar); required only
-                    on submit for approval. Page 2 sits outside the page-1 <Form>, so this wraps the item in a
-                    non-rendering <Form component={false}> bound to the same form instance. */}
-                <Form form={form} component={false}>
+                    on submit for approval. Page 2 sits outside the page-1 <Form autoComplete="off">, so this wraps the item in a
+                    non-rendering <Form autoComplete="off" component={false}> bound to the same form instance. */}
+                <Form autoComplete="off" form={form} component={false}>
                   <div style={{ margin: '16px 24px 0' }}>
                         <Row gutter={[16, 0]}>
                           <Col xs={24}>

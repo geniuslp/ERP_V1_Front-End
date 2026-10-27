@@ -301,6 +301,35 @@ const PRCreatePage: React.FC = () => {
     try { sessionStorage.removeItem(storageKey('pr_reserved_number')) } catch { /* ignore */ }
   }, [isEdit])
 
+  // Eligible approvers for a PR (same endpoint/shape as WO / PO, doc_type 'PR'); required only when sending for approval.
+  const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string }[]>([])
+  const [approversLoading, setApproversLoading] = useState(false)
+  useEffect(() => {
+    if (!accessToken) return
+    const fetchApprovers = async () => {
+      setApproversLoading(true)
+      try {
+        const res = await axios.get(`${BASE_URL}/master/eligible-approvers`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { doc_type: 'PR' },
+        })
+        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
+        const list = Array.isArray(raw) ? raw : []
+        // Number(): the form value is a Number and Select matches option values with ===.
+        setApprovers(list.map((u: any) => ({
+          value: Number(u.value ?? u.id),
+          label: formatApproverOption(u.username, u.value ?? u.id),
+          dept: u.dept ?? u.department,
+        })))
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.response?.data?.error || 'โหลดรายชื่อผู้อนุมัติไม่สำเร็จ')
+      } finally {
+        setApproversLoading(false)
+      }
+    }
+    fetchApprovers()
+  }, [accessToken])
+
   // Edit mode: load the reopened PR's header/lines and check for lines whose
   // qty_requested was lowered below qty already ordered on an existing PO.
   useEffect(() => {
@@ -340,6 +369,7 @@ const PRCreatePage: React.FC = () => {
           job_code: raw.job_code || undefined,
           requested_by: raw.requester_id ?? raw.requested_by,
           dept_code: raw.dept_code || undefined,
+          approver_id: raw.approver_id != null ? Number(raw.approver_id) : undefined,
         })
         setSavedDeptName(raw.dept_name ?? undefined)
         setRemark(raw.remarks ?? '')
@@ -414,26 +444,6 @@ const PRCreatePage: React.FC = () => {
     }
   }, [isEdit, id])
 
-  // POST/PUT /pr responses carry no per-line qty, so re-read GET /pr/:id after a
-  // confirm to report what the backend actually reserved vs left to order.
-  // Best-effort: any failure falls back to '' so the plain success text still shows.
-  const fetchReservationSummary = async (targetId: number | string | null | undefined) => {
-    if (targetId == null) return ''
-    try {
-      const res = await axios.get(`${BASE_URL}/pr/${targetId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      const raw = res.data?.data ?? res.data
-      const lines: any[] = raw?.lines ?? []
-      if (lines.length === 0) return ''
-      const reserved = lines.filter((l) => Number(l.qty_reserved ?? 0) > 0).length
-      const toOrder = lines.filter((l) => Number(l.qty_to_order ?? 0) > 0).length
-      return `ตัดจาก Stock ${reserved} รายการ, สั่งซื้อ ${toOrder} รายการ`
-    } catch {
-      return ''
-    }
-  }
-
   const resolveCreatedPrNo = async (raw: any): Promise<string> => {
     if (raw?.pr_no) return String(raw.pr_no)
     if (raw?.id == null) return ''
@@ -479,7 +489,8 @@ const PRCreatePage: React.FC = () => {
     })
   }
 
-  const handleSubmit = async (status: 'DRAFT' | 'COMPLETED') => {
+  // 'SUBMIT' = send for approval (status PENDING_APPROVAL + approver_id); nothing is reserved until it is approved.
+  const handleSubmit = async (status: 'DRAFT' | 'SUBMIT') => {
     if (submitting) return
     if (isEdit && editBlockedMessage) {
       message.error(editBlockedMessage)
@@ -512,7 +523,8 @@ const PRCreatePage: React.FC = () => {
       // Cost code is required on every line for any submit. Edit mode always
       // submits (PUT then POST /submit) even though it passes 'DRAFT', so it
       // must be checked here, before the PUT. Plain draft saves skip this.
-      if (isEdit || status === 'COMPLETED') {
+      const isSending = isEdit || status === 'SUBMIT'
+      if (isSending) {
         if (findLinesMissingCostCode(lineItems).length > 0) {
           setHighlightMissingCost(true)
           message.error(COST_CODE_REQUIRED_MESSAGE)
@@ -522,6 +534,16 @@ const PRCreatePage: React.FC = () => {
         }
       }
       setHighlightMissingCost(false)
+
+      // An approver must be picked for anything that is sent for approval (plain draft saves skip this).
+      const approverId = form.getFieldValue('approver_id')
+      if (isSending && !approverId) {
+        form.setFields([{ name: 'approver_id', errors: ['กรุณาเลือกผู้อนุมัติ'] }])
+        message.error('กรุณาเลือกผู้อนุมัติก่อนส่งใบขอซื้อ')
+        form.scrollToField('approver_id', { behavior: 'smooth', block: 'center' })
+        setSubmitting(false)
+        return
+      }
 
       // Memo-derived lines must have their material picked before saving.
       if (lineItems.some((item) => item.memo_line_id != null && !item.mat_code)) {
@@ -568,7 +590,8 @@ const PRCreatePage: React.FC = () => {
         // and cleared in that state, never required, never submitted.
         dept_code: selectedMemo ? undefined : (dept_code || undefined),
         remarks: remark,
-        status: isEdit ? 'DRAFT' : status,
+        status: isEdit ? 'DRAFT' : (status === 'SUBMIT' ? 'PENDING_APPROVAL' : 'DRAFT'),
+        ...(isSending ? { approver_id: Number(approverId) } : {}),
         memo_id: selectedMemo?.id ? Number(selectedMemo.id) : null,
         lines: lineItems.map((item, i) => ({
           line_no: i + 1,
@@ -587,18 +610,17 @@ const PRCreatePage: React.FC = () => {
       if (isEdit) {
         // Reopened-PR edit flow: PUT never touches status (backend-confirmed)
         // — the reopened PR stays DRAFT until explicitly submitted. Do that
-        // here so saving an edit always finishes back at COMPLETED instead
-        // of stranding it.
+        // here so saving an edit always finishes by sending it for approval
+        // instead of stranding it as a draft.
         await axios.put(`${BASE_URL}/pr/${prId}`, payload, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        await axios.post(`${BASE_URL}/pr/${prId}/submit`, {}, {
+        await axios.post(`${BASE_URL}/pr/${prId}/submit`, { approver_id: Number(approverId) }, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
-        const summary = await fetchReservationSummary(prId)
         Modal.success({
           title: 'บันทึกและส่งใบขอซื้อสำเร็จ',
-          content: `PR ${prNumber} กลับสู่สถานะ "เสร็จสมบูรณ์" เรียบร้อยแล้ว${summary ? ` (${summary})` : ''}`,
+          content: `PR ${prNumber} ส่งให้ผู้อนุมัติแล้ว สถานะ "รออนุมัติ" (ระบบจะตัดสต็อกเมื่ออนุมัติ)`,
         })
         navigate(`/pr/${prId}`)
       } else if (prId != null) {
@@ -614,8 +636,7 @@ const PRCreatePage: React.FC = () => {
           setPanelRefreshKey((k) => k + 1)
           // No navigation — stay on this page so the user can keep editing.
         } else {
-          const summary = await fetchReservationSummary(prId)
-          message.success(`บันทึก PR สำเร็จ${summary ? ` — ${summary}` : ''}`, 5)
+          message.success('ส่งใบขอซื้อเพื่ออนุมัติสำเร็จ — สถานะ "รออนุมัติ"', 5)
           navigate('/pr/history')
         }
       } else {
@@ -634,8 +655,7 @@ const PRCreatePage: React.FC = () => {
           setPanelRefreshKey((k) => k + 1)
           // No navigation — stay on this page so the user can keep editing.
         } else {
-          const summary = await fetchReservationSummary(raw?.id)
-          message.success(`บันทึก PR สำเร็จ${noText}${summary ? ` — ${summary}` : ''}`, 5)
+          message.success(`ส่งใบขอซื้อเพื่ออนุมัติสำเร็จ${noText} — สถานะ "รออนุมัติ"`, 5)
           navigate('/pr/history')
         }
       }
@@ -803,7 +823,7 @@ const PRCreatePage: React.FC = () => {
           <Spin size="large" />
         </div>
       ) : (
-      <Form form={form} layout="horizontal" initialValues={{ pr_date: dayjs().format('YYYY-MM-DD'), pr_type: 'PO_WO' }}>
+      <Form autoComplete="off" form={form} layout="horizontal" initialValues={{ pr_date: dayjs().format('YYYY-MM-DD'), pr_type: 'PO_WO' }}>
         <Card
           title={
             <div style={{ textAlign: 'center', color: '#1e3a8a', fontWeight: 700, fontSize: 15 }}>
@@ -998,9 +1018,29 @@ const PRCreatePage: React.FC = () => {
                 )}
               </Field>
 
-              {/* Approval no longer happens on PR — it happens via Memo instead
-                  (memo.status: DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / CANCELLED).
-                  The approver is now selected on the Memo, not here. */}
+              {/* PR approval: one person from the eligible pool (Approval Matrix roles); required only when sending for approval. */}
+              <Field label="ผู้อนุมัติ">
+                <Form.Item name="approver_id" noStyle>
+                  <Select
+                    allowClear
+                    showSearch
+                    style={{ width: '100%' }}
+                    placeholder="- เลือกผู้อนุมัติ -"
+                    loading={approversLoading}
+                    optionFilterProp="label"
+                    options={approvers}
+                    optionRender={(option) => (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span>{option.data.label}</span>
+                        {option.data.dept && <span style={{ color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>{option.data.dept}</span>}
+                      </div>
+                    )}
+                  />
+                </Form.Item>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                  เลือกเมื่อกด ส่งใบขอซื้อ (บันทึกร่างไม่ต้องเลือก)
+                </div>
+              </Field>
 
               {/* Mutually exclusive with dept_code — locked (and never
                   openable) the moment a department is picked, the same way
@@ -1305,7 +1345,7 @@ const PRCreatePage: React.FC = () => {
                   disabled={submitting || !!editBlockedMessage}
                   onClick={() => handleSubmit('DRAFT')}
                 >
-                  บันทึกการแก้ไข
+                  บันทึกและส่งขออนุมัติ
                 </PermissionButton>
               ) : (
                 <>
@@ -1326,7 +1366,7 @@ const PRCreatePage: React.FC = () => {
                     icon={<SendOutlined />}
                     loading={submitting}
                     disabled={submitting}
-                    onClick={() => handleSubmit('COMPLETED')}
+                    onClick={() => handleSubmit('SUBMIT')}
                   >
                     ส่งใบขอซื้อ
                   </PermissionButton>

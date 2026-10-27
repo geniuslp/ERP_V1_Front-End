@@ -216,7 +216,7 @@ const POStatusPage: React.FC = () => {
     },
     {
       // Confirmed against the live API response: GET /po (list) returns the
-      // job classification as `job_code` (e.g. "MP"), not `job_names` — the
+      // job classification as `job_code` (e.g. "MS"), not `job_names` — the
       // previous job_names-based render always showed "-" because that field
       // is never populated by the backend. Display-only: show just the short
       // code, not the full "CODE - Name" label (JOB_TYPES.label is formatted

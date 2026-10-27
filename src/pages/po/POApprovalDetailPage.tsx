@@ -560,7 +560,7 @@ const POApprovalDetailPage: React.FC = () => {
           showIcon
           style={{ marginBottom: 16 }}
         />
-        <Form form={rejectForm} layout="vertical">
+        <Form autoComplete="off" form={rejectForm} layout="vertical">
           <Form.Item
             name="reason"
             label="เหตุผลที่ไม่อนุมัติ"

@@ -58,7 +58,7 @@ const MenusPage: React.FC = () => {
         <Table dataSource={tableData} columns={columns} size="small" pagination={{ pageSize: 20 }} />
       </Card>
       <Modal title={editing ? 'แก้ไขเมนู' : 'เพิ่มเมนูใหม่'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก">
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="ชื่อเมนู" name="label" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item label="Key" name="key" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item label="Path" name="path"><Input placeholder="/example/path" /></Form.Item>

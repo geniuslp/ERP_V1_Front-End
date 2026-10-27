@@ -118,6 +118,7 @@ const PettyCashLineModal: React.FC<Props> = ({
     return {
       mat_code: l?.mat_code ?? '',
       description: l?.description ?? '',
+      unit: l?.unit ?? '',
       cost_subgroup_id: l?.cost_subgroup_id ?? null,
       cost_code: l?.cost_code ?? '',
       cost_group_name: l?.cost_group_name ?? '',
@@ -237,6 +238,7 @@ const PettyCashLineModal: React.FC<Props> = ({
     form.setFieldsValue({
       mat_code: m.mat_code,
       description: formatItemLabel(m.mat_name_th, m.spec_description),
+      unit: m.unit_name ?? form.getFieldValue('unit') ?? '',
     })
     // Same prefill as the old petty-cash row editor / PR: only when no cost code chosen yet.
     if (m.cost_subgroup_id && !form.getFieldValue('cost_subgroup_id')) {
@@ -433,6 +435,7 @@ const PettyCashLineModal: React.FC<Props> = ({
       mat_code: v.mat_code ?? '',
       mat_name_th: v.mat_code ? (initial && initial.mat_code === v.mat_code ? initial.mat_name_th : v.description ?? '') : '',
       description: String(v.description ?? '').trim(),
+      unit: String(v.unit ?? '').trim(),
       cost_subgroup_id: v.cost_subgroup_id ?? null,
       cost_code: v.cost_subgroup_id ? (v.cost_code ?? '') : '',
       cost_group_name: v.cost_subgroup_id ? (v.cost_group_name ?? '') : '',
@@ -548,7 +551,7 @@ const PettyCashLineModal: React.FC<Props> = ({
               />
             </Form.Item>
           </Col>
-          <Col xs={24} lg={18} style={{ minWidth: 0 }}>
+          <Col xs={24} lg={12} style={{ minWidth: 0 }}>
             <Form.Item
               name="description"
               label="MatName"
@@ -564,6 +567,11 @@ const PettyCashLineModal: React.FC<Props> = ({
               ]}
             >
               <Input style={{ width: '100%', maxWidth: 560 }} placeholder="ชื่อรายการ (พิมพ์เองได้ถ้าไม่มีรหัสวัสดุ)" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="unit" label="หน่วย" rules={[{ required: true, whitespace: true, message: 'กรุณาระบุหน่วย' }, maxRunes(50, 'หน่วย')]}>
+              <Input style={{ width: '100%', maxWidth: 200 }} placeholder="เช่น เส้น, ชิ้น" />
             </Form.Item>
           </Col>
         </Row>

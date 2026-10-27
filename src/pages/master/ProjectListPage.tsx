@@ -163,7 +163,7 @@ const parseRows = (
     const status = 'ACTIVE'
 
     const cust = customer_code ? customers.find((c) => c.customer_code === customer_code) : undefined
-    // Free text, comma-separated ("MP,ME,MS"); the backend upper-cases and de-duplicates.
+    // Free text, comma-separated ("MS,EE,SN"); the backend upper-cases and de-duplicates.
     const job_codes = job_codes_raw ? job_codes_raw.split(',').map((s) => s.trim()).filter(Boolean) : []
 
     const data = {
@@ -551,7 +551,7 @@ const ProjectListPage: React.FC = () => {
         <div style={panelHead}>
           <div>
             <Title level={5} style={{ margin: 0 }}>อัปโหลดไฟล์เพื่อนำเข้าข้อมูล</Title>
-            <Text style={{ fontSize: 12, color: '#9ca3af' }}>นำเข้าข้อมูลโครงการจากไฟล์ Excel ได้ครั้งละหลายรายการ — รหัสโครงการระบบสร้างให้อัตโนมัติ · คอลัมน์ job Code: พิมพ์ได้หลายค่า คั่นด้วยจุลภาค เช่น MP,ME,MS</Text>
+            <Text style={{ fontSize: 12, color: '#9ca3af' }}>นำเข้าข้อมูลโครงการจากไฟล์ Excel ได้ครั้งละหลายรายการ — รหัสโครงการระบบสร้างให้อัตโนมัติ · คอลัมน์ job Code: พิมพ์ได้หลายค่า คั่นด้วยจุลภาค เช่น MS,EE,SN</Text>
           </div>
           <Button icon={<DownloadOutlined />} onClick={() => downloadTemplate(accessToken)}>ดาวน์โหลด Template (.xlsx)</Button>
         </div>

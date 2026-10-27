@@ -171,7 +171,7 @@ const LocationPage: React.FC = () => {
         cancelText="ยกเลิก"
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="location_code" label="รหัสสถานที่" rules={[{ required: true, message: 'กรุณากรอกรหัสสถานที่' }]}>
             <Input placeholder="เช่น WH-001" />
           </Form.Item>

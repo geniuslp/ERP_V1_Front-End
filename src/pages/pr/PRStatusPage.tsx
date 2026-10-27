@@ -354,6 +354,8 @@ const PRStatusPage: React.FC = () => {
               onChange={setStatus}
               options={[
                 { value: 'DRAFT',            label: 'ร่าง' },
+                { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
+                { value: 'REJECTED',         label: 'ไม่อนุมัติ' },
                 { value: 'COMPLETED',        label: 'เสร็จสมบูรณ์' },
                 { value: 'STOCK_CHECK',      label: 'ตรวจสต็อก' },
                 { value: 'PARTIALLY_FILLED', label: 'สั่งซื้อบางส่วน' },

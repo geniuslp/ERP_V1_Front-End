@@ -691,7 +691,7 @@ const ICPoReceiveModal: React.FC<ICPoReceiveModalProps> = ({ open, poId, onClose
           style={{ marginBottom: 16, borderRadius: 8 }}
         />
       )}
-      <Form form={form} layout="vertical" disabled={headerReadOnly}>
+      <Form autoComplete="off" form={form} layout="vertical" disabled={headerReadOnly}>
         <Row gutter={16}>
           <Col span={8}>
             <Form.Item label="หมายเลข PO">

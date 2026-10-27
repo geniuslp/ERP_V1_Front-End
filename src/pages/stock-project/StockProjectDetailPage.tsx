@@ -40,11 +40,14 @@ interface BalanceRow {
   unit?: string | null
   qty_on_hand: number
   last_unit_cost?: number | null
+  store_description?: string | null // WAREHOUSE source: stock_item.description_store
   updated_at?: string | null
 }
 
 const fmt = (v: number | null | undefined) =>
   v == null ? '-' : Number(v).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+const fmtPrice = (v: number | null | undefined) =>
+  Number(v ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (v?: string | null) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-')
 
 const useDebounced = (value: string, ms = 400) => {
@@ -155,18 +158,21 @@ const StockProjectDetailPage: React.FC = () => {
   const isWarehouse = source === 'WAREHOUSE'
   const balColumns = isWarehouse
     ? [
-        { title: 'MatCode', dataIndex: 'mat_code', key: 'mat_code' },
-        { title: 'MatName', dataIndex: 'mat_name', key: 'mat_name' },
-        { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 80 },
-        { title: 'คงเหลือ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', align: 'right' as const, render: fmt },
-        { title: 'อัปเดตล่าสุด', dataIndex: 'updated_at', key: 'updated_at', render: fmtDate },
+        { title: 'ลำดับ', key: 'no', width: 80, align: 'center' as const, render: (_: unknown, __: BalanceRow, i: number) => (balPage - 1) * balPageSize + i + 1 },
+        { title: 'รหัสต้นทุน', dataIndex: 'cost_code', key: 'cost_code', width: 130, align: 'center' as const, render: (v?: string | null) => formatCostCodeDisplay(v ?? '') || '-' },
+        { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code', align: 'center' as const, render: (v: string) => <span style={{ color: '#2563eb', fontWeight: 600 }}>{v}</span> },
+        { title: 'รายละเอียด', dataIndex: 'mat_name', key: 'mat_name' },
+        { title: 'รายละเอียดคลัง', dataIndex: 'store_description', key: 'store_description', render: (v?: string | null) => v || '-' },
+        { title: 'ปริมาณ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', width: 110, align: 'center' as const, render: fmt },
+        { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 90, align: 'center' as const },
+        { title: 'ราคา', dataIndex: 'last_unit_cost', key: 'last_unit_cost', width: 120, align: 'center' as const, render: fmtPrice },
       ]
     : [
-        { title: 'MatCode', dataIndex: 'mat_code', key: 'mat_code' },
-        { title: 'MatName', dataIndex: 'mat_name', key: 'mat_name' },
-        { title: 'CostCode', dataIndex: 'cost_code', key: 'cost_code', render: (v?: string | null) => formatCostCodeDisplay(v ?? '') || '-' },
-        { title: 'Unit', dataIndex: 'unit', key: 'unit', width: 80 },
-        { title: 'คงเหลือ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', align: 'right' as const, render: fmt },
+        { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
+        { title: 'ชื่อวัสดุ', dataIndex: 'mat_name', key: 'mat_name' },
+        { title: 'รหัสต้นทุน', dataIndex: 'cost_code', key: 'cost_code', render: (v?: string | null) => formatCostCodeDisplay(v ?? '') || '-' },
+        { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80 },
+        { title: 'ปริมาณ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', align: 'right' as const, render: fmt },
         { title: 'ต้นทุนล่าสุด/หน่วย', dataIndex: 'last_unit_cost', key: 'last_unit_cost', align: 'right' as const, render: fmt },
         { title: 'อัปเดตล่าสุด', dataIndex: 'updated_at', key: 'updated_at', render: fmtDate },
       ]
@@ -211,7 +217,7 @@ const StockProjectDetailPage: React.FC = () => {
           )}
           <Input
             allowClear prefix={<SearchOutlined />} style={{ width: 300 }}
-            placeholder="ค้นหา MatCode / MatName / CostCode"
+            placeholder={isWarehouse ? 'ค้นหารหัสวัสดุ / ชื่อ Item' : 'ค้นหารหัสวัสดุ / ชื่อวัสดุ / รหัสต้นทุน'}
             value={balSearchInput} onChange={(e) => setBalSearchInput(e.target.value)}
           />
         </Space>

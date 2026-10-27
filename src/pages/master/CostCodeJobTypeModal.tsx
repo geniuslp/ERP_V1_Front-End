@@ -79,7 +79,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
   const [unbacked, setUnbacked] = useState(false)
   // Which of jobType.filterSubjectCodes is currently being viewed/administered.
   // Only relevant (and only shown as Tabs) when there's more than one — e.g.
-  // 'MP' has ['M','S'] (Material + Subcontract share job letter P but have
+  // 'MS' has ['M','S'] (Material + Subcontract share job letter P but have
   // different Group/Subgroup data), while single-subject Job Types like 'FS'
   // never show tabs and always resolve to their one subject.
   const [activeSubjectCode, setActiveSubjectCode] = useState<string | null>(null)
@@ -547,7 +547,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         confirmLoading={addGroupSaving}
         destroyOnClose
       >
-        <Form form={addGroupForm} layout="vertical">
+        <Form autoComplete="off" form={addGroupForm} layout="vertical">
           <Form.Item name="group_code" label="รหัส Group" rules={[{ required: true, message: 'กรุณากรอกรหัส Group' }]}>
             <Input placeholder="เช่น 01" maxLength={5} />
           </Form.Item>
@@ -566,7 +566,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         confirmLoading={editGroupSaving}
         destroyOnClose
       >
-        <Form form={editGroupForm} layout="vertical">
+        <Form autoComplete="off" form={editGroupForm} layout="vertical">
           {editGroup && <Text type="secondary">รหัส Group: {editGroup.group_code}</Text>}
           <Form.Item name="group_name" label="ชื่อ Group" rules={[{ required: true, message: 'กรุณากรอกชื่อ Group' }]} style={{ marginTop: 8 }}>
             <Input placeholder="ชื่อ Group" />
@@ -583,7 +583,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         confirmLoading={addSubgroupSaving}
         destroyOnClose
       >
-        <Form form={addSubgroupForm} layout="vertical" initialValues={{ is_head: false }}>
+        <Form autoComplete="off" form={addSubgroupForm} layout="vertical" initialValues={{ is_head: false }}>
           <Form.Item name="subgroup_code" label="รหัส Subgroup" rules={[{ required: true, message: 'กรุณากรอกรหัส Subgroup' }]}>
             <Input placeholder="เช่น 01" maxLength={5} />
           </Form.Item>
@@ -603,7 +603,7 @@ const CostCodeJobTypeModal: React.FC<Props> = ({ open, onClose, jobType }) => {
         confirmLoading={editSubgroupSaving}
         destroyOnClose
       >
-        <Form form={editSubgroupForm} layout="vertical">
+        <Form autoComplete="off" form={editSubgroupForm} layout="vertical">
           {editSubgroup && <Text type="secondary">รหัส Subgroup: {editSubgroup.subgroup_code}</Text>}
           <Form.Item name="subgroup_name" label="ชื่อ Subgroup" rules={[{ required: true, message: 'กรุณากรอกชื่อ Subgroup' }]} style={{ marginTop: 8 }}>
             <Input placeholder="ชื่อ Subgroup" />

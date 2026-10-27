@@ -272,7 +272,7 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
         </Button>,
       ]}
     >
-      <Form form={form} layout="vertical">
+      <Form autoComplete="off" form={form} layout="vertical">
         <Row gutter={24}>
           <Col xs={24} sm={12}>
             <Form.Item name="mat_code" label="MatCode" rules={[{ required: true, message: 'กรุณาเลือกวัสดุ' }]}>

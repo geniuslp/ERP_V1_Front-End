@@ -8,6 +8,7 @@ import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
 import FinanceInstallmentsSection, { type SelectedInstallment, type InstallmentsSectionHandle } from '@/components/finance/FinanceInstallmentsSection'
+import WOContractorLogPanel from '@/components/workOrder/WOContractorLogPanel'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
@@ -389,6 +390,12 @@ const FinancePaymentDetailPage: React.FC = () => {
         </div>
       </Card>
 
+      {docType === 'WO' && docId && (
+        <Card title="บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" style={{ ...cardStyle, marginBottom: 20 }}>
+          <WOContractorLogPanel woId={Number(docId)} />
+        </Card>
+      )}
+
       {docType === 'PO' && (
         <Card title="ข้อมูลใบสั่งซื้อ (PO)" style={{ ...cardStyle, marginBottom: 20 }} loading={poDetailLoading}>
           <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} bordered size="small">
@@ -458,7 +465,7 @@ const FinancePaymentDetailPage: React.FC = () => {
         </>
       ) : (
       <Card title="บันทึกการจ่ายเงินใหม่" style={cardStyle}>
-        <Form form={form} layout="vertical" initialValues={{ paid_date: dayjs() }}>
+        <Form autoComplete="off" form={form} layout="vertical" initialValues={{ paid_date: dayjs() }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <Form.Item
               name="amount_paid"

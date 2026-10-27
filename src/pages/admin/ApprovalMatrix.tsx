@@ -13,7 +13,12 @@ import DocTypeModal from '@/components/approval/DocTypeModal'
 import RoleModal from '@/components/approval/RoleModal'
 import ApprovalExtraApproverTab from '@/pages/system/ApprovalExtraApproverTab'
 import { approvalConfigService } from '@/services/approvalConfig.service'
+import { useDepartments } from '@/hooks/useDepartments'
 import type { ApprovalDocType, ApprovalConfig, ApprovalRole, CreateRolePayload } from '@/types/approval.types'
+
+// The overview grid shows ONE group of roles at a time: a department (its own roles) or "Board" (the company-level
+// roles that belong to no department: roles.dept_code IS NULL — Director, Executive Director, Managing Director, Board).
+const BOARD_GROUP = '__BOARD__'
 
 // cellKey format: `${docType}|${roleId}`
 const makeCellKey = (docType: string, roleId: number) => `${docType}|${roleId}`
@@ -43,6 +48,18 @@ const ApprovalMatrixOverviewTab: React.FC = () => {
   // ── Modal open state ──────────────────────────────────────────
   const [docTypeModalOpen, setDocTypeModalOpen] = useState(false)
   const [roleModalOpen, setRoleModalOpen] = useState(false)
+
+  // ── Overview group (department / Board) ───────────────────────
+  const { departments } = useDepartments(true)
+  const [group, setGroup] = useState<string | undefined>(undefined)
+  const groupOptions = useMemo(() => [
+    ...departments.map((d) => ({ value: d.dept_code, label: `${d.dept_code} — ${d.dept_name}` })),
+    { value: BOARD_GROUP, label: 'Board' },
+  ], [departments])
+  const groupRoles = useMemo(
+    () => (group ? roles.filter((r) => (group === BOARD_GROUP ? !r.dept_code : r.dept_code === group)) : []),
+    [roles, group],
+  )
 
   // ── Table filters ─────────────────────────────────────────────
   const [filterDocType, setFilterDocType] = useState<string>('')
@@ -344,19 +361,43 @@ const ApprovalMatrixOverviewTab: React.FC = () => {
           marginBottom: 24,
         }}
       >
-        <div style={{ marginBottom: 16, fontWeight: 600, color: '#0f2d5e', fontSize: 15 }}>
-          ภาพรวม Approval Matrix
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, color: '#0f2d5e', fontSize: 15 }}>
+            ภาพรวม Approval Matrix
+          </div>
+          <Select
+            showSearch
+            value={group}
+            onChange={setGroup}
+            placeholder="เลือกแผนก หรือ Board"
+            style={{ width: 300 }}
+            options={groupOptions}
+            filterOption={(input, option) =>
+              String(option?.label ?? '').toLowerCase().includes(input.trim().toLowerCase())
+            }
+          />
+          {hasDiff && (
+            <span style={{ fontSize: 12, color: '#d97706' }}>
+              มีการแก้ไขที่ยังไม่บันทึก {diffCount} รายการ (ครอบคลุมทุกแผนก)
+            </span>
+          )}
         </div>
 
+        {!group ? (
+          <div style={{ padding: 48, textAlign: 'center', color: '#999', fontSize: 13 }}>
+            เลือกแผนกหรือ Board ด้านบนเพื่อดู Approval Matrix ของตำแหน่งในกลุ่มนั้น
+          </div>
+        ) : (
         <MatrixGrid
           docTypes={docTypes}
-          roles={roles}
+          roles={groupRoles}
           configs={serverConfigs}
           pendingAdds={pendingAdds}
           pendingDeletes={pendingDeletes}
           loading={loading}
           onCellClick={handleCellClick}
         />
+        )}
 
         {/* Legend + Action bar */}
         <div

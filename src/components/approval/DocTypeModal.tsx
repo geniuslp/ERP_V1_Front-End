@@ -108,7 +108,7 @@ const DocTypeModal: React.FC<DocTypeModalProps> = ({
         เพิ่มประเภทเอกสารใหม่
       </Divider>
 
-      <Form form={form} layout="inline" style={{ alignItems: 'flex-start' }}>
+      <Form autoComplete="off" form={form} layout="inline" style={{ alignItems: 'flex-start' }}>
         <Form.Item
           name="doc_type"
           rules={[

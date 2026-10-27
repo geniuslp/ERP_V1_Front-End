@@ -104,11 +104,12 @@ Memo:        DRAFT / PENDING_APPROVAL / APPROVED / REJECTED / CANCELLED
 
 ## 🔴 Document approval flow — confirmed business rules (2026-07 session, do not re-litigate)
 
-**PR does NOT require approval at all.** Flow is `DRAFT → COMPLETED` directly. There are
-**no approve/reject endpoints for PR** — they were removed entirely
-(`src/pages/pr/PRApprovalDetailPage.tsx`, `PRApprovalListPage.tsx`, `src/services/prApprovalService.ts`
-deleted). **Never re-add PR approval UI, routes, or menu items.** If backend docs or old
-memory mention PR approval, they are stale — trust this instead.
+**PR REQUIRES approval again (business rule changed by the owner on 2026-10-26 — supersedes the 2026-07 "no approval" rule that used to be here).**
+Flow: `DRAFT → PENDING_APPROVAL → COMPLETED` (approved; stock is reserved at approval) `| REJECTED`. COMPLETED keeps its old meaning for
+everything downstream (PO from PR, lists, history). The submitter picks ONE approver from the eligible pool (`GET /master/eligible-approvers?doc_type=PR`,
+roles come from the Approval Matrix, same model as PO/Memo/WO) at submit; approve/reject go through `PUT /approval/PR/:id/approve|reject`
+(`comments` = reject reason). UI: `PRCreatePage` ("ผู้อนุมัติ" select above the action bar, required only when sending), `PRApprovalListPage` (`/pr/approval`,
+menu `MENU_PR_APPROVAL`), approve / reject buttons + banners on `PRDetailPage`. The old deleted files (`PRApprovalDetailPage`, `prApprovalService`) were NOT restored.
 
 **Memo REQUIRES approval.** Role-based via `approval_config`, plus extra approvers via
 `approval_delegation` (see below). A specific approver is chosen from the eligible pool at
@@ -814,6 +815,74 @@ Routes ใน `App.tsx`: `/work-order/contractor-log` (สร้างใหม�
   ชนิดหัก ณ ที่จ่าย (ค่าจ้างรับเหมา 3%, ค่าบริการ 3%, ค่าเช่า 5%, ค่าขนส่ง 1%); ช่อง "3/5/1" ข้างบรรทัด 5 ในสเก็ตช์ (ไม่ได้ทำเป็นอะไร ใช้ช่อง % กรอกเอง); "ปรับ PAGE (A)" ที่มุมล่างสเก็ตช์ (ไม่ได้ทำ);
   bill แบบ Retention ใช้ฟอร์มเดียวกับ Progress โดยกรอกยอด "เงินงวดนี้" เอง. สถานะ SAVED ยังไม่ล็อกการแก้ไข. AP Voucher No. ยังไม่จำกัดสิทธิ์เฉพาะฝ่ายบัญชี.
 - **Gotcha**: `Tabs` ของ antd ไม่ unmount tab ที่เปิดไปแล้ว — bill ใหม่ที่ยังไม่บันทึกจะถูกรีเซ็ตเป็นค่า default ถ้าแก้ค่า default จาก tab 1 (Advance/Retention %) ระหว่างนั้น (`newForm` เปลี่ยน → effect `setF(newForm())`).
+
+## 🧭 Session learnings (2026-10-26) — contractor work log moved into the finance WO detail page [Frontend]
+
+> Verified: `tsc --noEmit` ไม่มี error ในไฟล์ที่แตะ; **ไม่ได้เปิดเบราว์เซอร์ / ไม่ได้ยิง API จริง** (by-wo endpoint ต้อง restart backend ก่อน).
+
+- **เมนู "บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" ถูกลบ** (SQL `026` ฝั่ง backend; frontend ลบ route `/work-order/contractor-log[/:id]`, lazy import ใน `App.tsx`, icon ใน `SidebarMenu.tsx`,
+  และลบไฟล์ `src/pages/workOrder/WorkOrderContractorLogPage.tsx`). ไม่มีเมนู/สิทธิ์ `MENU_WO_CONTRACTOR_LOG` อีก — ถ้าเจอข้อความ 2026-10-25 ด้านบนที่อ้างถึงเมนูนี้ ให้ถือว่าล้าสมัย.
+- **ที่อยู่ใหม่:** `FinancePaymentDetailPage.tsx` (`/finance/payments/WO/:docId`, เปิดจากรายการในหน้า `FinancePaymentsPage` แท็บ "ใบสั่งงาน (WO)" โดยกดเลขที่ WO หรือปุ่ม "บันทึกการจ่ายเงิน")
+  เมื่อ `docType === 'WO'` จะมี Card "บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" วาง `WOContractorLogPanel` ต่อจาก Card ข้อมูลเอกสาร (สิทธิ์ใช้ `MENU_FINANCE_PAYMENTS` ตามหน้าเดิม).
+- **`src/components/workOrder/WOContractorLogPanel.tsx`** (props `woId`) แทนหน้าเดิม: tab ข้อมูลเอกสาร + tab ประเภทรับวางบิล (`WOContractorBillTab` ไม่เปลี่ยน). ไม่มี Select เลือก WO แล้ว — WO ถูกกำหนดจากหน้า (แสดงเลขที่ WO แบบอ่านอย่างเดียว).
+  โหลดด้วย `GET /wo-contractor-log/by-wo/:woId`: ถ้ามีบันทึกแล้วโหลดผ่าน `GET /wo-contractor-log/:id`; ถ้ายังไม่มี เติมผู้รับจ้าง/โครงการ/ลักษณะสัญญา/มูลค่าสัญญาจาก `GET /work-order/:woId` แล้ว `POST` ตอนกดบันทึกครั้งแรก
+  (หลังสร้างจะ `GET` ซ้ำเพื่อเอา `credit_term_days` สำหรับ tab 2). 1 WO = 1 บันทึก. ปุ่ม "บันทึก" อยู่เฉพาะ tab ข้อมูลเอกสาร; ไม่มีปุ่มย้อนกลับ (หน้าแม่มีอยู่แล้ว).
+- **ที่ยังไม่ได้ตรวจ:** ไม่ได้จำกัดว่าต้อง WO สถานะ APPROVED (หน้าการเงินแสดงเฉพาะ WO ที่เข้าข่ายอยู่แล้ว); PRINT ใน tab 2 ยัง disabled; ลำดับ Card บนหน้า (วางไว้หลังข้อมูลเอกสาร ก่อนงวดการจ่าย) เป็นการเดา.
+
+## 🧭 Session learnings (2026-10-26, cont'd) — `/master/stock` warehouse table layout [Frontend]
+
+> Verified: `tsc` ผ่าน + SQL ของ backend ทดสอบกับข้อมูล dev; **ไม่ได้เปิดเบราว์เซอร์**. ต้อง restart backend เพื่อให้ `store_description` มา.
+
+- **ตารางยอดคงเหลือของ "โครงการคลัง" (source = WAREHOUSE)** ใน `StockProjectBalance.tsx` (หน้า `/master/stock`) และ `StockProjectDetailPage.tsx` (`/master/stock/:projectCode`) เปลี่ยนเป็นตามภาพที่ผู้ใช้ให้:
+  ลำดับ (นับต่อจากหน้า pagination) | Cost Code (`formatCostCodeDisplay`) | รหัสวัสดุ (ตัวหนาสีน้ำเงิน — **เป็นข้อความอย่างเดียว ไม่ได้ลิงก์ไปไหน** เพราะยังไม่ได้บอกว่าให้เปิดอะไร) |
+  รายละเอียด (`mat_name` = ชื่อ+spec จาก master) | รายละเอียดคลัง (`store_description`) | คงเหลือ | หน่วย | ราคา (`unit_cost` ทศนิยม 2 ตำแหน่ง). ไม่มีคอลัมน์ "อัปเดตล่าสุด" แล้วสำหรับ WAREHOUSE.
+  Placeholder ค้นหา = "ค้นหารหัสวัสดุ / ชื่อ Item". ตารางของโครงการปกติ (source = PROJECT) **ไม่เปลี่ยน**.
+- **สองไฟล์นี้ซ้ำโค้ดกัน** (คอลัมน์/การโหลดเหมือนกัน) — แก้ที่หนึ่งต้องแก้อีกที่ (ไม่มี shared component).
+- **บั๊กที่เจอระหว่างทำ (แก้แล้ว):** หน้าอ่านรายการจาก `d.rows` แต่ API ส่งใน `d.data` (ตารางว่างทั้งที่ pagination ขึ้น 917), และต้นทุนต่อหน่วยอยู่ที่ `unit_cost` ไม่ใช่ `last_unit_cost` — ตอนนี้ map ที่จุดโหลดข้อมูล.
+- ข้อมูล dev: โครงการ `2026-WH-002` (ศาลายา, `FAC-S`) ต้องมี `stock_item.warehouse_code='FAC-S'` ถึงจะเห็นรายการ (`scratch_sql/fix_stock_item_wh01_to_fac_s_dev.sql` — แก้เฉพาะ dev; UAT/prod ยังเป็น `WH01`).
+
+## 🧭 Session learnings (2026-10-26, cont'd) — petty cash line gets หน่วย (unit) [Frontend]
+
+> Verified: `tsc` ผ่าน; backend/SQL ทดสอบบน dev; **ไม่ได้เปิดเบราว์เซอร์**. ต้องรัน SQL 027 + restart backend ก่อนบันทึกหน่วยได้.
+
+- `PettyCashLineModal.tsx` (ฟอร์ม "เพิ่ม/แก้ไข/ดูรายการ" ของใบเบิกเงินสดย่อย) มีช่อง **หน่วย** แถวเดียวกับ MatCode/MatName (MatName หดจาก 18 → 12 คอลัมน์ ช่องหน่วยใช้ 6): Input พิมพ์เองได้ (max 50),
+  เลือกวัสดุแล้วเติมจาก `unit_name` ของวัสดุ (`/master/allMaterial`) แต่แก้ทับได้; ถ้าวัสดุไม่มีหน่วย ค่าที่พิมพ์ไว้ไม่ถูกล้าง.
+- `unit` เพิ่มใน `PettyCashLineForm` / `CreatePettyCashLineItem` (`types/pettyCash.ts`) และผ่านทั้ง 3 จุดของ `PettyCashCreatePage.tsx` (โหลดจาก API, สร้างแถวว่าง, ส่ง payload `unit`).
+  `PettyCashDetailPage.tsx` มีคอลัมน์ "หน่วย" อยู่เดิมแล้ว (อ่าน `unit` จาก API) จึงโชว์หน่วยที่บันทึกไว้เลย. ตารางสรุปรายการ (`PettyCashLineSummaryTable`) และหน้าพิมพ์ **ไม่ได้เพิ่มคอลัมน์หน่วย** (ไม่ได้ขอ).
+
+- **หน่วยเป็นฟิลด์บังคับ (2026-10-26):** ใน `PettyCashLineModal.tsx` ช่องหน่วยมี rule `required` ("กรุณาระบุหน่วย") และ `PettyCashCreatePage.tsx` `rejectBlankRows` (เรียกก่อนบันทึกร่าง/ส่ง) ไฮไลต์แถวที่ไม่มีหน่วยแล้วหยุดการบันทึก
+  ("กรุณาระบุหน่วยของรายการที่ไฮไลต์…") — เอกสารเก่าที่ไม่มีหน่วยในบางรายการจึงต้องเปิดแก้ไขทีละรายการก่อนบันทึกได้. Backend ตรวจซ้ำและตอบ 400 เช่นกัน.
+
+## 🧭 Session learnings (2026-10-26, cont'd) — PR approval + WO approve fix + Approval Matrix [Frontend]
+
+> Verified: `tsc` has no errors in the touched files (the repo has other pre-existing tsc errors: `PermissionContext`, `GroupPage`, `MaterialPage`, `PRCreatePage` line ~277 `User.roles`, `mockData`); backend flow tested on dev + a UAT copy.
+> **Not opened in a browser, no HTTP call made.** Needs SQL 029 + backend restart. Details of the backend: `erp-api` `CLAUDE.md` item 19.
+
+- **`PRCreatePage.tsx`**: new `approver_id` Form.Item ("ผู้อนุมัติ", fed by `GET /master/eligible-approvers?doc_type=PR`) in the action-bar card; `handleSubmit('DRAFT' | 'SUBMIT')` — SUBMIT sends `status: 'PENDING_APPROVAL'` + `approver_id`
+  (required, inline error "กรุณาเลือกผู้อนุมัติ"); edit mode ("บันทึกและส่งขออนุมัติ", was "บันทึกการแก้ไข") does PUT then `POST /pr/:id/submit {approver_id}`; the approver is pre-filled from the loaded PR. The "ตัดจาก Stock N รายการ" success summary was removed (nothing is reserved until approval).
+  `CreatePRRequest.status` is now `'DRAFT' | 'PENDING_APPROVAL'` (+ `approver_id?`).
+- **`PRDetailPage.tsx`**: statuses `PENDING_APPROVAL` (orange) / `REJECTED` (red); info banner while pending, error banner with the reject reason; **อนุมัติ / ไม่อนุมัติ** buttons for the assigned approver only (`useApprovalPermission('PR', id)` — the hook's old "PR has no approval" guard was removed, `'PR'` added to its doc types;
+  `PermissionButton menuCode="MENU_PR_APPROVAL" action="write"`; reject opens a modal with a required reason); the แก้ไข button now also shows for PENDING_APPROVAL ("ถอนกลับ/แก้ไข") and REJECTED and is hidden when opened from the approval list; `?for_approval=true` is forwarded to the API and a 403 returns to `/pr/approval`.
+- **New `pages/pr/PRApprovalListPage.tsx`** (`/pr/approval`, `RequirePermission menuCode="MENU_PR_APPROVAL"`, icon in `SidebarMenu.tsx`): `GET /pr?my_approvals=true&status=…`, default filter รออนุมัติ, rows open `/pr/:id?for_approval=true`. Bell badge hook `useMyPendingApprovalCount` also reads `pr`.
+- **Approval Matrix (`/admin/approval-matrix`)** needed no code: doc types come from `approval_doc_types`, and SQL 029 registers `PR` there with the PO roles copied — edit roles in the grid.
+- `PRHistoryPage` row tint: PENDING_APPROVAL gray, REJECTED red (legend updated); `PRStatusPage` (retired) status options got the two statuses.
+- **Found + fixed, WO:** `workOrderService.approve/reject` called `POST /work-order/:id/approve|reject`, routes that do not exist (WO goes through the generic engine) → now `PUT /approval/WO/:id/approve|reject` (`comments` = reason). Before this the WO approve button could only 404.
+- **Open:** after a REJECTED PR the requester resubmits from the edit page (reopen is implicit); there is no separate "ส่งใหม่" button on the detail page. PR print (`PRPrint`) has no approver signature box yet. WO reject reason is stored in the status log but not shown on the WO detail page.
+
+- **Approval Matrix (`/admin/approval-matrix`) overview — one group of roles at a time (2026-10-26):** the grid (rows = roles, columns = document types) used to list every role. Now a dropdown next to the title
+  "ภาพรวม Approval Matrix" holds **every department + one "Board" entry**; the grid shows only that group's roles (a department → its own roles; Board → the company-level roles with `roles.dept_code IS NULL`: ROLE_D, ROLE_E, ROLE_MD, ROLE_B).
+  Nothing is selected on open (prompt text shown). The draft (pending add/delete cells, keyed by doc type + role id) is kept across groups and one save sends everything; a hint shows the unsaved count. `ApprovalRole` got `dept_code` (GET /roles already returned it).
+  Files: `pages/admin/ApprovalMatrix.tsx` (`ApprovalMatrixOverviewTab`, `BOARD_GROUP`), `types/approval.types.ts`; `MatrixGrid` unchanged. The rules table below the grid is unchanged. `tsc` clean for these files; not opened in a browser.
+  (An earlier attempt the same day changed `/admin/permission-matrix` by mistake and was reverted — that page behaves as before.)
+
+## 🧭 Session learnings (2026-10-26, cont'd) — job type codes renamed [Frontend + erp-api]
+
+> Verified: `go build`/`go vet` and the job-share + PR/memo job tests pass; migration dry-run in a rolled-back transaction, then applied to the **local dev DB only**. `tsc` has no new errors. **Not opened in a browser. UAT/prod still need `erp-api/migrations/030_job_code_rename.sql`.**
+
+- Job type codes: `MP→MS` (Metal Structure), `ME→EE` (Electrical), `MS→SN` (Sanitary), `MF→FF` (Fire), `MG→GS` (Gas), `MH→AC` (HVAC/BAS/Clean-R.). `FS/FP/FB/DE/RE/G/OH` unchanged. **`MS` changed meaning** (Sanitary → Metal), so the migration is NOT re-runnable (it aborts if `job_cost_key()` exists).
+- Migration 030 rewrites `purchase_request/purchase_order/memo/ic_project_movement.job_code`, `project_job_share`, `project.job_codes[]`, `work_order.work_system[]` (legacy `P/E/S` → `MS/EE/SN`) and the 3 CHECK constraints.
+- The codes no longer spell `subject_code || job_code` for cost_job lookups, so SQL function `job_cost_key(code)` maps a job code back to the old key (MS→MP, EE→ME, SN→MS, FF→MF, GS→MG, AC→MH); backend joins (`pr_approval.go`, `ic_project_movement.go`, `stock_by_project.go`) go through it. The cost side (`cost_job.job_code` P/E/S/F/G/H, `filterJobCode` in `constants/jobTypes.ts`) is unchanged.
+- No more `startsWith('M')` checks: use `isTradeJobCode()` (`constants/jobTypes.ts`) ↔ `IsTradeJobCode` (`job_type.go`). `JobNeedsShare` is now an explicit list (FS/FP/FB/G/OH do not) because `FF` also starts with F.
 
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน

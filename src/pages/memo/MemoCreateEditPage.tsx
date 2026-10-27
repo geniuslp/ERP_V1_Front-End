@@ -625,7 +625,7 @@ const MemoCreateEditPage: React.FC = () => {
         />
       )}
 
-      <Form form={form} layout="vertical" disabled={isEdit && !canEdit}>
+      <Form autoComplete="off" form={form} layout="vertical" disabled={isEdit && !canEdit}>
         <Card
           title={<span style={cardTitleStyle}>ข้อมูลทั่วไป</span>}
           style={{ ...cardStyle, marginBottom: 16 }}

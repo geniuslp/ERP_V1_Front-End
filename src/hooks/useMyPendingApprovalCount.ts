@@ -8,12 +8,13 @@ export interface MyPendingCounts {
   memo: number
   po: number
   wo: number
+  pr: number
   total: number
 }
 
-const EMPTY: MyPendingCounts = { memo: 0, po: 0, wo: 0, total: 0 }
+const EMPTY: MyPendingCounts = { memo: 0, po: 0, wo: 0, pr: 0, total: 0 }
 
-// GET /approvals/my-pending-counts -> { memo, po, wo, total }. Refetched whenever `refreshKey`
+// GET /approvals/my-pending-counts -> { memo, po, wo, pr, total }. Refetched whenever `refreshKey`
 // changes (the layout passes the current path, so approving a document updates the badge).
 export function useMyPendingApprovalCount(refreshKey?: string): MyPendingCounts {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
@@ -28,7 +29,7 @@ export function useMyPendingApprovalCount(refreshKey?: string): MyPendingCounts 
         const d = res.data?.data ?? res.data ?? {}
         if (!cancelled) {
           setCounts({
-            memo: Number(d.memo ?? 0), po: Number(d.po ?? 0), wo: Number(d.wo ?? 0), total: Number(d.total ?? 0),
+            memo: Number(d.memo ?? 0), po: Number(d.po ?? 0), wo: Number(d.wo ?? 0), pr: Number(d.pr ?? 0), total: Number(d.total ?? 0),
           })
         }
       })

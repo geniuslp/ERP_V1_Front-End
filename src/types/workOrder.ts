@@ -14,7 +14,7 @@ export const WO_CONTRACT_TYPE_LABEL: Record<string, string> = Object.fromEntries
   WO_CONTRACT_TYPE_OPTIONS.map((o) => [o.value, o.label]),
 )
 
-// New/edited documents store M-prefixed job codes (MP, ME, ... — names come from
+// New/edited documents store job codes (MS, EE, SN, FF, GS, AC — names come from
 // GET /master/job-types). P/E/S are legacy values on old documents: still displayed.
 export type WOWorkSystem = string
 

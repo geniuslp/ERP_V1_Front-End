@@ -226,7 +226,7 @@ const StockTransferForm: React.FC<Props> = ({ transferType, menuCode, title, bre
       />
 
       <Card title="ข้อมูลทั่วไป" style={cardStyle}>
-        <Form layout="vertical">
+        <Form autoComplete="off" layout="vertical">
           <Form.Item label="คลังต้นทาง" required>
             <Select
               value={fromWarehouseCode}

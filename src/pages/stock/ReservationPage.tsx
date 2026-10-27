@@ -178,7 +178,7 @@ const ReservationPage: React.FC = () => {
         width={480}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="Item" name="itemId" rules={[{ required: true }]}>
             <Select
               showSearch

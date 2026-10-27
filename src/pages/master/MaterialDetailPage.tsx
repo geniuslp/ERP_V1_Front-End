@@ -97,7 +97,7 @@ const MaterialDetailPage: React.FC = () => {
         // scoped to THIS item's actual group_id/subgroup_id/mat_name_id/
         // spec_id — and await them all before touching the form. The Form
         // itself doesn't mount until `loading` flips false (see the
-        // `{!loading && <Form>...}` guard below), so as long as every
+        // `{!loading && <Form autoComplete="off">...}` guard below), so as long as every
         // options array is populated before that happens, each Select
         // already has a matching option the moment it renders. This
         // replaces the earlier per-field "seed a synthetic option" patch,
@@ -244,7 +244,7 @@ const MaterialDetailPage: React.FC = () => {
 
       <Card style={cardStyle} loading={loading}>
         {!loading && (
-          <Form form={form} layout="vertical">
+          <Form autoComplete="off" form={form} layout="vertical">
             <Row gutter={16}>
               <Col xs={24} md={8}>
                 <Form.Item

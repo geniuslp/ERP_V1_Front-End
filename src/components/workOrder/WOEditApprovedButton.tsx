@@ -47,7 +47,7 @@ const WOEditApprovedButton: React.FC<WOEditApprovedButtonProps> = ({
         onCancel={() => { setOpen(false); form.resetFields() }}
         destroyOnClose
       >
-        <Form form={form} layout="vertical">
+        <Form autoComplete="off" form={form} layout="vertical">
           <Form.Item
             name="reason"
             label={`เหตุผลในการแก้ไข WO ${woNo}`}

@@ -31,7 +31,7 @@ interface Props {
   open: boolean
   onClose: () => void
   onSelect: (item: CostCodeItem) => void
-  // Document-level PR "ประเภท Job" value (e.g. 'MP', 'G'). Resolved via
+  // Document-level PR "ประเภท Job" value (e.g. 'MS', 'G'). Resolved via
   // JOB_TYPES to a job_code to filter CostCode rows by — see constants/jobTypes.ts.
   jobTypeCode?: string
   // OH order types (asset_machine/asset_office_equipment/asset_tools): load only
@@ -103,12 +103,12 @@ const CostCodeSelectionModal: React.FC<Props> = ({ open, onClose, onSelect, jobT
     fetchCostCodes()
   }, [open, accessToken, ohOnly])
 
-  // Resolve the document-level job type (e.g. 'MP') to the subject_codes +
+  // Resolve the document-level job type (e.g. 'MS') to the subject_codes +
   // job_code it should filter CostCode rows by (e.g. ['M','S'] + 'P'). job_code
   // alone is not unique — the same job_code repeats under multiple subjects
   // (M/S/L) — so both must match together. filterSubjectCodes is an array
   // because M (Material) and S (Subcontract) share the same job_code letters
-  // but have different cost_group/cost_subgroup data underneath — 'MP' must
+  // but have different cost_group/cost_subgroup data underneath — 'MS' must
   // surface BOTH subjects' rows for job P together, not just Material's.
   // Unrecognized/unset jobTypeCode, or a job type whose filterJobCode is null
   // (e.g. 'G' — General Code), means "show all, unfiltered" — same as today's

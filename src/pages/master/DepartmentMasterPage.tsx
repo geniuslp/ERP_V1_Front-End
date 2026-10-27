@@ -200,7 +200,7 @@ const DepartmentMasterPage: React.FC = () => {
         cancelText="ยกเลิก"
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           {formError && <Alert type="error" showIcon message={formError} style={{ marginBottom: 16 }} />}
           <Form.Item
             name="dept_code"

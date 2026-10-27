@@ -41,7 +41,7 @@ const RolesPage: React.FC = () => {
         <Table dataSource={data} columns={columns} size="small" />
       </Card>
       <Modal title={editing ? 'แก้ไขบทบาท' : 'เพิ่มบทบาท'} open={open} onOk={() => form.validateFields().then((v) => { editing ? setData(data.map((d) => d.key === editing.key ? { ...d, ...v } : d)) : setData([...data, { key: Date.now().toString(), id: Date.now().toString(), userCount: 0, ...v }]); message.success('บันทึกเรียบร้อย'); setOpen(false) })} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก">
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="ชื่อบทบาท" name="name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item label="คำอธิบาย" name="description"><Input.TextArea rows={2} /></Form.Item>
           <Form.Item label="ใช้งาน" name="isActive" valuePropName="checked" initialValue={true}><Switch /></Form.Item>

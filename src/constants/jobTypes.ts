@@ -13,9 +13,9 @@
 // cost_group/cost_subgroup data underneath (e.g. job P: M's group 01
 // 'Plates & Coils', S's group 30 'Subcontractor', L's group named
 // 'Dialy Labour' — that spelling is intentional per the user, not a typo to
-// fix). Selecting Job Type 'MP' must show ALL THREE subjects' rows for job P
+// fix). Selecting Job Type 'MS' (Metal Structure) must show ALL THREE subjects' rows for job P
 // together in the CostCode picker — confirmed via user's Excel reference —
-// so MP/ME/MS/MF/MG/MH list filterSubjectCodes: ['M', 'S', 'L']. There are no
+// so MS/EE/SN/FF/GS/AC list filterSubjectCodes: ['M', 'S', 'L']. There are no
 // separate SP/SE/.../LP/LE/... entries — a previous attempt added
 // subject-specific codes but was reverted in favor of this merged-array
 // approach.
@@ -34,13 +34,18 @@ export interface JobTypeOption {
   filterJobCode: string | null
 }
 
+// The six engineering-system jobs (formerly the "M*" codes). Use this instead of a prefix check: the
+// new codes (MS, EE, SN, FF, GS, AC) share no common prefix. Mirrors tradeJobCodes in erp-api job_type.go.
+export const TRADE_JOB_CODES = ['MS', 'EE', 'SN', 'FF', 'GS', 'AC']
+export const isTradeJobCode = (code: string): boolean => TRADE_JOB_CODES.includes(code)
+
 export const JOB_TYPES: JobTypeOption[] = [
-  { code: 'MP', label: 'MP - Metal Structure', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'P' },
-  { code: 'ME', label: 'ME - Electrical system work', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'E' },
-  { code: 'MS', label: 'MS - Sanitary System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'S' },
-  { code: 'MF', label: 'MF - Fire Protection', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'F' },
-  { code: 'MG', label: 'MG - GAS System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'G' },
-  { code: 'MH', label: 'MH - HVAC / BAS / Clean Room-Cold Room', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'H' },
+  { code: 'MS', label: 'MS - Metal Structure', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'P' },
+  { code: 'EE', label: 'EE - Electrical System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'E' },
+  { code: 'SN', label: 'SN - Sanitary System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'S' },
+  { code: 'FF', label: 'FF - Fire Protection', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'F' },
+  { code: 'GS', label: 'GS - Gas System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'G' },
+  { code: 'AC', label: 'AC - HVAC / BAS / Clean-R.', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'H' },
   { code: 'FS', label: 'FS - Stock FAC-S', filterSubjectCodes: ['F'], filterJobCode: 'S' },
   // TBD — waiting on backend query result for the correct subject_code.
   { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCodes: ['F'], filterJobCode: 'P' },

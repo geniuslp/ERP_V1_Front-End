@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal } from 'antd'
-import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined, WarningOutlined, PrinterOutlined } from '@ant-design/icons'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal, Form, Input } from 'antd'
+import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined, WarningOutlined, PrinterOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { usePermissionContext } from '@/contexts/PermissionContext'
+import PermissionButton from '@/components/common/PermissionButton'
+import useApprovalPermission from '@/hooks/useApprovalPermission'
+import { handleApprovalForbidden } from '@/utils/approvalAccess'
 import PRPrint, { type PRData } from './PRPrint'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
@@ -36,6 +39,8 @@ const cardTitleStyle: React.CSSProperties = {
 
 const statusConfig: Record<string, { color: string; label: string }> = {
   DRAFT:            { color: 'default', label: 'ร่าง' },
+  PENDING_APPROVAL: { color: 'orange',  label: 'รออนุมัติ' },
+  REJECTED:         { color: 'red',     label: 'ไม่อนุมัติ' },
   COMPLETED:        { color: 'green',   label: 'เสร็จสมบูรณ์' },
   STOCK_CHECK:      { color: 'blue',    label: 'ตรวจสต็อก' },
   PARTIALLY_FILLED: { color: 'gold',    label: 'สั่งซื้อบางส่วน' },
@@ -78,6 +83,8 @@ interface PRDetail {
   status: string
   requestedBy: string
   approverName: string | null
+  // Comment the approver left when rejecting (latest REJECTED status-log row).
+  rejectReason: string | null
   locationText: string
   projectCode: string | null
   orderType: PROrderType | null
@@ -110,6 +117,7 @@ const mapPR = (raw: any): PRDetail => ({
   status:       raw.status         ?? 'DRAFT',
   requestedBy:  raw.requested_by   ?? '—',
   approverName: raw.approver_name  ?? null,
+  rejectReason: raw.reject_reason  ?? null,
   locationText: raw.location_text  ?? '—',
   projectCode:  raw.project_code   ?? null,
   orderType:    raw.order_type     ?? null,
@@ -218,9 +226,13 @@ const parseBlockingPOsFromError = (err: any): string[] | null => {
   return matches && matches.length > 0 ? matches : null
 }
 
+const MENU_PR_APPROVAL = 'MENU_PR_APPROVAL'
+
 const PRDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  // Set only by the approval list's links (?for_approval=true); other entry points open this page without it.
+  const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   // Only PURCHASING/ADMIN can jump to a linked PO's detail page from here —
   // same hasRole() pattern RequireRole.tsx/SidebarMenu.tsx already use to
@@ -245,15 +257,74 @@ const PRDetailPage: React.FC = () => {
   // Space-separated (not dash) — this on-screen detail field uses a different
   // format than the print pages, which keep their own "code — name" dash style.
 
+  // Approve / reject (the assigned approver only): PUT /approval/PR/:id/approve|reject. Approving makes the PR
+  // COMPLETED and reserves stock from the shelf in the same transaction; rejecting records the reason.
+  const { canApprove } = useApprovalPermission('PR', id)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectForm] = Form.useForm()
+
+  const decide = async (action: 'approve' | 'reject', comments?: string) => {
+    await axios.put(`${BASE_URL}/approval/PR/${id}/${action}`, comments ? { comments } : {}, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  }
+
+  const handleApprove = () => {
+    Modal.confirm({
+      title: 'ยืนยันการอนุมัติใบขอซื้อ',
+      content: 'เมื่ออนุมัติ ระบบจะตัดสต็อกตามจำนวนที่มีและส่วนที่เหลือไปสั่งซื้อต่อ',
+      okText: 'อนุมัติ',
+      cancelText: 'ยกเลิก',
+      onOk: async () => {
+        setActionLoading(true)
+        try {
+          await decide('approve')
+          message.success('อนุมัติใบขอซื้อเรียบร้อย')
+          fetchPR()
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || err?.response?.data?.error || 'อนุมัติไม่สำเร็จ')
+        } finally {
+          setActionLoading(false)
+        }
+      },
+    })
+  }
+
+  const handleReject = async () => {
+    try {
+      const values = await rejectForm.validateFields()
+      setActionLoading(true)
+      try {
+        await decide('reject', values.reason)
+        message.success('ไม่อนุมัติใบขอซื้อเรียบร้อย')
+        setRejectOpen(false)
+        rejectForm.resetFields()
+        fetchPR()
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || err?.response?.data?.error || 'ดำเนินการไม่สำเร็จ')
+      } finally {
+        setActionLoading(false)
+      }
+    } catch {
+      // form validation failed — antd shows the inline error
+    }
+  }
+
   const fetchPR = async () => {
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/pr/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        params: forApproval ? { for_approval: true } : undefined,
       })
       const raw = res.data?.data ?? res.data
       setPr(mapPR(raw))
     } catch (err: any) {
+      if (forApproval && handleApprovalForbidden(err)) {
+        navigate('/pr/approval', { replace: true })
+        return
+      }
       setPr(null)
     } finally {
       setLoading(false)
@@ -397,22 +468,66 @@ const PRDetailPage: React.FC = () => {
             <Button icon={<PrinterOutlined />} onClick={handlePrint}>
               พิมพ์
             </Button>
-            {pr.status === 'COMPLETED' && (
+            {pr.status === 'PENDING_APPROVAL' && canApprove && (
+              <>
+                <PermissionButton
+                  menuCode={MENU_PR_APPROVAL}
+                  action="write"
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  loading={actionLoading}
+                  onClick={handleApprove}
+                >
+                  อนุมัติ
+                </PermissionButton>
+                <PermissionButton
+                  menuCode={MENU_PR_APPROVAL}
+                  action="write"
+                  danger
+                  icon={<CloseCircleOutlined />}
+                  disabled={actionLoading}
+                  onClick={() => setRejectOpen(true)}
+                >
+                  ไม่อนุมัติ
+                </PermissionButton>
+              </>
+            )}
+            {/* Editing a PR that is waiting for approval takes it back (the pending request is withdrawn). */}
+            {!forApproval && ['COMPLETED', 'PENDING_APPROVAL', 'REJECTED'].includes(pr.status) && (
               <Button
                 type="primary"
                 icon={<EditOutlined />}
                 loading={reopening}
                 onClick={handleEdit}
               >
-                แก้ไข
+                {pr.status === 'PENDING_APPROVAL' ? 'ถอนกลับ/แก้ไข' : 'แก้ไข'}
               </Button>
             )}
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/pr/history')}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(forApproval ? '/pr/approval' : '/pr/history')}>
               กลับ
             </Button>
           </Space>
         }
       />
+
+      {pr.status === 'PENDING_APPROVAL' && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ borderRadius: 12, marginBottom: 16 }}
+          message={`รอ ${pr.approverName ?? 'ผู้อนุมัติ'} อนุมัติ`}
+          description="ยังไม่มีการตัดสต็อก ระบบจะตัดสต็อกเมื่อใบขอซื้อได้รับการอนุมัติ"
+        />
+      )}
+      {pr.status === 'REJECTED' && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ borderRadius: 12, marginBottom: 16 }}
+          message="ใบขอซื้อนี้ไม่ได้รับการอนุมัติ"
+          description={pr.rejectReason ? `เหตุผล: ${pr.rejectReason}` : 'แก้ไขแล้วส่งขออนุมัติใหม่ได้'}
+        />
+      )}
 
       {blockingPOs.length > 0 && (
         <Alert
@@ -519,6 +634,23 @@ const PRDetailPage: React.FC = () => {
           }}
         />
       )}
+
+      <Modal
+        title="ไม่อนุมัติใบขอซื้อ"
+        open={rejectOpen}
+        okText="ยืนยัน"
+        okButtonProps={{ danger: true, loading: actionLoading }}
+        cancelText="ยกเลิก"
+        onOk={handleReject}
+        onCancel={() => { setRejectOpen(false); rejectForm.resetFields() }}
+        destroyOnClose
+      >
+        <Form autoComplete="off" form={rejectForm} layout="vertical">
+          <Form.Item name="reason" label="เหตุผล" rules={[{ required: true, whitespace: true, message: 'กรุณาระบุเหตุผล' }]}>
+            <Input.TextArea rows={3} maxLength={500} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

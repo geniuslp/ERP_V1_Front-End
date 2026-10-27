@@ -73,12 +73,15 @@ export const workOrderService = {
     return res.data?.data ?? res.data
   },
 
+  // WO has no approve/reject route of its own: both go through the generic, config-driven engine
+  // (PUT /approval/WO/:id/approve|reject — approver scope + approval_request, see generic_approval.go).
+  // The reject reason is sent as `comments` and kept in work_order_status_log.remarks.
   approve: async (token: string, id: string | number): Promise<void> => {
-    await axios.post(`${BASE_URL}/work-order/${id}/approve`, {}, { headers: authHeader(token) })
+    await axios.put(`${BASE_URL}/approval/WO/${id}/approve`, {}, { headers: authHeader(token) })
   },
 
   reject: async (token: string, id: string | number, reason: string): Promise<void> => {
-    await axios.post(`${BASE_URL}/work-order/${id}/reject`, { reason }, { headers: authHeader(token) })
+    await axios.put(`${BASE_URL}/approval/WO/${id}/reject`, { comments: reason }, { headers: authHeader(token) })
   },
 
   getPaymentConditions: async (token: string, woId: string | number): Promise<WOPaymentConditions> => {

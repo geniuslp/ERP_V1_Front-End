@@ -123,6 +123,7 @@ export interface CreatePettyCashLineItem {
   project_code?: string
   mat_code?: string
   description: string
+  unit: string // หน่วย, free text (max 50)
   cost_subgroup_id?: number | null
   remarks: string
   amount: number
@@ -159,6 +160,7 @@ export interface PettyCashLineForm {
   mat_code: string
   mat_name_th: string
   description: string
+  unit: string // หน่วย — filled from the material master when picked, editable
   cost_subgroup_id: number | null
   cost_code: string
   cost_group_name: string

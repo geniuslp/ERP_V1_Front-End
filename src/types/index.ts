@@ -94,7 +94,9 @@ export interface CreatePRRequest {
   // while memo_id is set, since the Memo already carries department context.
   dept_code?: string
   remarks?: string
-  status: 'DRAFT' | 'COMPLETED'
+  // PENDING_APPROVAL = send for approval (approver_id required); COMPLETED only happens once an approver approves
+  status: 'DRAFT' | 'PENDING_APPROVAL'
+  approver_id?: number
   memo_id: number | null
   lines: CreatePRLineRequest[]
   attachments: PRAttachment[]

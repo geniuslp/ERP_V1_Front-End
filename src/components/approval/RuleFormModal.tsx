@@ -78,7 +78,7 @@ const RuleFormModal: React.FC<RuleFormModalProps> = ({
       confirmLoading={loading}
       destroyOnClose
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+      <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item
           name="doc_type"
           label="ประเภทเอกสาร"

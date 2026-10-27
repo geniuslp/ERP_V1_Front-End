@@ -60,10 +60,10 @@ export function useNavTree() {
 
 // ── Short labels (display only; the menu data is not changed) ──────────────────────────────────
 const SHORT_LABEL_BY_CODE: Record<string, string> = {
-  MENU_PR: 'Office Service',
+  MENU_PR: 'OF',
   MENU_PO: 'PO/WO',
-  MENU_IC: 'Inventory',
-  MENU_FINANCE: 'Accounts Payable',
+  MENU_IC: 'IC',
+  MENU_FINANCE: 'AP',
 }
 
 const FIRST_THAI = /[฀-๿]/
@@ -123,6 +123,11 @@ export const TOPNAV_WIDTHS_RESET_EVENT = 'erp-topnav-widths-reset'
 export const TOPNAV_MIN_WIDTH = 64
 export const TOPNAV_MAX_WIDTH = 320
 
+// OF / IC / AP became short labels; widths saved for their old long labels would leave empty space
+// next to the text, so those three are dropped once per browser and the items size to their text again.
+const SHORT_LABEL_WIDTH_FIX_KEY = 'erp.topnav.widths.shortlabels.v1'
+const SHORT_LABEL_CODES = ['MENU_PR', 'MENU_IC', 'MENU_FINANCE']
+
 export function loadTopNavWidths(): Record<string, number> {
   try {
     const raw = window.localStorage.getItem(TOPNAV_WIDTHS_KEY)
@@ -134,6 +139,11 @@ export function loadTopNavWidths(): Record<string, number> {
       if (typeof v === 'number' && Number.isFinite(v)) {
         out[k] = Math.min(TOPNAV_MAX_WIDTH, Math.max(TOPNAV_MIN_WIDTH, v))
       }
+    }
+    if (!window.localStorage.getItem(SHORT_LABEL_WIDTH_FIX_KEY)) {
+      SHORT_LABEL_CODES.forEach((code) => { delete out[code] })
+      window.localStorage.setItem(TOPNAV_WIDTHS_KEY, JSON.stringify(out))
+      window.localStorage.setItem(SHORT_LABEL_WIDTH_FIX_KEY, '1')
     }
     return out
   } catch {

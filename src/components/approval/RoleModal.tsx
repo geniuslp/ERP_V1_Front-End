@@ -174,7 +174,7 @@ const RoleModal: React.FC<RoleModalProps> = ({
         เพิ่ม Role ใหม่
       </Divider>
 
-      <Form form={form} layout="vertical">
+      <Form autoComplete="off" form={form} layout="vertical">
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <Form.Item
             name="role_name"

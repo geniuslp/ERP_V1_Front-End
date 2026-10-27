@@ -8,7 +8,7 @@ const { Title, Text } = Typography
 const GeneralSettings = () => {
   const [form] = Form.useForm()
   return (
-    <Form form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
+    <Form autoComplete="off" form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
       <Row gutter={16}>
         <Col xs={24} md={12}><Form.Item label="ชื่อระบบ" name="systemName" initialValue="ERP System"><Input /></Form.Item></Col>
         <Col xs={24} md={12}><Form.Item label="เวอร์ชัน" name="version" initialValue="1.0.0"><Input disabled /></Form.Item></Col>
@@ -25,7 +25,7 @@ const GeneralSettings = () => {
 const AuthSettings = () => {
   const [form] = Form.useForm()
   return (
-    <Form form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
+    <Form autoComplete="off" form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
       <Title level={5} style={{ color: '#1e3a8a', marginBottom: 16 }}>JWT Configuration</Title>
       <Row gutter={16}>
         <Col xs={24} md={12}><Form.Item label="Access Token Expiry" name="accessTokenExpiry" initialValue="15m" tooltip="เวลาหมดอายุของ Access Token"><Select options={[{ value: '5m', label: '5 นาที' }, { value: '15m', label: '15 นาที' }, { value: '30m', label: '30 นาที' }, { value: '1h', label: '1 ชั่วโมง' }]} /></Form.Item></Col>
@@ -48,7 +48,7 @@ const AuthSettings = () => {
 const NotificationSettings = () => {
   const [form] = Form.useForm()
   return (
-    <Form form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
+    <Form autoComplete="off" form={form} layout="vertical" onFinish={() => message.success('บันทึกการตั้งค่าเรียบร้อย')}>
       <Row gutter={16}>
         <Col xs={24} md={12}><Form.Item label="SMTP Host" name="smtpHost"><Input placeholder="smtp.example.com" /></Form.Item></Col>
         <Col xs={24} md={6}><Form.Item label="SMTP Port" name="smtpPort" initialValue="587"><Input /></Form.Item></Col>

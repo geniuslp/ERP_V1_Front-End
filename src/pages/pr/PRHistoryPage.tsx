@@ -32,6 +32,8 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const ROW_TINT_CATEGORY: Record<string, string> = {
   PARTIALLY_FILLED: ROW_TINT_CLASS.orange,
   STOCK_CHECK:       ROW_TINT_CLASS.gray,
+  PENDING_APPROVAL:  ROW_TINT_CLASS.gray, // waiting for the approver
+  REJECTED:          ROW_TINT_CLASS.red,
 }
 // hasRemaining (GET /pr's has_remaining) is true while any line still has qty left to
 // buy; a PR fully reserved from stock has nothing left, so it counts as done (green)
@@ -46,10 +48,11 @@ const getRowClassName = (status?: string, poConversionStatus?: string, hasRemain
 }
 
 // Legend entries — same categories as ROW_TINT_CATEGORY / getRowClassName above
-// (gray = STOCK_CHECK, orange = PARTIALLY_FILLED, green = fully-ordered COMPLETED/FULFILLED).
+// (gray = PENDING_APPROVAL / STOCK_CHECK, red = REJECTED, orange = PARTIALLY_FILLED, green = fully-ordered COMPLETED/FULFILLED).
 // DRAFT/CANCELLED have no tint, so they are not listed.
 const ROW_TINT_LEGEND = [
-  { ...ROW_TINT_SWATCH.gray, label: 'ตรวจสอบสต็อก' },
+  { ...ROW_TINT_SWATCH.gray, label: 'รออนุมัติ / ตรวจสอบสต็อก' },
+  { ...ROW_TINT_SWATCH.red, label: 'ไม่อนุมัติ' },
   { ...ROW_TINT_SWATCH.orange, label: 'ออก PO ได้บางส่วน' },
   { ...ROW_TINT_SWATCH.green, label: 'ออก PO ครบแล้ว' },
 ]
@@ -313,7 +316,7 @@ const PRHistoryPage: React.FC = () => {
         onResize: handleJobColResize,
       }),
       align: 'center' as const,
-      // Short code only (e.g. "MP"), not the full "CODE - Name" label — same
+      // Short code only (e.g. "MS"), not the full "CODE - Name" label — same
       // display pattern as POStatusPage.tsx's Job column.
       render: (v: string | null) => {
         if (!v) return <span style={{ color: '#9ca3af' }}>—</span>

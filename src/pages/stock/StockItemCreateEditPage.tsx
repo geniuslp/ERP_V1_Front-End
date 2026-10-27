@@ -111,7 +111,7 @@ const StockItemCreateEditPage: React.FC = () => {
       />
 
       <Card title="General Information" style={cardStyle} loading={loading}>
-        <Form form={form} layout="vertical" initialValues={{ trackingType: 'sku', unitCost: 0, qty: 0 }}>
+        <Form autoComplete="off" form={form} layout="vertical" initialValues={{ trackingType: 'sku', unitCost: 0, qty: 0 }}>
           <Row gutter={16}>
             <Col xs={24} md={8}>
               <Form.Item label="Item Code" name="matCode" rules={[{ required: true, message: 'Item code is required' }]}>

@@ -325,7 +325,7 @@ const GroupPage: React.FC = () => {
         width={420}
       >
         <Divider style={{ margin: '12px 0' }} />
-        <Form form={form} layout="vertical">
+        <Form autoComplete="off" form={form} layout="vertical">
           <Form.Item label="รหัสกลุ่ม" name="group_code" rules={[{ required: true, message: 'กรุณากรอกรหัสกลุ่ม' }]}>
             <Input placeholder="เช่น GRP001" maxLength={20} disabled={!!editing} />
           </Form.Item>

@@ -265,7 +265,7 @@ const RequisitionForm: React.FC<Props> = ({ mode, borrowId }) => {
       ) : (
         <>
           <Card title="ข้อมูลทั่วไป" style={cardStyle}>
-            <Form layout="vertical">
+            <Form autoComplete="off" layout="vertical">
               <Form.Item label="คลัง" required>
                 <Select
                   value={warehouseCode}

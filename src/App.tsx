@@ -23,6 +23,7 @@ const MemoCreateEditPage = lazy(() => import('@/pages/memo/MemoCreateEditPage'))
 const PRCreatePage = lazy(() => import('@/pages/pr/PRCreatePage'))
 const PRStatusPage = lazy(() => import('@/pages/pr/PRStatusPage'))
 const PRDetailPage = lazy(() => import('@/pages/pr/PRDetailPage'))
+const PRApprovalListPage = lazy(() => import('@/pages/pr/PRApprovalListPage'))
 const PRHistoryPage = lazy(() => import('@/pages/pr/PRHistoryPage'))
 const POCreatePage = lazy(() => import('@/pages/po/POCreatePage'))
 const POStatusPage = lazy(() => import('@/pages/po/POStatusPage'))
@@ -36,7 +37,6 @@ const WorkOrderListPage = lazy(() => import('@/pages/workOrder/WorkOrderListPage
 const WorkOrderCreatePage = lazy(() => import('@/pages/workOrder/WorkOrderCreatePage'))
 const WorkOrderDetailPage = lazy(() => import('@/pages/workOrder/WorkOrderDetailPage'))
 const WorkOrderApprovalListPage = lazy(() => import('@/pages/workOrder/WorkOrderApprovalListPage'))
-const WorkOrderContractorLogPage = lazy(() => import('@/pages/workOrder/WorkOrderContractorLogPage'))
 const PettyCashListPage = lazy(() => import('@/pages/petty-cash/PettyCashListPage'))
 const PettyCashCreatePage = lazy(() => import('@/pages/petty-cash/PettyCashCreatePage'))
 const PettyCashDetailPage = lazy(() => import('@/pages/petty-cash/PettyCashDetailPage'))
@@ -139,6 +139,9 @@ const AppRoutes: React.FC = () => (
               <Route path="/pr/:id" element={
                 <RequirePermission menuCode="MENU_PR_STATUS" action="read"><PRDetailPage /></RequirePermission>
               } />
+              <Route path="/pr/approval" element={
+                <RequirePermission menuCode="MENU_PR_APPROVAL" action="read"><PRApprovalListPage /></RequirePermission>
+              } />
               <Route path="/pr/history" element={
                 <RequirePermission menuCode="MENU_PR_HISTORY" action="read"><PRHistoryPage /></RequirePermission>
               } />
@@ -165,12 +168,6 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/po/approval" element={<POApprovalListPage />} />
               <Route path="/po/approval/:id" element={<POApprovalDetailPage />} />
-              <Route path="/work-order/contractor-log" element={
-                <RequirePermission menuCode="MENU_WO_CONTRACTOR_LOG" action="read"><WorkOrderContractorLogPage /></RequirePermission>
-              } />
-              <Route path="/work-order/contractor-log/:id" element={
-                <RequirePermission menuCode="MENU_WO_CONTRACTOR_LOG" action="read"><WorkOrderContractorLogPage /></RequirePermission>
-              } />
               <Route path="/work-order/list" element={
                 <RequirePermission menuCode="MENU_WO_LIST" action="read"><WorkOrderListPage /></RequirePermission>
               } />

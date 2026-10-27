@@ -379,7 +379,7 @@ const ProjectCreateEditPage: React.FC = () => {
         ]}
       />
 
-      <Form form={form} layout="vertical" initialValues={{ status: 'ACTIVE', budget_amount: 0 as number, vo_amount: 0 as number, contract_amount: 0 as number, cost_amount: 0 as number, project_kind: 'NEW' }}>
+      <Form autoComplete="off" form={form} layout="vertical" initialValues={{ status: 'ACTIVE', budget_amount: 0 as number, vo_amount: 0 as number, contract_amount: 0 as number, cost_amount: 0 as number, project_kind: 'NEW' }}>
         <Card title={<span style={cardTitleStyle}>ข้อมูลโครงการ</span>} style={cardStyle} loading={loading}>
           <Row gutter={16}>
             <Col md={12} xs={24}>

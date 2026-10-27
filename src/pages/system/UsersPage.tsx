@@ -468,7 +468,7 @@ const UsersPage: React.FC = () => {
         <Table dataSource={data} columns={columns} loading={loading} size="small" pagination={{ pageSize: 10 }} />
       </Card>
       <Modal title={editing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก" destroyOnClose>
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="ชื่อผู้ใช้" name="username" rules={[{ required: true }]}><Input prefix={<UserOutlined />} /></Form.Item>
           <Form.Item label="รหัสพนักงาน" name="employeeCode"><Input maxLength={30} /></Form.Item>
           <Form.Item label="ชื่อ-นามสกุล (ภาษาอังกฤษ)" name="fullName" rules={[{ required: true, message: 'กรุณากรอกชื่อ-นามสกุล (ภาษาอังกฤษ)' }]}><Input maxLength={200} /></Form.Item>
@@ -504,7 +504,7 @@ const UsersPage: React.FC = () => {
         cancelText="ยกเลิก"
         confirmLoading={passwordSubmitting}
       >
-        <Form form={passwordForm} layout="vertical" style={{ marginTop: 16 }}>
+        <Form autoComplete="off" form={passwordForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="รหัสผ่านใหม่" name="password" rules={[{ required: true, message: 'กรุณากรอกรหัสผ่าน' }]}>
             <Input.Password />
           </Form.Item>

@@ -315,7 +315,7 @@ const CustomerPage: React.FC = () => {
           <Button key="save" type="primary" loading={saving} onClick={handleSave} style={{ borderRadius: 8 }}>บันทึก</Button>,
         ]}
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
+        <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 8 }}>
           <Form.Item
             name="customer_code"
             label="รหัสลูกค้า"

@@ -206,7 +206,7 @@ const ApprovalExtraApproverTab: React.FC = () => {
         destroyOnHidden
         width={480}
       >
-        <Form form={form} layout="vertical" initialValues={{ docType: '__ALL__' }}>
+        <Form autoComplete="off" form={form} layout="vertical" initialValues={{ docType: '__ALL__' }}>
           <Form.Item
             name="userId"
             label="เลือกผู้ใช้"

@@ -584,7 +584,7 @@ const SupplierPage: React.FC = () => {
   const errorCount = excelRows.filter((r) => r.errors.length > 0).length
 
   const supplierForm = (
-    <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
+    <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 8 }}>
       <Form.Item name="supplier_name" label="ชื่อร้านค้า / บริษัท" rules={[{ required: true, message: 'กรุณากรอกชื่อร้านค้า / บริษัท' }]}>
         <Input placeholder="ชื่อบริษัท / ร้านค้า" />
       </Form.Item>

@@ -204,6 +204,7 @@ const PettyCashCreatePage: React.FC = () => {
           mat_code: l.mat_code ?? '',
           mat_name_th: l.mat_name_th ?? '',
           description: l.description ?? '',
+          unit: l.unit ?? '',
           cost_subgroup_id: l.cost_subgroup_id ?? null,
           cost_code: l.cost_code ?? '',
           cost_group_name: l.cost_group_name ?? '',
@@ -252,11 +253,14 @@ const PettyCashCreatePage: React.FC = () => {
   stagedRef.current = stagedFiles
   const [errorRowKey, setErrorRowKey] = useState<string | null>(null)
   const rejectBlankRows = (): boolean => {
-    const bad = items.find((r) => r.isNew)
+    const blank = items.find((r) => r.isNew)
+    // หน่วย is required on every line; documents saved before the field existed may still lack it.
+    const noUnit = items.find((r) => !r.isNew && !String(r.unit ?? '').trim())
+    const bad = blank ?? noUnit
     if (!bad) { setErrorRowKey(null); return false }
     setActiveTab('b')
     setErrorRowKey(bad.key)
-    message.error('กรุณากรอกรายการให้ครบ หรือลบแถวที่ว่างออก')
+    message.error(blank ? 'กรุณากรอกรายการให้ครบ หรือลบแถวที่ว่างออก' : 'กรุณาระบุหน่วยของรายการที่ไฮไลต์ (เปิดแก้ไขรายการแล้วกรอกหน่วย)')
     setTimeout(() => {
       document.querySelector(`tr[data-row-key="${bad.key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 100)
@@ -270,6 +274,7 @@ const PettyCashCreatePage: React.FC = () => {
     project_code: r.project_code || undefined,
     mat_code: r.mat_code,
     description: r.description,
+    unit: r.unit?.trim() ?? '',
     cost_subgroup_id: r.cost_subgroup_id,
     remarks: r.remarks,
     amount: r.amount,
@@ -634,7 +639,7 @@ const PettyCashCreatePage: React.FC = () => {
       key: `blank-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       isNew: true,
       project_code: headerProjectCode ?? '',
-      mat_code: '', mat_name_th: '', description: '',
+      mat_code: '', mat_name_th: '', description: '', unit: '',
       cost_subgroup_id: null, cost_code: '', cost_group_name: '', cost_subgroup_name: '',
       remarks: '', amount: 0,
       supplier_id: null, supplier_name: '', supplier_address: '', supplier_tax_id: '',
@@ -664,7 +669,7 @@ const PettyCashCreatePage: React.FC = () => {
 
   const tabA = (
     <Card title={<span style={cardTitleStyle}>ข้อมูลทั่วไป</span>} style={cardStyle} loading={loading}>
-      <Form form={form} layout="vertical" disabled={!canEdit} initialValues={{ doc_type: 'PETTY_CASH' }}>
+      <Form autoComplete="off" form={form} layout="vertical" disabled={!canEdit} initialValues={{ doc_type: 'PETTY_CASH' }}>
         <Row gutter={16}>
           <Col xs={24} sm={12} lg={6}>
             {/* pc_date is not accepted by POST/PUT — display only. */}
@@ -914,7 +919,7 @@ const PettyCashCreatePage: React.FC = () => {
         />
 
         {/* Same shared tab style as ICPoReceiveModal (PanelTabs). forceRender keeps Tab A's
-            <Form> mounted while Tab B is showing. */}
+            <Form autoComplete="off"> mounted while Tab B is showing. */}
         <PanelTabs
           activeKey={activeTab}
           onChange={(k) => setActiveTab(k as 'a' | 'b')}

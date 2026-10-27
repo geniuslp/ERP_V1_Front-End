@@ -68,7 +68,7 @@ const EditApprovedButton: React.FC<EditApprovedButtonProps> = ({
         onCancel={() => { setOpen(false); form.resetFields() }}
         destroyOnClose
       >
-        <Form form={form} layout="vertical">
+        <Form autoComplete="off" form={form} layout="vertical">
           <Form.Item
             name="reason"
             label={`เหตุผลในการแก้ไข PO ${poNo}`}

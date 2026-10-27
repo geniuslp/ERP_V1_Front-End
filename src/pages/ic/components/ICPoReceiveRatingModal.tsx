@@ -90,7 +90,7 @@ const ICPoReceiveRatingModal: React.FC<ICPoReceiveRatingModalProps> = ({ open, p
       destroyOnHidden
       width={480}
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form autoComplete="off" form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           label={<span style={labelStyle}>คุณภาพสินค้า</span>}
           name="score_quality"

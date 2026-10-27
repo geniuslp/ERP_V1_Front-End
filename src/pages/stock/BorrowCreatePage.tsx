@@ -184,7 +184,7 @@ const BorrowCreatePage: React.FC = () => {
       />
 
       <Card title="General Information" style={cardStyle}>
-        <Form form={form} layout="vertical">
+        <Form autoComplete="off" form={form} layout="vertical">
           <Form.Item label="Purpose" name="purpose" rules={[{ required: true }]}>
             <Input placeholder="Enter purpose" />
           </Form.Item>

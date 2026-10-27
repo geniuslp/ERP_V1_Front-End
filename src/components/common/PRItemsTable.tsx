@@ -77,7 +77,7 @@ interface PRItemsTableProps {
   // local state here.
   remark?: string
   onRemarkChange?: (value: string) => void
-  // Document-level "ประเภท Job" value (PR header field, e.g. 'MP', 'G') — passed
+  // Document-level "ประเภท Job" value (PR header field, e.g. 'MS', 'G') — passed
   // down so the CostCode picker can filter its options to that job type.
   jobTypeCode?: string
   // Document-level "ประเภทการสั่งซื้อ" (PR header field: 'stock' | 'cost') —

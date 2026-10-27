@@ -4,7 +4,7 @@ import { useAppSelector } from '@/store'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
-export type ApprovalDocType = 'PO' | 'MEMO' | 'PETTY_CASH'
+export type ApprovalDocType = 'PO' | 'MEMO' | 'PETTY_CASH' | 'PR'
 
 interface UseApprovalPermissionResult {
   canApprove: boolean
@@ -28,20 +28,6 @@ export const useApprovalPermission = (
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if ((docType as string) === 'PR') {
-      if (import.meta.env.DEV) {
-        console.warn(
-          '[useApprovalPermission] docType "PR" has no approval workflow — PR approval UI should have been removed. Skipping call to /approval-request/PR/:docId/my-status.',
-        )
-      }
-      setIsAssignedApprover(false)
-      setCurrentStepNo(null)
-      setCurrentStepName(null)
-      setDocStatus(null)
-      setLoading(false)
-      return
-    }
-
     if (!docId) {
       setIsAssignedApprover(false)
       setCurrentStepNo(null)

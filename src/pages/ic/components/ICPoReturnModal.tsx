@@ -424,7 +424,7 @@ const ICPoReturnModal: React.FC<ICPoReturnModalProps> = ({ open, poId, onClose, 
         locale={{ emptyText: 'ไม่พบรายการสินค้า' }}
       />
 
-      <Form layout="vertical" style={{ marginTop: 16 }}>
+      <Form autoComplete="off" layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item label="วันที่คืน" required>
           <DatePicker
             value={returnDate}
