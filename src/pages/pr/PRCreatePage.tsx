@@ -698,6 +698,7 @@ const PRCreatePage: React.FC = () => {
       deliveryTo: values.location_text ?? '',
       remark,
       orderType: values.order_type ?? '',
+      requesterName: (() => { const u = users.find((x) => String(x.id) === String(values.requested_by)); return u?.username || u?.fullName })(),
       // This page's print button always previews the current unsaved/editing
       // state — and saving from here always resets the record to DRAFT (see
       // handleSubmit above), so the printed doc is DRAFT whenever this fires.

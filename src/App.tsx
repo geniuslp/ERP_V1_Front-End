@@ -54,6 +54,7 @@ const LocationPage = lazy(() => import('@/pages/master/LocationPage'))
 const SupplierPage = lazy(() => import('@/pages/master/SupplierPage'))
 const DepartmentMasterPage = lazy(() => import('@/pages/master/DepartmentMasterPage'))
 const CustomerPage = lazy(() => import('@/pages/master/CustomerPage'))
+const WarehouseStockUploadPage = lazy(() => import('@/pages/stock-project/WarehouseStockUploadPage'))
 const StockProjectListPage = lazy(() => import('@/pages/stock-project/StockProjectListPage'))
 const StockProjectDetailPage = lazy(() => import('@/pages/stock-project/StockProjectDetailPage'))
 const ProjectListPage = lazy(() => import('@/pages/master/ProjectListPage'))
@@ -220,6 +221,9 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/master/stock" element={
                 <RequirePermission menuCode="master-stock" action="read"><StockProjectListPage /></RequirePermission>
+              } />
+              <Route path="/master/warehouse-stock" element={
+                <RequirePermission menuCode="MENU_MASTER_WAREHOUSE_STOCK" action="read"><WarehouseStockUploadPage /></RequirePermission>
               } />
               <Route path="/master/stock/:projectCode" element={
                 <RequirePermission menuCode="master-stock" action="read"><StockProjectDetailPage /></RequirePermission>

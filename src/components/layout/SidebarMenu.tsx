@@ -83,6 +83,7 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_STOCK_RESERVATIONS: <CalendarOutlined />,
   MENU_STOCK_QRCODE: <QrcodeOutlined />,
   MENU_STOCK_RECEIVING: <InboxOutlined />,
+  MENU_MASTER_WAREHOUSE_STOCK: <InboxOutlined />,
   MENU_STOCK_RECEIVING_HISTORY: <HistoryOutlined />,
   // New two-step (draft/confirm) receiving flow, separate menu rows from the
   // legacy MENU_STOCK_RECEIVING pages above — DB menu rows for these

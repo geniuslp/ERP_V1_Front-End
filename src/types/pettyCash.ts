@@ -113,6 +113,7 @@ export interface PettyCashRequisition {
   net_value?: number | string | null
   amount?: number | string | null
   requested_by_name?: string | null
+  requested_by_username?: string | null // printed under the requester signature
   approver_name?: string | null
   lines?: PettyCashLine[]
   attachments?: PettyCashAttachment[]

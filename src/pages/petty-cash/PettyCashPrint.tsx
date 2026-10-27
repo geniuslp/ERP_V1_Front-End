@@ -77,7 +77,7 @@ export const buildPettyCashPrintData = (pc: PettyCashRequisition): PettyCashPrin
   vat: pc.vat_amount ?? 0,
   wht: pc.wht_amount ?? 0,
   netAmount: pc.net_amount ?? 0,
-  requester: pc.requested_by_name ?? '',
+  requester: pc.requested_by_username || pc.requested_by_name || '',
   approver: pc.approver_name ?? '',
 })
 

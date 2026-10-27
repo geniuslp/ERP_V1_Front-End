@@ -58,6 +58,9 @@ export interface PRData {
   // rule) or the requester has never uploaded a signature. Only PRDetailPage's
   // print call site has this; PRCreatePage's unsaved-print never passes it.
   requesterSignature?: PRUserSignature | null
+  // Who opened the PR: the username (e.g. Weerayooth.k), printed under "ผู้ขอซื้อ / Requester" even when there is
+  // no signature image (DRAFT, or the requester never uploaded one). Falls back to the signature's full name.
+  requesterName?: string
   items: PRItem[]
 }
 
@@ -290,7 +293,9 @@ const PRFooter = ({ data }: { data: PRData }) => (
           </div>
           <div className="auth-body">
             <div style={{ fontWeight: 600 }}>ผู้ขอซื้อ / Requester</div>
-            {data.requesterSignature?.fullName && <div>{data.requesterSignature.fullName}</div>}
+            {(data.requesterName || data.requesterSignature?.fullName) && (
+              <div>{data.requesterName || data.requesterSignature?.fullName}</div>
+            )}
           </div>
           <div className="auth-date">({data.prDate})</div>
         </div>

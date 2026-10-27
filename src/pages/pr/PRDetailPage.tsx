@@ -82,6 +82,7 @@ interface PRDetail {
   prNo: string
   status: string
   requestedBy: string
+  requesterUsername: string // printed under the requester signature
   approverName: string | null
   // Comment the approver left when rejecting (latest REJECTED status-log row).
   rejectReason: string | null
@@ -116,6 +117,7 @@ const mapPR = (raw: any): PRDetail => ({
   prNo:         raw.pr_no          ?? '',
   status:       raw.status         ?? 'DRAFT',
   requestedBy:  raw.requested_by   ?? '—',
+  requesterUsername: raw.requester_username ?? '',
   approverName: raw.approver_name  ?? null,
   rejectReason: raw.reject_reason  ?? null,
   locationText: raw.location_text  ?? '—',
@@ -396,6 +398,7 @@ const PRDetailPage: React.FC = () => {
       remark: pr.remarks ?? '',
       orderType: pr.orderType ?? '',
       status: pr.status,
+      requesterName: pr.requesterUsername || (pr.requestedBy && pr.requestedBy !== '—' ? pr.requestedBy : undefined),
       requesterSignature: pr.requesterSignature,
       items: pr.lines.map((l) => ({
         no: String(l.lineNo),

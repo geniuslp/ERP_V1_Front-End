@@ -36,7 +36,7 @@ export interface JobTypeOption {
 
 // The six engineering-system jobs (formerly the "M*" codes). Use this instead of a prefix check: the
 // new codes (MS, EE, SN, FF, GS, AC) share no common prefix. Mirrors tradeJobCodes in erp-api job_type.go.
-export const TRADE_JOB_CODES = ['MS', 'EE', 'SN', 'FF', 'GS', 'AC']
+export const TRADE_JOB_CODES = ['MS', 'EE', 'SN', 'FF', 'GS', 'AC', 'CS', 'AR']
 export const isTradeJobCode = (code: string): boolean => TRADE_JOB_CODES.includes(code)
 
 export const JOB_TYPES: JobTypeOption[] = [
@@ -46,6 +46,9 @@ export const JOB_TYPES: JobTypeOption[] = [
   { code: 'FF', label: 'FF - Fire Protection', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'F' },
   { code: 'GS', label: 'GS - Gas System', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'G' },
   { code: 'AC', label: 'AC - HVAC / BAS / Clean-R.', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'H' },
+  // CS / AR: cost data exists under subjects M (Major) and S (Head + subcontractor) only, hence no 'L'.
+  { code: 'CS', label: 'CS - Civil&Structure', filterSubjectCodes: ['M', 'S'], filterJobCode: 'C' },
+  { code: 'AR', label: 'AR - Architec', filterSubjectCodes: ['M', 'S'], filterJobCode: 'A' },
   { code: 'FS', label: 'FS - Stock FAC-S', filterSubjectCodes: ['F'], filterJobCode: 'S' },
   // TBD — waiting on backend query result for the correct subject_code.
   { code: 'FP', label: 'FP - Stock FAC-P', filterSubjectCodes: ['F'], filterJobCode: 'P' },

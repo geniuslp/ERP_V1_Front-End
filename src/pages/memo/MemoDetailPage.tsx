@@ -72,6 +72,7 @@ interface MemoDetail {
   title?: string | null
   status: string
   requestedBy: string
+  requestedByUsername?: string // printed under the requester signature
   requestedById: number
   approverName?: string
   department?: string
@@ -149,6 +150,7 @@ const mapMemo = (raw: any): MemoDetail => {
     memoNo:        raw.memo_no        ?? '',
     status:        raw.status         ?? 'DRAFT',
     requestedBy:   raw.requested_by_name ?? '',
+    requestedByUsername: raw.requested_by_username ?? '',
     requestedById: raw.requested_by   ?? 0,
     approverName:  raw.approver_name ?? raw.approverName,
     department:    raw.department,
@@ -334,7 +336,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       department: departmentLabel,
       projectName: projectLabel,
       jobLabel: memo.jobCode ? (jobNames[memo.jobCode] ? `${memo.jobCode} — ${jobNames[memo.jobCode]}` : memo.jobCode) : '',
-      requestedBy: memo.requestedBy,
+      requestedBy: memo.requestedByUsername || memo.requestedBy,
       note: memo.note ?? '',
       siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',
       deliveryLocation: memo.deliveryLocation ?? '',
