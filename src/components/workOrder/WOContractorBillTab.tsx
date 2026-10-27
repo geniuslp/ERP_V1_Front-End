@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Alert, Button, Col, DatePicker, Input, InputNumber, Row, Select, Space, Table, Tag, Tooltip, message,
+  Button, Col, DatePicker, Input, InputNumber, Row, Select, Space, Table, Tag, Tooltip, message,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, SaveOutlined, PrinterOutlined, FileAddOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, SaveOutlined, FileAddOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
@@ -74,6 +74,10 @@ interface WoInstallment {
 
 interface Props {
   logId?: number
+  // Saves tab 1's data first (and creates the record on the first save); resolves to the record id.
+  onEnsureLog?: () => Promise<number>
+  // Called after a bill was saved, with the record id.
+  onBillSaved?: (recordId: number) => void
   woId?: number
   supplierName?: string
   creditTermDays?: number | null
@@ -102,14 +106,25 @@ interface BillForm {
 }
 
 const WOContractorBillTab: React.FC<Props> = ({
-  logId, woId, supplierName, creditTermDays, contractAmount, defaultAdvPct, defaultRetentionPct,
+  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, defaultAdvPct, defaultRetentionPct,
 }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const headers = { Authorization: `Bearer ${accessToken}` }
 
+  // Defaults for the next new bill (set after a save and when the list loads): the installment after the highest
+  // saved one, and PROGRESS once an advance bill exists.
+  const nextDefaults = useRef<{ bill_type: BillType; installment_no: number }>({ bill_type: 'ADV', installment_no: 1 })
+  const computeNext = (list: { bill_type: BillType; installment_no: number | null }[]) => {
+    const maxNo = list.reduce((m, b) => Math.max(m, b.installment_no ?? 0), 0)
+    nextDefaults.current = {
+      bill_type: list.some((b) => b.bill_type === 'ADV') ? 'PROGRESS' : 'ADV',
+      installment_no: maxNo + 1,
+    }
+  }
+
   const newForm = useCallback((): BillForm => ({
-    bill_type: 'ADV',
-    installment_no: 1,
+    bill_type: nextDefaults.current.bill_type,
+    installment_no: nextDefaults.current.installment_no,
     ap_voucher_no: '',
     pay_to: supplierName ?? '',
     credit_term_days: creditTermDays ?? null,
@@ -140,7 +155,9 @@ const WOContractorBillTab: React.FC<Props> = ({
     if (!logId) return
     try {
       const res = await axios.get(`${BASE_URL}/wo-contractor-log/${logId}/bills`, { headers })
-      setBills(Array.isArray(res.data?.data) ? res.data.data : [])
+      const list: BillListItem[] = Array.isArray(res.data?.data) ? res.data.data : []
+      computeNext(list)
+      setBills(list)
     } catch (e) {
       message.error(errText(e, 'โหลดรายการรับวางบิลไม่สำเร็จ'))
     }
@@ -431,28 +448,28 @@ const WOContractorBillTab: React.FC<Props> = ({
   })
 
   const handleSave = async (status: BillStatus) => {
-    if (!logId) return
     setSaving(true)
     try {
+      // tab 1's data is saved first (this tab is the only place that saves)
+      const recordId = onEnsureLog ? await onEnsureLog() : logId
+      if (!recordId) return
       const payload = buildPayload(status)
       if (billId) {
         await axios.put(`${BASE_URL}/wo-contractor-log/bills/${billId}`, payload, { headers })
       } else {
-        const res = await axios.post(`${BASE_URL}/wo-contractor-log/${logId}/bills`, payload, { headers })
+        const res = await axios.post(`${BASE_URL}/wo-contractor-log/${recordId}/bills`, payload, { headers })
         setBillId(res.data?.data?.id ?? null)
       }
       setBillStatus(status)
       message.success(status === 'DRAFT' ? 'บันทึกฉบับร่างเรียบร้อยแล้ว' : 'บันทึกข้อมูลเรียบร้อยแล้ว')
-      loadBills()
+      await loadBills()
+      onBillSaved?.(recordId)
+      if (status === 'SAVED') startNew() // ready for the next installment; a draft stays open so it can be finished
     } catch (e) {
       message.error(errText(e, 'บันทึกข้อมูลไม่สำเร็จ'))
     } finally {
       setSaving(false)
     }
-  }
-
-  if (!logId) {
-    return <Alert type="info" showIcon message="กรุณาบันทึกข้อมูลเอกสาร (tab ข้อมูลเอกสาร) ก่อน จึงจะบันทึกรายการรับวางบิลได้" />
   }
 
   const billColumns: ColumnsType<BillListItem> = [
@@ -578,11 +595,8 @@ const WOContractorBillTab: React.FC<Props> = ({
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <Button loading={saving} onClick={() => handleSave('DRAFT')}>DRAFT</Button>
-        <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => handleSave('SAVED')}>SAVE</Button>
-        <Tooltip title="ยังไม่พร้อมใช้งาน (Coming soon)">
-          <Button icon={<PrinterOutlined />} disabled>PRINT</Button>
-        </Tooltip>
+        <Button loading={saving} onClick={() => handleSave('DRAFT')}>บันทึกร่าง</Button>
+        <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => handleSave('SAVED')}>บันทึก</Button>
       </div>
       {billId ? (
         <div style={{ textAlign: 'right', marginTop: 8, color: '#6b7280', fontSize: 12 }}>

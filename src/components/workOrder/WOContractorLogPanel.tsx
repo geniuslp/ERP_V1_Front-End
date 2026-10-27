@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import { Button, Col, Form, Input, InputNumber, Row, Select, Spin, Table, Tabs, message } from 'antd'
-import { SaveOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
@@ -57,7 +56,6 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
 
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('doc')
-  const [saving, setSaving] = useState(false)
   const [logId, setLogId] = useState<number | undefined>()
   const [terms, setTerms] = useState<TermRow[]>(emptyTerms())
   // WO-derived values tab 2 needs (supplier for PAY TO, credit term from supplier.payment_terms).
@@ -144,30 +142,27 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
     { title: 'Balance', width: 200, render: (_, r) => numCell(r.item_type, 'balance') },
   ]
 
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      const payload = { wo_id: woId, project_code: form.getFieldValue('project_code') ?? null, terms }
-      if (logId) {
-        await axios.put(`${BASE_URL}/wo-contractor-log/${logId}`, payload, { headers })
-      } else {
-        const res = await axios.post(`${BASE_URL}/wo-contractor-log`, payload, { headers })
-        const newId: number | undefined = res.data?.data?.id
-        setLogId(newId)
-        if (newId) {
-          // The credit term (AUTO for tab 2) comes from the saved record's supplier join.
-          try {
-            const g = await axios.get(`${BASE_URL}/wo-contractor-log/${newId}`, { headers })
-            setWoCtx((p) => ({ ...p, credit: g.data?.data?.credit_term_days ?? null }))
-          } catch { /* tab 2 simply starts without an AUTO credit term */ }
-        }
-      }
-      message.success('บันทึกข้อมูลเรียบร้อยแล้ว')
-    } catch (e) {
-      message.error(errText(e, 'บันทึกข้อมูลไม่สำเร็จ'))
-    } finally {
-      setSaving(false)
+  // Saves the tab 1 data (project + Contract/Advance/Retention table), creating the record on the first call, and
+  // returns its id. Tab 2's บันทึกร่าง / บันทึก buttons call this before saving the bill, so tab 2 is the only place
+  // that saves. Throws on failure (the caller shows the error).
+  const ensureLog = async (): Promise<number> => {
+    const payload = { wo_id: woId, project_code: form.getFieldValue('project_code') ?? null, terms }
+    if (logId) {
+      await axios.put(`${BASE_URL}/wo-contractor-log/${logId}`, payload, { headers })
+      return logId
     }
+    const res = await axios.post(`${BASE_URL}/wo-contractor-log`, payload, { headers })
+    const newId: number = res.data?.data?.id
+    setLogId(newId)
+    return newId
+  }
+
+  // After a bill is saved: pick up the credit term (AUTO) from the saved record's supplier join for the next bill.
+  const refreshCredit = async (id: number) => {
+    try {
+      const g = await axios.get(`${BASE_URL}/wo-contractor-log/${id}`, { headers })
+      setWoCtx((p) => ({ ...p, credit: g.data?.data?.credit_term_days ?? null }))
+    } catch { /* tab 2 simply keeps the credit term it has */ }
   }
 
   const docTab = (
@@ -245,6 +240,8 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
             children: (
               <WOContractorBillTab
                 logId={logId}
+                onEnsureLog={ensureLog}
+                onBillSaved={refreshCredit}
                 woId={woId}
                 supplierName={woCtx.supplier}
                 creditTermDays={woCtx.credit}
@@ -256,11 +253,6 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
           },
         ]}
       />
-      {activeTab === 'doc' && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={handleSave}>บันทึก</Button>
-        </div>
-      )}
     </div>
   )
 }

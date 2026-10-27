@@ -7,8 +7,8 @@ import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
-import FinanceInstallmentsSection, { type SelectedInstallment, type InstallmentsSectionHandle } from '@/components/finance/FinanceInstallmentsSection'
 import WOContractorLogPanel from '@/components/workOrder/WOContractorLogPanel'
+import FinanceInstallmentsSection, { type SelectedInstallment, type InstallmentsSectionHandle } from '@/components/finance/FinanceInstallmentsSection'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
@@ -430,7 +430,8 @@ const FinancePaymentDetailPage: React.FC = () => {
         </Card>
       )}
 
-      {docType && docId && (
+      {/* WO: the contractor log card above replaces installments / payment history / new payment. */}
+      {docType && docType !== 'WO' && docId && (
         <FinanceInstallmentsSection
           ref={instRef}
           accessToken={accessToken}
@@ -441,6 +442,7 @@ const FinancePaymentDetailPage: React.FC = () => {
         />
       )}
 
+      {docType !== 'WO' && (
       <Card title="ประวัติการจ่ายเงิน" style={{ ...cardStyle, marginBottom: 20 }}>
         <Table
           rowKey="id"
@@ -452,8 +454,9 @@ const FinancePaymentDetailPage: React.FC = () => {
           locale={{ emptyText: 'ยังไม่มีประวัติการจ่ายเงิน' }}
         />
       </Card>
+      )}
 
-      {fullyPaid ? (
+      {docType === 'WO' ? null : fullyPaid ? (
         <>
           <Alert
             type="info"

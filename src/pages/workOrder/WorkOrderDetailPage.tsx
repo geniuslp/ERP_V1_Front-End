@@ -220,7 +220,7 @@ const WorkOrderDetailPage: React.FC = () => {
           size="small"
           locale={{ emptyText: '—' }}
           columns={[
-            { title: 'ลำดับ', dataIndex: 'line_no', width: 70 },
+            { title: 'ลำดับ', key: 'no', width: 70, render: (_: unknown, __: WorkOrderLine, i: number) => i + 1 },
             { title: 'Cost Code', dataIndex: 'cost_code', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{formatCostCodeDisplay(v)}</span> },
             { title: 'รายละเอียด', dataIndex: 'description', render: (v?: string) => v || '—' },
             { title: 'จำนวน', dataIndex: 'qty', width: 90, align: 'center' as const },
