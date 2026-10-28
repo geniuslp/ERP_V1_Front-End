@@ -101,6 +101,7 @@ export interface POLine {
   mat_name?: string
   unit_name?: string
   brand?: string
+  brand_name?: string | null
   spec?: string
   group_name?: string
   subgroup_name?: string
@@ -238,6 +239,7 @@ export interface POLineItem {
   qty: number
   unit_price: number
   spec?: string
+  brand_name?: string
   is_from_pr: boolean
   // Snapshot of qty_remaining on the PR line at the moment it was picked in
   // PRItemSelectionModal — client-side max for the qty input (task: prevent

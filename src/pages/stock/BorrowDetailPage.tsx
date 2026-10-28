@@ -12,6 +12,7 @@ import BorrowStatusBadge from '@/components/stock/BorrowStatusBadge'
 import { useAppSelector } from '@/store'
 import { mockBorrowRequests } from '@/utils/mockStockData'
 import type { BorrowRequest, BorrowLine } from '@/types/stock'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -125,7 +126,7 @@ const BorrowDetailPage: React.FC<{ showApproveActions?: boolean }> = ({ showAppr
             <Descriptions.Item label="Borrow Date">{data.borrowDate ? dayjs(data.borrowDate).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
             <Descriptions.Item label="Expected Return">{data.expectedReturnDate ? dayjs(data.expectedReturnDate).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
             <Descriptions.Item label="Actual Return">{data.actualReturnDate ? dayjs(data.actualReturnDate).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
-            <Descriptions.Item label="Created At">{data.createdAt ? dayjs(data.createdAt).format('DD/MM/YYYY HH:mm') : '—'}</Descriptions.Item>
+            <Descriptions.Item label="Created At"><DateTimeText value={data.createdAt} /></Descriptions.Item>
           </Descriptions>
         )}
       </Card>

@@ -246,11 +246,12 @@ const MemoFooter = ({ data }: { data: MemoData }) => (
           return (
             <div key={i} className="auth-col" style={{ width: col.width }}>
               <div className="auth-head">
-                {sig?.signatureDataUrl && <SignatureImg src={sig.signatureDataUrl} alt={col.label} />}
+                {sig?.signatureDataUrl
+                  ? <SignatureImg src={sig.signatureDataUrl} alt={col.label} />
+                  : <div style={{ textAlign: 'center', fontSize: '8.5pt' }}>{data[col.key]}</div>}
               </div>
               <div className="auth-body">
                 <div style={{ fontWeight: 600 }}>{col.label}</div>
-                <div>{data[col.key]}</div>
                 <div>{dateLine}</div>
               </div>
               <div className="auth-date">(...............................)</div>

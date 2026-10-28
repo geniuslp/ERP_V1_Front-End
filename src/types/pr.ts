@@ -82,6 +82,7 @@ export interface PRLineWithPOStatus {
   // Confirmed present on GET /pr/:id/lines-with-po-status (backend-confirmed) —
   // same field name as GET /pr/:id.
   spec_name?: string | null
+  brand_name?: string | null
 }
 
 export interface PRLinesWithPOStatusResponse {

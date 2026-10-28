@@ -17,6 +17,7 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
+import DateTimeText from '@/components/common/DateTimeText'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS, isOhOrderType } from '@/constants/orderTypes'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
@@ -312,7 +313,7 @@ const POHistoryPage: React.FC = () => {
         width: approvedAtColWidth,
         onResize: handleApprovedAtColResize,
       }),
-      render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '—',
+      render: (v: string | null) => <DateTimeText value={v} />,
     },
     {
       title: 'กำหนดส่งของ',

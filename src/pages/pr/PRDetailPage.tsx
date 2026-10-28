@@ -64,6 +64,7 @@ interface PRLineItem {
   matName?: string | null
   unitName?: string | null
   specName?: string | null
+  brandName?: string | null
   costCode?: string | null
   costSubgroupName?: string | null
 }
@@ -143,6 +144,7 @@ const mapPR = (raw: any): PRDetail => ({
     matName:          l.mat_name,
     unitName:         l.unit_name,
     specName:         l.spec_name,
+    brandName:        l.brand_name,
     costCode:         l.cost_code,
     costSubgroupName: l.cost_subgroup_name,
   })),
@@ -405,7 +407,7 @@ const PRDetailPage: React.FC = () => {
         costCode: l.costCode ?? '',
         matCode: l.matCode,
         desc: l.matName ?? '',
-        spec: l.specName ?? '',
+        spec: formatItemLabel(null, l.specName, l.brandName),
         qty: l.qtyRequested,
         unit: l.unitName ?? '',
         remark: l.remarks ?? '',
@@ -424,7 +426,7 @@ const PRDetailPage: React.FC = () => {
     { title: 'รหัสวัสดุ', dataIndex: 'matCode', key: 'matCode', width: 130 },
     {
       title: 'รายการ', key: 'matName',
-      render: (_: unknown, r: PRLineItem) => formatItemLabel(r.matName, r.specName) || <Text type="secondary">—</Text>,
+      render: (_: unknown, r: PRLineItem) => formatItemLabel(r.matName, r.specName, r.brandName) || <Text type="secondary">—</Text>,
     },
     { title: 'จำนวนขอ', dataIndex: 'qtyRequested', key: 'qtyRequested', width: 100, align: 'right' as const },
     { title: 'จำนวนสั่งซื้อ', dataIndex: 'qtyToOrder', key: 'qtyToOrder', width: 110, align: 'right' as const },

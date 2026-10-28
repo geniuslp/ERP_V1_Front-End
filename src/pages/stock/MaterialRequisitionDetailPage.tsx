@@ -10,6 +10,7 @@ import {
   REQUISITION_STATUS_COLOR, REQUISITION_STATUS_LABEL,
 } from '@/types/requisition'
 import type { RequisitionDetail, RequisitionLine } from '@/types/requisition'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const MENU_CODE = 'MENU_STOCK_REQUISITION'
@@ -186,7 +187,7 @@ const MaterialRequisitionDetailPage: React.FC = () => {
           </Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{detail.approved_by_name || '—'}</Descriptions.Item>
           <Descriptions.Item label="วันที่อนุมัติ">
-            {detail.approved_at ? dayjs(detail.approved_at).format('DD/MM/YYYY HH:mm') : '—'}
+            <DateTimeText value={detail.approved_at} />
           </Descriptions.Item>
           <Descriptions.Item label="หมายเหตุ">{detail.remarks || '—'}</Descriptions.Item>
         </Descriptions>

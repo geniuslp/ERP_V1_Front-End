@@ -5,6 +5,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import { useAppSelector } from '@/store'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -129,7 +130,7 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
         { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80 },
         { title: 'ปริมาณ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', align: 'right' as const, render: fmt },
         { title: 'ต้นทุนล่าสุด/หน่วย', dataIndex: 'last_unit_cost', key: 'last_unit_cost', align: 'right' as const, render: fmt },
-        { title: 'อัปเดตล่าสุด', dataIndex: 'updated_at', key: 'updated_at', render: fmtDate },
+        { title: 'อัปเดตล่าสุด', dataIndex: 'updated_at', key: 'updated_at', render: (v?: string | null) => <DateTimeText value={v} empty="-" /> },
       ]
 
   return (

@@ -13,6 +13,7 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 import { APPROVAL_EMPTY_TEXT } from '@/utils/approvalAccess'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -147,7 +148,7 @@ const MemoApprovalPage: React.FC = () => {
       title: 'Submitted',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (val: string) => val ? dayjs(val).format('DD/MM/YYYY') : '—',
+      render: (val: string) => <DateTimeText value={val} />,
     },
     {
       title: 'Actions',

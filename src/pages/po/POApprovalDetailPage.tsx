@@ -270,7 +270,7 @@ const POApprovalDetailPage: React.FC = () => {
       key: 'mat_name',
       render: (_: unknown, r: POLine) => (
         <div>
-          <div>{formatItemLabel(r.mat_name, r.spec) || '—'}</div>
+          <div>{formatItemLabel(r.mat_name, r.spec, r.brand_name) || '—'}</div>
           <div style={{ fontSize: 12, color: '#888' }}>
             {[r.group_name, r.subgroup_name].filter(Boolean).join(' › ')}
           </div>

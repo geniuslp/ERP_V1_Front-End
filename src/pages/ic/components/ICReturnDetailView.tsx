@@ -8,6 +8,7 @@ import ICDocTypeTag from './ICDocTypeTag'
 import ICPoReturnPrint, { buildReturnPrintData, type ICReturnPrintData } from './ICPoReturnPrint'
 import { runBrowserPrint } from './ICPrintLayout'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import { formatItemLabel } from '@/utils/itemLabel'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -91,7 +92,7 @@ const ICReturnDetailView: React.FC<Props> = ({ returnId, onBack }) => {
             title: 'รายการ',
             key: 'desc',
             render: (_: unknown, l: any) =>
-              `${l.mat_name ?? l.item_name ?? l.description ?? ''}${l.spec_name ?? l.spec ? ' ' + (l.spec_name ?? l.spec) : ''}`,
+              formatItemLabel(l.mat_name ?? l.item_name ?? l.description, l.spec_name ?? l.spec, l.brand_name),
           },
           { title: 'หน่วย', key: 'unit', width: 80, render: (_: unknown, l: any) => l.unit_name ?? l.unit ?? '-' },
           {

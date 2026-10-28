@@ -1,5 +1,6 @@
 import React from 'react'
 import dayjs from 'dayjs'
+import { formatItemLabel } from '@/utils/itemLabel'
 import ICPrintLayout, { icInfoGridStyle, icInfoCellStyle, icInfoLeftCellStyle, type ICPrintItem } from './ICPrintLayout'
 
 // IC PO Return print (data: GET /ic/returns/:id). Built on the same shared A4 shell as
@@ -40,7 +41,7 @@ export const buildReturnPrintData = (raw: any): ICReturnPrintData => {
       return {
         no: String(i + 1),
         costCode: l.cost_code ?? '',
-        desc: `${mat}${name}${spec ? ' ' + spec : ''}`.trim(),
+        desc: `${mat}${formatItemLabel(name, spec, l.brand_name)}`.trim(),
         qty: Number(l.return_qty ?? l.qty ?? 0),
         remark: [l.remarks, unit ? `หน่วย: ${unit}` : ''].filter(Boolean).join(' · '),
       }

@@ -14,6 +14,7 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
+import DateTimeText from '@/components/common/DateTimeText'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS } from '@/constants/orderTypes'
 
 // Same convention as PRStatusPage.tsx's edit button — edit is gated by the
@@ -117,6 +118,7 @@ interface PRItem {
   projectName: string | null
   remarks: string | null
   prDate: string
+  createdAt: string
   jobCode: string | null
   memoId: number | string | null
   memoNo: string | null
@@ -212,6 +214,7 @@ const PRHistoryPage: React.FC = () => {
         projectName:  r.project_name   ?? null,
         remarks:      r.remarks        ?? null,
         prDate:       r.pr_date        ?? '',
+        createdAt:    r.created_at     ?? r.pr_date ?? '',
         jobCode:      r.job_code       ?? null,
         memoId:       r.memo_id        ?? null,
         memoNo:       r.memo_no        ?? null,
@@ -358,15 +361,15 @@ const PRHistoryPage: React.FC = () => {
     },
     {
       title: 'วันที่สร้าง',
-      dataIndex: 'prDate',
-      key: 'prDate',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       align: 'center' as const,
       width: createdAtColWidth,
       onHeaderCell: () => ({
         width: createdAtColWidth,
         onResize: handleCreatedAtColResize,
       }),
-      render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '—',
+      render: (v: string) => <DateTimeText value={v} />,
     },
     {
       title: 'จัดการ',

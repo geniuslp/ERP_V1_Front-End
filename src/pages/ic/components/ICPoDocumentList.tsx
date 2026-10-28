@@ -7,6 +7,7 @@ import { useAppSelector } from '@/store'
 import { icActionButtonProps } from '@/pages/ic/utils/actionButtonStyle'
 import ICDocTypeTag from './ICDocTypeTag'
 import ICPoInfoStrip from './ICPoInfoStrip'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const { Text } = Typography
 
@@ -133,7 +134,7 @@ const ICPoDocumentList: React.FC<Props> = ({
       title: 'วันที่สร้าง',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (v: string) => dayjs(v).format('DD/MM/YYYY HH:mm'),
+      render: (v: string) => <DateTimeText value={v} />,
     },
     {
       title: 'ผู้สร้าง',

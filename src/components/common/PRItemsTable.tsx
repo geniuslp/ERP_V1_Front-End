@@ -54,6 +54,7 @@ interface InitialPRItem {
   mat_name?: string
   unit_name?: string
   spec_name?: string
+  brand_name?: string
   qty_requested: number
   qty_to_order: number
   cost_subgroup_id: number | null
@@ -195,7 +196,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         key: `edit-${idx}-${it.mat_code}`,
         no: idx + 1,
         code: it.mat_code,
-        description: formatItemLabel(it.mat_name, it.spec_name),
+        description: formatItemLabel(it.mat_name, it.spec_name, it.brand_name),
         spec: '',
         qtyPR: it.qty_requested,
         qtyStock: it.qty_to_order,
@@ -375,7 +376,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
     setItems((prev) => prev.map((i) => (i.key === key ? {
       ...i,
       code: m.mat_code,
-      description: formatItemLabel(m.mat_name_th, m.spec_description),
+      description: formatItemLabel(m.mat_name_th, m.spec_description, m.brand_name),
       spec: '',
       unit: m.unit_name || 'Ea',
     } : i)))
@@ -402,7 +403,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         return {
           ...item,
           code: m.mat_code,
-          description: formatItemLabel(m.mat_name_th, m.spec_description),
+          description: formatItemLabel(m.mat_name_th, m.spec_description, m.brand_name),
           spec: '',
           unit: m.unit_name || 'Ea',
         }
@@ -413,7 +414,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         key: `${Date.now()}-${m.mat_code}-${Math.random().toString(36).slice(2)}`,
         no: 0,
         code: m.mat_code,
-        description: formatItemLabel(m.mat_name_th, m.spec_description),
+        description: formatItemLabel(m.mat_name_th, m.spec_description, m.brand_name),
         spec: '',
         qtyPR: 1,
         qtyStock: 1,

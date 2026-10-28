@@ -16,6 +16,7 @@ import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 import type { WorkOrder, WorkOrderLine } from '@/types/workOrder'
 import { calcDisc } from '@/utils/poCalc'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const MENU_CODE = 'MENU_WO_APPROVAL'
 
@@ -158,7 +159,7 @@ const WorkOrderDetailPage: React.FC = () => {
           {wo.status !== 'DRAFT' && (
             <>
               <Descriptions.Item label="ผู้อนุมัติ">{wo.approver_name || '—'}</Descriptions.Item>
-              <Descriptions.Item label="วันที่อนุมัติ">{wo.approved_at ? dayjs(wo.approved_at).format('DD/MM/YYYY HH:mm') : '—'}</Descriptions.Item>
+              <Descriptions.Item label="วันที่อนุมัติ"><DateTimeText value={wo.approved_at} /></Descriptions.Item>
               {wo.status === 'REJECTED' && (
                 <Descriptions.Item label="เหตุผลที่ไม่อนุมัติ" span={2}>{wo.rejected_reason || '—'}</Descriptions.Item>
               )}

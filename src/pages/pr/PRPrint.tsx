@@ -287,15 +287,15 @@ const PRFooter = ({ data }: { data: PRData }) => (
       <div className="pr-box" style={{ display: 'flex', flex: 1 }}>
         <div className="auth-col" style={{ width: AUTH_COL_WIDTH }}>
           <div className="auth-head">
-            {data.requesterSignature?.signatureDataUrl && (
+            {/* Signature image when there is one; otherwise the creator's name (smaller type) in the same upper box. */}
+            {data.requesterSignature?.signatureDataUrl ? (
               <SignatureImg src={data.requesterSignature.signatureDataUrl} alt="ผู้ขอซื้อ" />
+            ) : (data.requesterName || data.requesterSignature?.fullName) && (
+              <div style={{ textAlign: 'center', fontSize: '8.5pt' }}>{data.requesterName || data.requesterSignature?.fullName}</div>
             )}
           </div>
           <div className="auth-body">
             <div style={{ fontWeight: 600 }}>ผู้ขอซื้อ / Requester</div>
-            {(data.requesterName || data.requesterSignature?.fullName) && (
-              <div>{data.requesterName || data.requesterSignature?.fullName}</div>
-            )}
           </div>
           <div className="auth-date">({data.prDate})</div>
         </div>

@@ -70,6 +70,7 @@ interface PriceHistoryRow {
   mat_code: string
   mat_name: string
   spec_name: string | null
+  brand_name?: string | null
   supplier_name: string | null
   project_code?: string | null
   project_name?: string | null
@@ -190,7 +191,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
             width: nameColWidth,
             onHeaderCell: () => ({ width: nameColWidth, onResize: handleNameColResize }),
             render: (_: unknown, r: PriceHistoryRow) =>
-              r.spec_name ? `${r.mat_name} ${r.spec_name}` : r.mat_name,
+              formatItemLabel(r.mat_name, r.spec_name, r.brand_name),
           },
           {
             title: 'ร้านค้า',
@@ -368,6 +369,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       mat_name: m.mat_name_th,
       unit_name: m.unit_name || 'Ea',
       spec: m.spec_description ?? '',
+      brand_name: m.brand_name ?? '',
       qty: 1,
       unit_price: 0,
       is_from_pr: false,
@@ -576,7 +578,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
               <Tag icon={<LinkOutlined />} color="blue" style={{ margin: 0 }} />
             </Tooltip>
           )}
-          <span style={{ fontSize: 13 }}>{formatItemLabel(r.mat_name, r.spec)}</span>
+          <span style={{ fontSize: 13 }}>{formatItemLabel(r.mat_name, r.spec, r.brand_name)}</span>
         </Space>
       ),
     },

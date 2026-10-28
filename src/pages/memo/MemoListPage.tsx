@@ -15,6 +15,7 @@ import { useAppSelector } from '@/store'
 import type { Memo, MemoStatus } from '@/types'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -279,7 +280,7 @@ const MemoListPage: React.FC = () => {
         width: approvedAtColWidth,
         onResize: handleApprovedAtColResize,
       }),
-      render: (val?: string | null) => val ? dayjs(val).format('DD/MM/YYYY HH:mm') : '—',
+      render: (val?: string | null) => <DateTimeText value={val} />,
     },
     {
       title: 'วันที่สร้าง',
@@ -290,7 +291,7 @@ const MemoListPage: React.FC = () => {
         width: createdAtColWidth,
         onResize: handleCreatedAtColResize,
       }),
-      render: (val: string) => val ? dayjs(val).format('DD/MM/YYYY') : '—',
+      render: (val: string) => <DateTimeText value={val} />,
     },
     {
       title: 'จัดการ',

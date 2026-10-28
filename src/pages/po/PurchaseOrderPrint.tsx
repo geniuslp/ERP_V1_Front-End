@@ -32,7 +32,7 @@ export interface POItem {
   // line query, same join GetDetail already uses). Empty string when the
   // material has no spec set; appended to desc as "{desc} - {spec}" only
   // when non-empty (see ItemRow).
-  no: string; code?: string; desc: string; spec?: string; subDesc?: string
+  no: string; code?: string; desc: string; spec?: string; brand?: string; subDesc?: string
   qty: number; unit: string; pricePerUnit: number
   // `disc` is the raw number entered on the line; its unit (percent vs baht)
   // is given by `discType` — never assume percent.
@@ -126,6 +126,7 @@ function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
     code: raw.code,
     desc: raw.desc ?? '',
     spec: raw.spec,
+    brand: raw.brand,
     subDesc: raw.subDesc,
     qty: raw.qty ?? 0,
     unit: raw.unit ?? '',
@@ -367,7 +368,7 @@ const ItemRow = ({row}:{row:POItem}) => (
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
-      <div>{formatItemLabel(row.desc, row.spec)}</div>
+      <div>{formatItemLabel(row.desc, row.spec, row.brand)}</div>
       {row.subDesc&&<div style={{color:'#555',marginTop:'1px'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
@@ -443,11 +444,12 @@ const POFooter = ({data}:{data:POData}) => {
             return (
               <div key={i} className="auth-col">
                 <div className="auth-head">
-                  {sig?.signature_data_url && <SignatureImg src={sig.signature_data_url} alt={col.label} />}
+                  {sig?.signature_data_url
+                    ? <SignatureImg src={sig.signature_data_url} alt={col.label} />
+                    : sig?.full_name && <div style={{textAlign:'center',fontSize:'8.5pt'}}>{sig.full_name}</div>}
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>
-                  {sig?.full_name && <div>{sig.full_name}</div>}
                   {sig?.approved_at && <div>{dayjs(sig.approved_at).format('DD/MM/YYYY')}</div>}
                 </div>
                 <div className="auth-date">({data.poDate})</div>

@@ -18,6 +18,7 @@ import { handleApprovalForbidden } from '@/utils/approvalAccess'
 import { useAppSelector } from '@/store'
 import { resolveFileUrl } from '@/utils/fileUrl'
 import MemoPrint, { type MemoData } from './MemoPrint'
+import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -442,7 +443,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             <strong style={{ color: '#2563eb' }}>{memo?.memoNo}</strong>
           </Descriptions.Item>
           <Descriptions.Item label="วันที่">
-            {memo?.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '—'}
+            <DateTimeText value={memo?.createdAt} />
           </Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{memo?.requestedBy || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{memo?.approverName || '—'}</Descriptions.Item>

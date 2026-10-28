@@ -380,6 +380,7 @@ const PRCreatePage: React.FC = () => {
             mat_name: l.mat_name,
             unit_name: l.unit_name,
             spec_name: l.spec_name,
+            brand_name: l.brand_name,
             qty_requested: l.qty_requested,
             qty_to_order: l.qty_to_order,
             cost_subgroup_id: l.cost_subgroup_id ?? null,

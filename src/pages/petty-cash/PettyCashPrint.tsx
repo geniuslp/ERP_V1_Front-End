@@ -145,7 +145,8 @@ const CSS = `
   .pcp-auth{display:flex;height:26mm;border:1px solid #000;border-top:none;}
   .pcp-auth-col{flex:1;border-right:1px solid #000;display:flex;flex-direction:column;}
   .pcp-auth-col:last-child{border-right:none;}
-  .pcp-auth-head{flex:1;border-bottom:1px solid #000;}
+  .pcp-auth-head{flex:1;border-bottom:1px solid #000;display:flex;flex-direction:column;justify-content:flex-end;
+    align-items:center;text-align:center;padding:2px 4px;font-family:'Cordia New',sans-serif;font-size:8.5pt;line-height:1.0;}
   .pcp-auth-body{display:flex;flex-direction:column;align-items:center;justify-content:center;
     font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;text-align:center;padding:2px 3px;min-height:9mm;}
   .pcp-auth-date{text-align:center;font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;padding:1px 4px;}
@@ -265,18 +266,16 @@ const Summary = ({ data }: { data: PettyCashPrintData }) => (
 const Footer = ({ data }: { data: PettyCashPrintData }) => (
   <div className="pcp-auth">
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head" />
+      <div className="pcp-auth-head">{data.requester && <div>{data.requester}</div>}</div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้ขอเบิก / Requester</div>
-        {data.requester && <div>{data.requester}</div>}
       </div>
       <div className="pcp-auth-date">({data.pcDate || '-'})</div>
     </div>
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head" />
+      <div className="pcp-auth-head">{data.approver && <div>{data.approver}</div>}</div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้อนุมัติ / Approver</div>
-        {data.approver && <div>{data.approver}</div>}
       </div>
       <div className="pcp-auth-date">(-)</div>
     </div>
