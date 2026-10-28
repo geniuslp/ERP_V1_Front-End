@@ -41,7 +41,12 @@ const DOC_TYPE_OPTIONS = [{ value: 'PETTY_CASH', label: 'เบิกเงิ�
 // No branch master endpoint exists in erp-api. These are the codes the frontend already uses for
 // the branch dropdown elsewhere (WO employer_branch: HO/FAC-S/FAC-P/BO). Swap this for a fetch
 // when a real branch source exists — branch_code is varchar(20) server-side.
-const BRANCH_OPTIONS = ['HO', 'FAC-S', 'FAC-P', 'BO'].map((c) => ({ value: c, label: c }))
+const BRANCH_OPTIONS = [
+  { value: 'HO', label: 'HO — สำนักงานใหญ่' },
+  { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
+  { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
+  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
+]
 
 interface LookupOption { value: string; label: string; name: string }
 interface EmployeeOption extends LookupOption { deptCode?: string; deptName?: string }

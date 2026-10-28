@@ -120,6 +120,8 @@ const PettyCashLineModal: React.FC<Props> = ({
       description: l?.description ?? '',
       qty: l?.qty ?? 1,
       unit: l?.unit ?? '',
+      // Not stored: derived from the saved amount so an existing line shows its price per unit.
+      unit_price: l && l.amount > 0 && l.qty > 0 ? Math.round((l.amount / l.qty + Number.EPSILON) * 10000) / 10000 : null,
       cost_subgroup_id: l?.cost_subgroup_id ?? null,
       cost_code: l?.cost_code ?? '',
       cost_group_name: l?.cost_group_name ?? '',
@@ -401,6 +403,14 @@ const PettyCashLineModal: React.FC<Props> = ({
 
   // ── form behaviour ──────────────────────────────────────────
   const handleValuesChange = (changed: Record<string, any>) => {
+    // จำนวนเงิน = จำนวน × ราคา/หน่วย (VAT / WHT base then follow it).
+    if ('qty' in changed || 'unit_price' in changed) {
+      const qty = Number(form.getFieldValue('qty') ?? 0)
+      const price = Number(form.getFieldValue('unit_price') ?? 0)
+      const next = qty > 0 && price > 0 ? round2(qty * price) : null
+      form.setFieldValue('amount', next)
+      if (!baseTouched.current) form.setFieldValue('wht_base_amount', next)
+    }
     if ('amount' in changed && !baseTouched.current) {
       form.setFieldValue('wht_base_amount', changed.amount ?? null)
     }
@@ -479,7 +489,9 @@ const PettyCashLineModal: React.FC<Props> = ({
     <InputNumber
       min={0}
       precision={2}
-      style={{ width: '100%' }}
+      readOnly
+      controls={false}
+      style={{ width: '100%', maxWidth: 260 }}
       formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
       parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
     />
@@ -608,6 +620,20 @@ const PettyCashLineModal: React.FC<Props> = ({
               <Input style={{ width: '100%', maxWidth: 260 }} placeholder="เช่น เส้น, ชิ้น" />
             </Form.Item>
           </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>
+            <Form.Item name="unit_price" label="ราคา/หน่วย">
+              <InputNumber
+                min={0}
+                precision={2}
+                controls={false}
+                style={{ width: '100%', maxWidth: 260 }}
+                placeholder="0.00"
+                formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} lg={6} style={{ minWidth: 0 }}>{amountItem}</Col>
         </Row>
         <Row gutter={16}>
           <Col span={24} style={{ minWidth: 0 }}>
@@ -662,7 +688,6 @@ const PettyCashLineModal: React.FC<Props> = ({
               <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
             </Form.Item>
           </Col>
-          <Col xs={24} lg={6} style={{ minWidth: 0 }}>{amountItem}</Col>
         </Row>
 
         {/* Section 2 — tax invoice */}

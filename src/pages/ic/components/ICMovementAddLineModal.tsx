@@ -161,7 +161,11 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
   }, [open])
 
   // Re-fetch cost codes whenever "To Project" changes, and clear the previous ToCostCode value.
+  // `open` is a dependency too: reopening to edit a line whose To Project equals the one still held in state
+  // (e.g. right after saving it) would otherwise not re-run this effect, leaving the options emptied by the
+  // reset above and the ToCostCode blank.
   useEffect(() => {
+    if (!open) return
     if (pendingCostRef.current === undefined) {
       form.setFieldValue('to_cost_subgroup_id', undefined)
       setSelectedCostSubgroupId(undefined)
@@ -213,7 +217,7 @@ const ICMovementAddLineModal: React.FC<ICMovementAddLineModalProps> = ({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToProject])
+  }, [selectedToProject, open])
 
   const handleMaterialSelect = (material: MaterialOption) => {
     setSelectedMaterial(material)

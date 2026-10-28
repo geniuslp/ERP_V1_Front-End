@@ -106,6 +106,8 @@ const ICPoReceivePage: React.FC = () => {
       try {
         const res = await axios.get(`${BASE_URL}/ic/projects/${project.id}/po-search-options`, {
           headers: authHeader,
+          // Fully received POs / PRs drop out of the pending list; the completed toggle lists them instead.
+          params: { receive_status: onlyCompleted ? 'completed' : 'pending' },
         })
         const payload = res.data?.data ?? res.data
         // Shape: flat [{id, no, type}] where type is 'PO' | 'PR'. Older shape ({pr_list, po_list}) still tolerated.
@@ -132,7 +134,7 @@ const ICPoReceivePage: React.FC = () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project])
+  }, [project, onlyCompleted, refreshKey])
 
   // Step 3: fetch PO list, refetching on search/toggle/pagination change.
   useEffect(() => {
