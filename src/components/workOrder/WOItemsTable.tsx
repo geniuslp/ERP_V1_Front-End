@@ -1,8 +1,11 @@
 import React, { useState } from 'react'
 import { Table, Button, InputNumber, Input, Space, Select } from 'antd'
-import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
 import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
+import MaterialPickerModal from '@/components/common/MaterialPickerModal'
+import { formatItemLabel } from '@/utils/itemLabel'
+import type { Material } from '@/types'
 import { calcDisc } from '@/utils/poCalc'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 
@@ -50,11 +53,37 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
   defaultWhtRate = 3,
 }) => {
   const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
+  // Row whose รายละเอียด is being filled from the material list (the text stays typeable).
+  const [materialRowKey, setMaterialRowKey] = useState<string | null>(null)
 
   const renumber = (rows: WOLineItem[]) => rows.map((r, idx) => ({ ...r, no: idx + 1 }))
 
   const updateItem = (key: string, field: keyof WOLineItem, value: string | number | null) => {
     onChange(items.map((i) => (i.key === key ? { ...i, [field]: value } : i)))
+  }
+
+  // The first picked material fills this row's รายละเอียด (name + spec + brand); any further ones become new rows
+  // right below it with the same Cost Code. Typing in the field stays possible.
+  const handleMaterialConfirm = (materials: Material[]) => {
+    const rowKey = materialRowKey
+    setMaterialRowKey(null)
+    if (!rowKey || materials.length === 0) return
+    const label = (m: Material) => formatItemLabel(m.mat_name_th, m.spec_description, m.brand_name)
+    const idx = items.findIndex((i) => i.key === rowKey)
+    if (idx < 0) return
+    const base = items[idx]
+    const next = items.map((i) => (i.key === rowKey ? { ...i, description: label(materials[0]) } : i))
+    const extra: WOLineItem[] = materials.slice(1).map((m) => ({
+      key: `new-${Date.now()}-${m.mat_code}-${Math.random().toString(36).slice(2)}`,
+      no: 0,
+      cost_code: base.cost_code,
+      cost_code_label: base.cost_code_label,
+      description: label(m),
+      qty: 1,
+      unit_price: 0,
+    }))
+    next.splice(idx + 1, 0, ...extra)
+    onChange(renumber(next))
   }
 
   const removeItem = (key: string) => {
@@ -235,8 +264,15 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
           style={{ width: '100%', textOverflow: 'ellipsis' }}
           value={r.description ?? ''}
           title={r.description || undefined}
-          placeholder="รายละเอียด"
+          placeholder="พิมพ์รายละเอียด หรือกดค้นหาเพื่อเลือกจากวัสดุ"
           onChange={(e) => updateItem(r.key, 'description', e.target.value)}
+          addonAfter={
+            <SearchOutlined
+              style={{ cursor: 'pointer' }}
+              title="เลือกจากรายการวัสดุ"
+              onClick={() => setMaterialRowKey(r.key)}
+            />
+          }
         />
       ),
     },
@@ -371,6 +407,13 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
           เพิ่มแถว
         </Button>
       </div>
+
+      <MaterialPickerModal
+        open={materialRowKey !== null}
+        onClose={() => setMaterialRowKey(null)}
+        onConfirm={handleMaterialConfirm}
+        compact
+      />
 
       <CostCodeSelectionModal
         open={costCodeModalRowKey !== null}
