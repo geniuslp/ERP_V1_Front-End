@@ -25,12 +25,12 @@ type BillStatus = 'DRAFT' | 'SAVED'
 
 const BILL_TYPE_OPTIONS: { value: BillType; label: string }[] = [
   { value: 'ADV', label: 'Advance Payment' },
-  { value: 'PROGRESS', label: 'Progress Payment' },
+  { value: 'PROGRESS', label: 'Work Progress' },
   { value: 'RETENTION', label: 'Retention' },
 ]
 const BILL_TYPE_LABEL: Record<BillType, string> = {
   ADV: 'Advance Payment',
-  PROGRESS: 'Progress Payment',
+  PROGRESS: 'Work Progress',
   RETENTION: 'Retention',
 }
 
