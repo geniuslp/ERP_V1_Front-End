@@ -1,3 +1,4 @@
+import { ROUTER_BASENAME } from '@/config/env'
 import React, { useEffect, useRef, useState } from 'react'
 import { Modal, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -150,13 +151,14 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       // Detail routes open in a new tab (PO without the approval-scoping flag).
       render: (v: string, r) => (
         <a
-          href={
+          // Plain <a>, so the router basename (e.g. /erp on UAT) must be added by hand.
+          href={`${ROUTER_BASENAME}${
             r.source === 'PC'
               ? `/petty-cash/${r.po_id}`
               : r.source === 'TR'
                 ? `/ic/projects/${r.doc_project_code}/movement/${r.po_id}`
                 : `/po/approval/${r.po_id}`
-          }
+          }`}
           target="_blank"
           rel="noopener noreferrer"
           style={{ fontWeight: 600 }}
