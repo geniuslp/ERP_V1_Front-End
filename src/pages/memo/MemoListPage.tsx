@@ -92,6 +92,7 @@ const mapMemo = (m: any): Memo => ({
   id:           String(m.id),
   memoNo:       m.memo_no         ?? m.memoNo        ?? '',
   requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
+  requestedById: m.requested_by ?? m.requestedById ?? null,
   approverName: m.approver_name     ?? m.approverName ?? undefined,
   projectCode:  m.project_code    ?? m.projectCode    ?? undefined,
   projectName:  m.project_name    ?? m.projectName    ?? undefined,
@@ -106,6 +107,10 @@ const mapMemo = (m: any): Memo => ({
 const MemoListPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const authUser = useAppSelector((s) => s.auth.user)
+  const isAdmin = !!authUser?.roles?.includes('ADMIN_CENTER')
+  // The status page lists every memo; only the owner (or an admin) may edit / delete one.
+  const canManage = (m: Memo) => isAdmin || (authUser != null && String((m as any).requestedById ?? '') === String(authUser.id))
   const [data, setData] = useState<Memo[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -153,6 +158,7 @@ const MemoListPage: React.FC = () => {
       const res = await axios.get(`${BASE_URL}/memo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         params: {
+          all_users: 'true', // status check shows everyone's memos (approval page stays limited to the assigned approver)
           search: search || undefined,
           status:  status  || undefined,
           date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
@@ -310,7 +316,7 @@ const MemoListPage: React.FC = () => {
               onClick={() => navigate(ROUTES.MEMO.DETAIL.replace(':id', record.id))}
             />
           </Tooltip>
-          {!['APPROVED', 'CANCELLED'].includes(String(record.status ?? '').toUpperCase()) && (
+          {canManage(record) && !['APPROVED', 'CANCELLED'].includes(String(record.status ?? '').toUpperCase()) && (
             <Tooltip title="แก้ไข">
               <Button
                 size="small"
@@ -330,6 +336,7 @@ const MemoListPage: React.FC = () => {
               />
             </Tooltip>
           )}
+          {canManage(record) && (
           <Popconfirm
             title="ยืนยันการลบใบบันทึกขอซื้อ (Memo) นี้?"
             okText="ลบ"
@@ -352,6 +359,7 @@ const MemoListPage: React.FC = () => {
               />
             </Tooltip>
           </Popconfirm>
+          )}
         </Space>
       ),
     },
