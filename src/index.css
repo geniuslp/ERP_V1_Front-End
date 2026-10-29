@@ -409,3 +409,17 @@ body {
   -webkit-text-fill-color: rgba(0, 0, 0, 0.45);
   font-weight: 400;
 }
+
+/* WO contractor log panel: Contract table is narrower with roomy cells; the top tabs show the active tab as a
+   filled pill so it is obvious which one is open. */
+.wo-log-terms { max-width: 1107px; }
+.wo-log-terms .ant-table-thead > tr > th,
+.wo-log-terms .ant-table-tbody > tr > td { padding: 12px 24px !important; }
+.wo-log-tabs > .ant-tabs-nav { margin-bottom: 20px; }
+.wo-log-tabs > .ant-tabs-nav::before { border-bottom: 2px solid #dbe6f5; }
+.wo-log-tabs .ant-tabs-tab { padding: 9px 22px; margin: 0 6px 0 0 !important; border-radius: 8px 8px 0 0; background: #eef3fa; transition: background .15s; }
+.wo-log-tabs .ant-tabs-tab .ant-tabs-tab-btn { color: #4b5d78; font-weight: 500; }
+.wo-log-tabs .ant-tabs-tab:hover { background: #dde8f7; }
+.wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active { background: #1d4ed8; box-shadow: 0 2px 8px rgba(15,45,94,0.18); }
+.wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #fff; font-weight: 600; }
+.wo-log-tabs .ant-tabs-ink-bar { background: #0f2d5e; height: 3px; }

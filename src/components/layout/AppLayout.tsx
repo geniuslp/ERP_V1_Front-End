@@ -10,6 +10,7 @@ import BrandLogo from '@/components/common/BrandLogo'
 import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
 import { useMyPendingApprovalCount } from '@/hooks/useMyPendingApprovalCount'
+import { useDisableInputAutofill } from '@/hooks/useDisableInputAutofill'
 
 const { Content } = Layout
 const { useBreakpoint } = Grid
@@ -28,6 +29,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // The top bar's desktop layout starts at 992px (antd `lg`); below that the menu becomes a drawer.
   const isNarrow = screens.lg === false
   const pendingCounts = useMyPendingApprovalCount(location.pathname)
+  useDisableInputAutofill()
 
   const handleLogout = () => {
     dispatch(logout())

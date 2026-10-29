@@ -87,6 +87,19 @@ interface Props {
   defaultRetentionPct?: number | null
 }
 
+interface InvoiceHistoryRow {
+  bill_id: number
+  bill_no: number
+  bill_type: BillType
+  installment_no: number | null
+  status: BillStatus
+  invoice_no: string | null
+  invoice_date: string | null
+  delivery_date: string | null
+  bill_date: string | null
+  pay_date: string | null
+}
+
 interface BillForm {
   bill_type: BillType
   installment_no: number | null
@@ -96,6 +109,8 @@ interface BillForm {
   description: string
   progress_installment_no: number | null
   progress_amount: number
+  progress_pct: number
+  progress_note: string
   adv_pct: number
   adv_deduct_pct: number
   vat_pct: number
@@ -131,6 +146,8 @@ const WOContractorBillTab: React.FC<Props> = ({
     description: '',
     progress_installment_no: null,
     progress_amount: 0,
+    progress_pct: 0,
+    progress_note: '',
     adv_pct: defaultAdvPct ?? 0,
     adv_deduct_pct: 0,
     vat_pct: 7,
@@ -146,6 +163,8 @@ const WOContractorBillTab: React.FC<Props> = ({
   const [f, setF] = useState<BillForm>(newForm())
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [installments, setInstallments] = useState<WoInstallment[]>([])
+  // Invoices of every payment (bill) of this contract, shown under the invoice table being filled in.
+  const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryRow[]>([])
   const [saving, setSaving] = useState(false)
   const keySeq = useRef(0)
 
@@ -158,6 +177,8 @@ const WOContractorBillTab: React.FC<Props> = ({
       const list: BillListItem[] = Array.isArray(res.data?.data) ? res.data.data : []
       computeNext(list)
       setBills(list)
+      const inv = await axios.get(`${BASE_URL}/wo-contractor-log/${logId}/invoices`, { headers })
+      setInvoiceHistory(Array.isArray(inv.data?.data) ? inv.data.data : [])
     } catch (e) {
       message.error(errText(e, 'โหลดรายการรับวางบิลไม่สำเร็จ'))
     }
@@ -209,6 +230,10 @@ const WOContractorBillTab: React.FC<Props> = ({
         description: d.description ?? '',
         progress_installment_no: d.progress_installment_no,
         progress_amount: Number(line('PROGRESS')?.amount ?? 0),
+        progress_note: d.progress_note ?? '',
+        progress_pct: line('PROGRESS')?.percent != null
+          ? Number(line('PROGRESS')?.percent)
+          : pctOfContract(Number(line('PROGRESS')?.amount ?? 0)),
         adv_pct: Number(line('ADV')?.percent ?? 0),
         adv_deduct_pct: Number(line('ADV_DEDUCT')?.percent ?? 0),
         vat_pct: Number(line('VAT')?.percent ?? 0),
@@ -230,10 +255,13 @@ const WOContractorBillTab: React.FC<Props> = ({
     }
   }
 
+  // เงินงวดนี้: % of the contract value <-> amount, either one can be typed and the other follows.
+  const pctOfContract = (amount: number) => (contractAmount > 0 ? round2((amount / contractAmount) * 100) : 0)
+
   // ── Summary (สรุปรายการเบิก), all AUTO from the percentages / typed amounts ──
   const calc = useMemo(() => {
     const adv = f.bill_type === 'ADV' ? round2(contractAmount * f.adv_pct / 100) : 0
-    const progress = f.bill_type === 'ADV' ? 0 : f.progress_amount
+    const progress = f.progress_amount
     const base = adv + progress
     const advDeduct = round2(base * f.adv_deduct_pct / 100)
     const afterDeduct = base - advDeduct
@@ -254,6 +282,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     patch({
       progress_installment_no: ins.installment_no,
       progress_amount: Number(ins.amount ?? 0),
+      progress_pct: pctOfContract(Number(ins.amount ?? 0)),
       installment_no: ins.installment_no,
     })
   }
@@ -322,32 +351,30 @@ const WOContractorBillTab: React.FC<Props> = ({
     {
       key: 'progress',
       label: (
-        <Space wrap>
-          <span>2. เงินงวดนี้</span>
-          {f.bill_type === 'PROGRESS' ? (
-            <Select
-              allowClear
-              size="small"
-              style={{ minWidth: 200 }}
-              placeholder="เลือกงวดงาน"
-              value={f.progress_installment_no ?? undefined}
-              onChange={pickInstallment}
-              options={installments.map((i) => ({
-                value: i.installment_no,
-                label: `งวดที่ ${i.installment_no}${i.description ? ` — ${i.description}` : ''}`,
-              }))}
-            />
-          ) : null}
-        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flexShrink: 0 }}>2. เงินงวดนี้</span>
+          <Input
+            size="small"
+            maxLength={500}
+            style={{ flex: 1, minWidth: 0 }}
+            placeholder="ระบุงวด/รายละเอียดเงินงวดนี้"
+            value={f.progress_note}
+            onChange={(e) => patch({ progress_note: e.target.value })}
+          />
+        </div>
       ),
-      amount: isAdv ? amountText(0) : (
+      pct: pctInput(
+        f.progress_pct,
+        (v) => patch({ progress_pct: v, progress_amount: round2((contractAmount * v) / 100) }),
+      ),
+      amount: (
         <InputNumber<number>
           style={{ width: 180 }}
           min={0}
           precision={2}
           controls={false}
           value={f.progress_amount}
-          onChange={(v) => patch({ progress_amount: v ?? 0 })}
+          onChange={(v) => patch({ progress_amount: v ?? 0, progress_pct: pctOfContract(v ?? 0) })}
         />
       ),
     },
@@ -426,12 +453,13 @@ const WOContractorBillTab: React.FC<Props> = ({
     pay_to: f.pay_to.trim() || null,
     credit_term_days: f.credit_term_days,
     description: f.description.trim() || null,
-    progress_installment_no: f.bill_type === 'PROGRESS' ? f.progress_installment_no : null,
+    progress_installment_no: f.progress_installment_no,
+    progress_note: f.progress_note.trim() || null,
     wht_type: f.wht_type,
     status,
     lines: [
       { line_code: 'ADV', percent: f.adv_pct, amount: calc.adv },
-      { line_code: 'PROGRESS', percent: null, amount: calc.progress },
+      { line_code: 'PROGRESS', percent: f.progress_pct, amount: calc.progress },
       { line_code: 'ADV_DEDUCT', percent: f.adv_deduct_pct, amount: calc.advDeduct },
       { line_code: 'VAT', percent: f.vat_pct, amount: calc.vat },
       { line_code: 'RETENTION', percent: f.retention_pct, amount: calc.retention },
@@ -464,7 +492,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       message.success(status === 'DRAFT' ? 'บันทึกฉบับร่างเรียบร้อยแล้ว' : 'บันทึกข้อมูลเรียบร้อยแล้ว')
       await loadBills()
       onBillSaved?.(recordId)
-      if (status === 'SAVED') startNew() // ready for the next installment; a draft stays open so it can be finished
+      // The saved values stay on screen (clearing them looked like nothing was saved); "สร้างรายการใหม่" starts the next bill.
     } catch (e) {
       message.error(errText(e, 'บันทึกข้อมูลไม่สำเร็จ'))
     } finally {
@@ -485,23 +513,6 @@ const WOContractorBillTab: React.FC<Props> = ({
 
   return (
     <div>
-      <div style={subCardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <strong>รายการรับวางบิล</strong>
-          <Button size="small" icon={<FileAddOutlined />} onClick={startNew}>สร้างรายการใหม่</Button>
-        </div>
-        <Table<BillListItem>
-          rowKey="id"
-          size="small"
-          pagination={false}
-          dataSource={bills}
-          columns={billColumns}
-          locale={{ emptyText: 'ยังไม่มีรายการรับวางบิล' }}
-          onRow={(r) => ({ onClick: () => openBill(r.id), style: { cursor: 'pointer' } })}
-          rowClassName={(r) => (r.id === billId ? 'ant-table-row-selected' : '')}
-        />
-      </div>
-
       <div style={subCardStyle}>
         <Row gutter={[16, 12]}>
           <Col {...FIELD_SPAN}>
@@ -585,6 +596,32 @@ const WOContractorBillTab: React.FC<Props> = ({
       </div>
 
       <div style={subCardStyle}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>ใบกำกับภาษีของทุกครั้งที่จ่าย</div>
+        <Table<InvoiceHistoryRow>
+          rowKey={(r) => `${r.bill_id}-${r.invoice_no ?? ''}-${r.invoice_date ?? ''}-${r.pay_date ?? ''}`}
+          size="small"
+          pagination={false}
+          dataSource={invoiceHistory}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: 'ยังไม่มีรายการที่บันทึก' }}
+          rowClassName={(r) => (r.bill_id === billId ? 'ant-table-row-selected' : '')}
+          columns={[
+            { title: 'ครั้งที่จ่าย', dataIndex: 'bill_no', width: 100, align: 'center' as const },
+            { title: 'ประเภท', dataIndex: 'bill_type', width: 150, render: (v: BillType) => BILL_TYPE_LABEL[v] ?? v },
+            { title: 'ใบกำกับภาษี / INVOICE NO.', dataIndex: 'invoice_no', render: (v: string | null) => v || '—' },
+            { title: 'INVOICE DATE', dataIndex: 'invoice_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
+            { title: 'วันที่ส่งมอบงาน', dataIndex: 'delivery_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
+            { title: 'วันที่วางบิล', dataIndex: 'bill_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
+            { title: 'วันที่จ่าย', dataIndex: 'pay_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
+            {
+              title: 'สถานะ', dataIndex: 'status', width: 90,
+              render: (v: BillStatus) => <Tag color={v === 'SAVED' ? 'green' : 'default'}>{v === 'SAVED' ? 'SAVE' : 'DRAFT'}</Tag>,
+            },
+          ]}
+        />
+      </div>
+
+      <div style={subCardStyle}>
         <Table<SummaryRow>
           rowKey="key"
           size="small"
@@ -595,6 +632,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Button onClick={startNew} disabled={saving}>สร้างรายการใหม่</Button>
         <Button loading={saving} onClick={() => handleSave('DRAFT')}>บันทึกร่าง</Button>
         <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => handleSave('SAVED')}>บันทึก</Button>
       </div>

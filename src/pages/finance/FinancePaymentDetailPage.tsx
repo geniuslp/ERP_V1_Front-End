@@ -74,14 +74,17 @@ const FinancePaymentDetailPage: React.FC = () => {
   const hasSelection = selectedInst.length > 0
 
   const enteredAmount = Form.useWatch('amount_paid', form) as number | undefined
+  // WO only: net payable of the contractor bills already SAVED (บันทึกงานของผู้รับเหมา), counted as paid.
+  const [billPaid, setBillPaid] = useState(0)
+  // WO: the contract value (ex VAT) is the base for "remaining"; the document's own net_amount can differ from it.
+  const [woContractValue, setWoContractValue] = useState(0)
 
   // Auto-fill with the selected sum (capped at the remaining balance) whenever the selection
   // or a selected row's amount changes; the user can still overtype until the next change.
   const selectionSig = selectedInst.map((i) => i.key).join('|')
   useEffect(() => {
     if (!hasSelection) return
-    const paid = docItem?.paid_amount ?? 0
-    const cap = docItem ? (docItem.remaining_to_pay ?? Math.max(docItem.net_amount - paid, 0)) : undefined
+    const cap = docItem ? remaining : undefined // the remaining shown on the card (WO: contract value - paid)
     const v = cap != null ? Math.min(selectedSum, cap) : selectedSum
     form.setFieldsValue({ amount_paid: Math.round(v * 100) / 100 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,8 +152,12 @@ const FinancePaymentDetailPage: React.FC = () => {
   }, [docType, docId])
 
   // Same as the backend: sum of every row, reversal (negative) rows included.
-  const paidAmount = docItem?.paid_amount ?? log.reduce((s, l) => s + l.amount_paid, 0)
-  const remaining = docItem?.remaining_to_pay ?? Math.max((docItem?.net_amount ?? 0) - paidAmount, 0)
+  const loggedPaid = docItem?.paid_amount ?? log.reduce((s, l) => s + l.amount_paid, 0)
+  const paidAmount = loggedPaid + billPaid
+  const baseAmount = docType === 'WO' && woContractValue > 0 ? woContractValue : (docItem?.net_amount ?? 0)
+  const remaining = docType === 'WO' && woContractValue > 0
+    ? Math.max(baseAmount - paidAmount, 0)
+    : Math.max((docItem?.remaining_to_pay ?? Math.max(baseAmount - loggedPaid, 0)) - billPaid, 0)
   // Remaining is only trustworthy once the document itself has loaded.
   const fullyPaid = !!docItem && remaining <= 0
   const cancelledIds = new Set(log.filter((l) => l.reverses_id != null).map((l) => l.reverses_id as number))
@@ -366,7 +373,7 @@ const FinancePaymentDetailPage: React.FC = () => {
             )}
           </Descriptions.Item>
           <Descriptions.Item label="โครงการ">{docItem ? <FinanceProjectsCell item={docItem} /> : '—'}</Descriptions.Item>
-          <Descriptions.Item label="มูลค่าสุทธิ">{docItem ? thb(docItem.net_amount) : '—'}</Descriptions.Item>
+          <Descriptions.Item label="มูลค่าสุทธิ">{docItem ? thb(baseAmount) : '—'}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             {docItem
               ? docType === 'PO'
@@ -392,7 +399,7 @@ const FinancePaymentDetailPage: React.FC = () => {
 
       {docType === 'WO' && docId && (
         <Card title="บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" style={{ ...cardStyle, marginBottom: 20 }}>
-          <WOContractorLogPanel woId={Number(docId)} />
+          <WOContractorLogPanel woId={Number(docId)} onBillsPaidChange={(paid, contract) => { setBillPaid(paid); setWoContractValue(contract) }} />
         </Card>
       )}
 

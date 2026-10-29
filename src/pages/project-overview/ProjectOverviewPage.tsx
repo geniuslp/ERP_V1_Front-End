@@ -1,3 +1,4 @@
+import { formatProjectTier } from '@/utils/projectTier'
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Input, Select, Row, Col, Typography, Modal, Space, Tag, Spin, Tooltip, message } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
@@ -37,6 +38,7 @@ interface ProjectOverviewRow {
   project_name: string
   customer_name?: string | null
   contract_budget: number
+  project_tier?: number | null
   pu_cost: number
   pu_balance: number
   ac_cost: number
@@ -130,6 +132,7 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   project: 280,
   customer_name: 200,
   contract_budget: 150,
+  project_tier: 90,
   pu_cost: 140,
   pu_balance: 140,
   ac_cost: 140,
@@ -476,6 +479,14 @@ const ProjectOverviewPage: React.FC = () => {
       width: 150,
       align: 'right',
       render: (v: number) => thb(v),
+    },
+    {
+      title: 'Tier',
+      dataIndex: 'project_tier',
+      key: 'project_tier',
+      width: 90,
+      align: 'center',
+      render: (v?: number | null) => formatProjectTier(v),
     },
     {
       title: 'Pu.Cost',

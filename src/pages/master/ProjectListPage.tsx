@@ -1,3 +1,4 @@
+import { formatProjectTier } from '@/utils/projectTier'
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Popconfirm, message, Typography, Modal, Row } from 'antd'
 import type { UploadProps } from 'antd'
@@ -56,6 +57,7 @@ const mapProject = (raw: any): Project => ({
   contractAmount: raw.contract_amount,
   costAmount:   raw.cost_amount,
   projectKind:  raw.project_kind,
+  projectTier:  raw.project_tier ?? null,
   consultantName: raw.consultant_name,
   consultantPhone: raw.consultant_phone,
   startDate:    raw.start_date,
@@ -449,6 +451,14 @@ const ProjectListPage: React.FC = () => {
       // VO projects carry their value in vo_amount, so show that instead.
       render: (val: number, record: Project) =>
         `${((record.projectKind === 'VO' ? record.voAmount : val) ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
+    },
+    {
+      title: 'Tier',
+      dataIndex: 'projectTier',
+      key: 'projectTier',
+      width: '5%',
+      align: 'center' as const,
+      render: (v?: number | null) => formatProjectTier(v),
     },
     {
       title: 'มูลค่า VO',

@@ -108,13 +108,9 @@ const PettyCashLineModal: React.FC<Props> = ({
   // Scroll area + fade hints (top / bottom) toggled from scroll position.
   const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null)
   const [fade, setFade] = useState({ top: false, bottom: false })
-  // WHT base follows `amount` until the user edits it.
-  const baseTouched = useRef(false)
-
   const initialValues = useMemo(() => {
     const l = initial
     selectedSupplierName.current = l?.supplier_id != null ? l.supplier_name : ''
-    baseTouched.current = !!l && l.has_wht && l.wht_base_amount != null && l.wht_base_amount !== l.amount
     return {
       mat_code: l?.mat_code ?? '',
       description: l?.description ?? '',
@@ -138,8 +134,7 @@ const PettyCashLineModal: React.FC<Props> = ({
       tax_invoice_no: l?.tax_invoice_no ?? '',
       tax_invoice_date: toDayjs(l?.tax_invoice_date),
       has_wht: l?.has_wht ?? false,
-      tax_form_code: l?.tax_form_code || undefined,
-      wht_base_amount: l?.wht_base_amount ?? null,
+      wht_base_amount: l?.amount ?? null,
       wht_income_type_id: l?.wht_income_type_id ?? undefined,
       wht_pay_date: toDayjs(l?.wht_pay_date),
     }
@@ -195,7 +190,6 @@ const PettyCashLineModal: React.FC<Props> = ({
   const amount: number = Form.useWatch('amount', { form, preserve: true }) ?? 0
   const hasInvoice: boolean = Form.useWatch('has_tax_invoice', { form, preserve: true }) ?? false
   const hasWht: boolean = Form.useWatch('has_wht', { form, preserve: true }) ?? false
-  const whtBase: number = Form.useWatch('wht_base_amount', { form, preserve: true }) ?? 0
   const incomeTypeId: number | undefined = Form.useWatch('wht_income_type_id', { form, preserve: true })
 
   const incomeType = lineOptions?.wht_income_types.find((t) => t.id === incomeTypeId)
@@ -204,7 +198,7 @@ const PettyCashLineModal: React.FC<Props> = ({
   // `amount` is the pre-VAT amount; VAT is derived from it (0 when the tax-invoice switch is off).
   const vat = hasInvoice ? round2((amount * vatRate) / 100) : 0
   const totalWithVat = round2(amount + vat)
-  const wht = hasWht ? (whtBase * rate) / 100 : 0
+  const wht = hasWht ? (amount * rate) / 100 : 0
   const net = totalWithVat - wht
 
   const isOh = isOhOrderType(headerOrderType)
@@ -409,13 +403,13 @@ const PettyCashLineModal: React.FC<Props> = ({
       const price = Number(form.getFieldValue('unit_price') ?? 0)
       const next = qty > 0 && price > 0 ? round2(qty * price) : null
       form.setFieldValue('amount', next)
-      if (!baseTouched.current) form.setFieldValue('wht_base_amount', next)
+      form.setFieldValue('wht_base_amount', next)
     }
-    if ('amount' in changed && !baseTouched.current) {
+    // ยอดเงิน (หัก ณ ที่จ่าย) always equals จำนวนเงิน — it is read-only.
+    if ('amount' in changed) {
       form.setFieldValue('wht_base_amount', changed.amount ?? null)
     }
-    if ('wht_base_amount' in changed) baseTouched.current = true
-    if ('has_wht' in changed && changed.has_wht && !baseTouched.current) {
+    if ('has_wht' in changed && changed.has_wht) {
       form.setFieldValue('wht_base_amount', form.getFieldValue('amount') ?? null)
     }
   }
@@ -435,7 +429,7 @@ const PettyCashLineModal: React.FC<Props> = ({
     const hasInv = !!v.has_tax_invoice
     const hasW = !!v.has_wht
     const amt = Number(v.amount ?? 0)
-    const base = hasW ? Number(v.wht_base_amount ?? 0) : null
+    const base = hasW ? amt : null
     const type = hasW ? lineOptions?.wht_income_types.find((t) => t.id === v.wht_income_type_id) : undefined
     const lineVat = hasInv ? round2((amt * vatRate) / 100) : 0
     const lineWht = hasW && base != null ? (base * (type?.rate ?? 0)) / 100 : 0
@@ -466,7 +460,7 @@ const PettyCashLineModal: React.FC<Props> = ({
       tax_invoice_date: hasInv ? fromDayjs(v.tax_invoice_date) : '',
       has_wht: hasW,
       wht_base_amount: hasW ? base : null,
-      tax_form_code: hasW ? (v.tax_form_code ?? '') : '',
+      tax_form_code: '',
       wht_income_type_id: hasW ? (v.wht_income_type_id ?? null) : null,
       wht_income_label: hasW && type ? `${type.label_th} (${type.rate}%)` : '',
       wht_rate: hasW && type ? type.rate : null,
@@ -612,7 +606,7 @@ const PettyCashLineModal: React.FC<Props> = ({
         <Row gutter={16}>
           <Col xs={24} lg={6} style={{ minWidth: 0 }}>
             <Form.Item name="qty" label="จำนวน" rules={[{ required: true, type: 'number', min: 0.01, message: 'กรุณาระบุจำนวน' }]}>
-              <InputNumber style={{ width: '100%', maxWidth: 260 }} min={0} precision={2} controls={false} placeholder="เช่น 1" />
+              <InputNumber style={{ width: '100%', maxWidth: 260 }} min={0} controls={false} placeholder="เช่น 1" />
             </Form.Item>
           </Col>
           <Col xs={24} lg={6} style={{ minWidth: 0 }}>
@@ -624,10 +618,9 @@ const PettyCashLineModal: React.FC<Props> = ({
             <Form.Item name="unit_price" label="ราคา/หน่วย">
               <InputNumber
                 min={0}
-                precision={2}
                 controls={false}
                 style={{ width: '100%', maxWidth: 260 }}
-                placeholder="0.00"
+                placeholder="0"
                 formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
               />
@@ -749,11 +742,11 @@ const PettyCashLineModal: React.FC<Props> = ({
             <>
               <Row gutter={16}>
                 <Col xs={24} lg={6} style={{ minWidth: 0 }}>
-                  <Form.Item name="tax_form_code" label="ประเภทภาษี" rules={[{ required: true, message: 'กรุณาเลือกประเภทภาษี (ภ.ง.ด.)' }]}>
+                  <Form.Item name="wht_income_type_id" label="ประเภทภาษี" rules={[{ required: true, message: 'กรุณาเลือกประเภทภาษี' }]}>
                     <Select
                       style={{ width: '100%' }}
                       placeholder="เลือกประเภทภาษี"
-                      options={(lineOptions?.tax_forms ?? []).map((t) => ({ value: t.code, label: t.label_th }))}
+                      options={(lineOptions?.wht_income_types ?? []).map((t) => ({ value: t.id, label: `${t.label_th} (${t.rate}%)` }))}
                     />
                   </Form.Item>
                 </Col>
@@ -772,11 +765,11 @@ const PettyCashLineModal: React.FC<Props> = ({
                     })]}
                   >
                     <InputNumber
-                      min={0}
+                      readOnly
+                      controls={false}
                       precision={2}
                       style={{ width: '100%' }}
                       formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                      parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
                     />
                   </Form.Item>
                 </Col>
@@ -801,16 +794,7 @@ const PettyCashLineModal: React.FC<Props> = ({
                     <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
-                <Col xs={24} lg={8} style={{ minWidth: 0 }}>
-                  <Form.Item name="wht_income_type_id" label="ประเภทหัก ณ ที่จ่าย" rules={[{ required: true, message: 'กรุณาเลือกประเภทหัก ณ ที่จ่าย' }]}>
-                    <Select
-                      style={{ width: '100%' }}
-                      placeholder="เลือกประเภทหัก ณ ที่จ่าย"
-                      options={(lineOptions?.wht_income_types ?? []).map((t) => ({ value: t.id, label: `${t.label_th} (${t.rate}%)` }))}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} lg={4} style={{ minWidth: 0 }}>
+                <Col xs={24} lg={6} style={{ minWidth: 0 }}>
                   <Form.Item label="ภาษีหัก ณ ที่จ่าย %"><Input readOnly value={incomeType ? `${rate}%` : ''} /></Form.Item>
                 </Col>
                 <Col xs={24} lg={6} style={{ minWidth: 0 }}>

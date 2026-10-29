@@ -6,7 +6,7 @@ import {
 import { SaveOutlined, SendOutlined, CloseOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
-import dayjs from 'dayjs'
+import dayjs, { type Dayjs } from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
@@ -401,15 +401,23 @@ const WorkOrderCreatePage: React.FC = () => {
     fetchPaymentConditions()
   }, [isEdit, id, accessToken])
 
-  // start_date + duration_days -> end_date, auto-calculated but user-overridable
-  // (re-running this only on start_date/duration_days change, never clobbering a
-  // manual end_date edit unless one of those two changes again).
-  const recalcEndDate = () => {
-    const start = form.getFieldValue('start_date')
+  // Contract period: start_date, end_date and duration_days (days, end = start + duration) stay in
+  // sync from whichever two the user fills — start + duration -> end, start + end -> duration.
+  // Each handler gets the value that was just typed (the store may not hold it yet).
+  const onStartDateChange = (start?: Dayjs | null) => {
     const duration = form.getFieldValue('duration_days')
-    if (start && duration) {
-      form.setFieldValue('end_date', dayjs(start).add(Number(duration), 'day'))
-    }
+    const end = form.getFieldValue('end_date')
+    if (!start) return
+    if (duration != null && duration !== '') form.setFieldValue('end_date', dayjs(start).add(Number(duration), 'day'))
+    else if (end) form.setFieldValue('duration_days', Math.max(0, dayjs(end).startOf('day').diff(dayjs(start).startOf('day'), 'day')))
+  }
+  const onEndDateChange = (end?: Dayjs | null) => {
+    const start = form.getFieldValue('start_date')
+    if (start && end) form.setFieldValue('duration_days', Math.max(0, dayjs(end).startOf('day').diff(dayjs(start).startOf('day'), 'day')))
+  }
+  const onDurationChange = (duration?: number | null) => {
+    const start = form.getFieldValue('start_date')
+    if (start && duration != null) form.setFieldValue('end_date', dayjs(start).add(Number(duration), 'day'))
   }
 
   // PO's create page sends `status` inline as part of the create/update payload to
@@ -437,7 +445,7 @@ const WorkOrderCreatePage: React.FC = () => {
     // supplier_code / project_name are response-only: work_order has no supplier_code
     // (send supplier_id only), and edit-mode's ...wo seed puts both into the store.
     const {
-      advance_pct, advance_amount, retention_pct, penalty_pct_per_day, progress_payment_note,
+      advance_pct, advance_amount, retention_pct, penalty_pct_per_day,
       supplier_code, project_name, project_choice,
       // Edit-mode's ...wo seed also put the raw loaded `lines` into the form store; always strip
       // it here and re-add from `items` only when includeLines is set.
@@ -663,6 +671,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   vat_rate: 7,
                   wht_rate: 3,
                   has_penalty: false,
+                  other_deduction_note: 'ไม่มี',
                 }}
               >
                 <Form.Item name="supplier_name" hidden><Input /></Form.Item>
@@ -918,9 +927,15 @@ const WorkOrderCreatePage: React.FC = () => {
                       </Col>
                     </Row>
                   }
+                  // 7.2 เงินงวดสัญญา — free text (progress_payment_note), shown on the detail page and the print.
+                  progressSlot={
+                    <Form.Item name="progress_payment_note" style={{ marginBottom: 0 }}>
+                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={2000} placeholder="ระบุเงื่อนไขการจ่ายเงินงวดสัญญา" />
+                    </Form.Item>
+                  }
                   // 7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ) — other_deduction_note, rendered after 7.4 inside card 7.
                   otherSlot={
-                    <Form.Item label={<span style={labelStyle}>รายการหักอื่นๆ</span>} name="other_deduction_note" style={{ marginBottom: 0 }}>
+                    <Form.Item name="other_deduction_note" style={{ marginBottom: 0 }}>
                       <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} placeholder="ไม่มี" />
                     </Form.Item>
                   }
@@ -931,26 +946,22 @@ const WorkOrderCreatePage: React.FC = () => {
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN}>
                       <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
-                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={recalcEndDate} />
-                      </Form.Item>
-                    </Col>
-                    <Col {...FIELD_SPAN}>
-                      <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
-                        <InputNumber style={fieldStyle} min={0} onChange={recalcEndDate} />
+                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={onStartDateChange} />
                       </Form.Item>
                     </Col>
                     <Col {...FIELD_SPAN}>
                       <Form.Item label={<span style={labelStyle}>วันที่สิ้นสุด</span>} name="end_date">
-                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
+                        <DatePicker style={fieldStyle} format="DD/MM/YYYY" onChange={onEndDateChange} />
+                      </Form.Item>
+                    </Col>
+                    <Col {...FIELD_SPAN}>
+                      <Form.Item label={<span style={labelStyle}>ระยะเวลา (วัน)</span>} name="duration_days">
+                        <InputNumber style={fieldStyle} min={0} onChange={onDurationChange} />
                       </Form.Item>
                     </Col>
                   </Row>
-                  <Card title="8.1 เบี้ยปรับ" size="small" style={{ ...subCardStyle, marginTop: 8 }}>
-                    <Form.Item
-                      label={<span style={labelStyle}>ปรับวันละ 1.00% ของมูลค่างาน</span>}
-                      name="has_penalty"
-                      style={{ marginBottom: 0 }}
-                    >
+                  <Card title="8.1 ปรับวันละ 1.00% ของมูลค่างาน" size="small" style={{ ...subCardStyle, marginTop: 8 }}>
+                    <Form.Item name="has_penalty" style={{ marginBottom: 0 }}>
                       <Radio.Group>
                         <Radio value={true}>มี</Radio>
                         <Radio value={false}>ไม่มี</Radio>

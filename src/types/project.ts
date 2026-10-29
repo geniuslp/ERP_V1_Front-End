@@ -31,6 +31,7 @@ export interface Project {
   voAmount: number
   contractAmount?: number
   costAmount?: number
+  projectTier?: number | null
   // "ประเภทโครงการ": NEW = โครงการใหม่, VO = งานเพิ่ม
   projectKind?: 'NEW' | 'VO'
   consultantName?: string

@@ -154,9 +154,11 @@ interface WOPaymentConditionsSectionProps {
   contractAmount?: number | null
   // 7.1 เงินล่วงหน้า content (Form.Items live in the page's form); rendered above 7.2.
   advanceSlot?: React.ReactNode
-  // 7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ) content (Form.Items live in the page's form); rendered after 7.4.
+  // 7.2 เงินงวดสัญญา free-text content (Form.Item progress_payment_note lives in the page's form).
+  progressSlot?: React.ReactNode
+  // 7.5 หักอื่นๆ content (Form.Items live in the page's form); rendered after 7.4.
   otherSlot?: React.ReactNode
-  // 7.4 หักคืนคำนวณ (read-only): the fixed advance amount and the % displayed in 7.1.
+  // 7.4 หักเงินคืนจ่ายล่วงหน้า (read-only): the fixed advance amount and the % displayed in 7.1.
   advanceAmount?: number | null
   advancePct?: number | null
 }
@@ -182,60 +184,34 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   penalties, onPenaltiesChange,
   contractAmount,
   advanceSlot,
+  progressSlot,
   otherSlot,
   advanceAmount,
   advancePct,
 }) => {
   const base = Number(contractAmount) || 0
 
-  // 7.4 หักคืนคำนวณ — display only, never sent in the payload.
+  // 7.3 หักเงินประกันผลงาน is a single choice (ไม่มี / 5% / 10%) plus a note, no amount. It is stored
+  // as at most one retention row (none = ไม่มี); an old document's first row is what is shown here.
+  const retentionPct = retentions[0]?.percent_of_contract ?? 0
+  const retentionRemarks = retentions[0]?.remarks ?? ''
+  const setRetention = (patch: { pct?: number; remarks?: string }) => {
+    const pct = patch.pct ?? retentionPct
+    if (pct <= 0) { onRetentionsChange([]); return }
+    const cur = retentions[0] ?? emptyRetentionRow()
+    onRetentionsChange([{
+      ...cur,
+      percent_of_contract: pct,
+      amount: 0,
+      remarks: patch.remarks ?? (cur.remarks ?? ''),
+    }])
+  }
+
+  // 7.4 หักเงินคืนจ่ายล่วงหน้า — display only, never sent in the payload.
   const advPct = Number(advancePct) || 0
   const advAmount = round2(Number(advanceAmount) || 0)
   const remainAmount = round2(base - advAmount)
   const remainPct = round2(100 - advPct)
-
-  // When the contract value changes, recompute retention rows that hold an offered % (5/10).
-  // Saved rows (have an id) are skipped on the first value that arrives (the edit-mode load),
-  // so opening a document never rewrites stored amounts; other percents (e.g. 7) are never touched.
-  const prevBase = useRef<number | null | undefined>(undefined)
-  useEffect(() => {
-    const prev = prevBase.current
-    prevBase.current = contractAmount
-    if (prev === contractAmount) return
-    let changed = false
-    const next = retentions.map((r) => {
-      if (r.percent_of_contract === null || !RETENTION_PCT_OPTIONS.includes(r.percent_of_contract)) return r
-      if (r.id !== undefined && (prev === undefined || prev === null)) return r
-      const amount = round2((base * r.percent_of_contract) / 100)
-      if (amount === r.amount) return r
-      changed = true
-      return { ...r, amount }
-    })
-    if (changed) onRetentionsChange(next)
-  }, [contractAmount])
-
-  // ── งวดงาน (installments) ──
-  const renumberInstallments = (rows: InstallmentRow[]) => rows.map((r, idx) => ({ ...r, installment_no: idx + 1 }))
-  const addInstallment = () => {
-    onInstallmentsChange(renumberInstallments([...installments, emptyInstallmentRow()]))
-  }
-  const updateInstallment = (key: string, patch: Partial<InstallmentRow>) => {
-    onInstallmentsChange(installments.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  }
-  const removeInstallment = (key: string) => {
-    onInstallmentsChange(renumberInstallments(installments.filter((r) => r.key !== key)))
-  }
-
-  // ── เงินประกัน (retentions) ──
-  const addRetention = () => {
-    onRetentionsChange([...retentions, emptyRetentionRow()])
-  }
-  const updateRetention = (key: string, patch: Partial<RetentionRow>) => {
-    onRetentionsChange(retentions.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  }
-  const removeRetention = (key: string) => {
-    onRetentionsChange(retentions.filter((r) => r.key !== key))
-  }
 
   // ── ค่าปรับ (penalties) ──
   const addPenalty = () => {
@@ -247,176 +223,6 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   const removePenalty = (key: string) => {
     onPenaltiesChange(penalties.filter((r) => r.key !== key))
   }
-
-  const installmentColumns = [
-    {
-      title: 'งวดที่',
-      dataIndex: 'installment_no',
-      width: 64,
-      align: 'center' as const,
-      render: (v: number) => <span style={{ fontSize: 13, color: '#374151' }}>{v}</span>,
-    },
-    {
-      title: 'รายละเอียดงาน/เงื่อนไข',
-      key: 'description',
-      render: (_: unknown, r: InstallmentRow) => (
-        <Input
-          size="small"
-          value={r.description}
-          placeholder="รายละเอียดงาน/เงื่อนไข"
-          onChange={(e) => updateInstallment(r.key, { description: e.target.value })}
-        />
-      ),
-    },
-    {
-      title: '% ของสัญญา',
-      key: 'percent_of_contract',
-      width: 110,
-      render: (_: unknown, r: InstallmentRow) => (
-        <InputNumber
-          size="small"
-          min={0}
-          max={100}
-          style={{ width: '100%' }}
-          value={r.percent_of_contract ?? undefined}
-          onChange={(v) => updateInstallment(r.key, { percent_of_contract: v ?? null })}
-        />
-      ),
-    },
-    {
-      title: 'จำนวนเงิน',
-      key: 'amount',
-      width: 130,
-      render: (_: unknown, r: InstallmentRow) => (
-        <InputNumber
-          size="small"
-          min={0}
-          style={{ width: '100%' }}
-          formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-          parser={(v) => Number(v?.replace(/,/g, '') ?? 0) as 0}
-          value={r.amount}
-          onChange={(v) => updateInstallment(r.key, { amount: v ?? 0 })}
-        />
-      ),
-    },
-    {
-      title: 'กำหนดวันครบกำหนดจ่าย',
-      key: 'due_date',
-      width: 160,
-      render: (_: unknown, r: InstallmentRow) => (
-        <DatePicker
-          size="small"
-          style={{ width: '100%' }}
-          format="DD/MM/YYYY"
-          value={r.due_date}
-          onChange={(v) => updateInstallment(r.key, { due_date: v ?? undefined })}
-        />
-      ),
-    },
-    {
-      title: 'สถานะจ่ายเงิน',
-      key: 'payment_status',
-      width: 130,
-      render: (_: unknown, r: InstallmentRow) => (
-        <Select
-          size="small"
-          style={{ width: '100%' }}
-          value={r.payment_status}
-          options={Object.entries(WO_PAYMENT_STATUS_LABEL).map(([value, label]) => ({ value, label }))}
-          onChange={(v) => updateInstallment(r.key, { payment_status: v as WOPaymentStatus })}
-        />
-      ),
-    },
-    {
-      title: 'หมายเหตุ',
-      key: 'remarks',
-      render: (_: unknown, r: InstallmentRow) => (
-        <Input
-          size="small"
-          value={r.remarks}
-          placeholder="หมายเหตุ"
-          onChange={(e) => updateInstallment(r.key, { remarks: e.target.value })}
-        />
-      ),
-    },
-    {
-      title: '',
-      key: 'action',
-      width: 40,
-      align: 'center' as const,
-      render: (_: unknown, r: InstallmentRow) => (
-        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeInstallment(r.key)} />
-      ),
-    },
-  ]
-
-  const retentionColumns = [
-    {
-      title: 'รายละเอียด/เหตุผลการหัก',
-      key: 'description',
-      render: (_: unknown, r: RetentionRow) => (
-        <Input
-          size="small"
-          value={r.description}
-          placeholder="รายละเอียด/เหตุผลการหัก"
-          onChange={(e) => updateRetention(r.key, { description: e.target.value })}
-        />
-      ),
-    },
-    {
-      title: '% ของสัญญา',
-      key: 'percent_of_contract',
-      width: 110,
-      render: (_: unknown, r: RetentionRow) => (
-        <Select
-          size="small"
-          allowClear
-          style={{ width: '100%' }}
-          placeholder="เลือก %"
-          value={r.percent_of_contract ?? undefined}
-          options={[
-            ...RETENTION_PCT_OPTIONS.map((v) => ({ value: v, label: `${v}%` })),
-            ...(r.percent_of_contract !== null && !RETENTION_PCT_OPTIONS.includes(r.percent_of_contract)
-              ? [{ value: r.percent_of_contract, label: `${r.percent_of_contract}%` }]
-              : []),
-          ]}
-          onChange={(v: number | undefined) =>
-            updateRetention(r.key, {
-              percent_of_contract: v ?? null,
-              amount: v === undefined ? 0 : round2((base * v) / 100),
-            })}
-        />
-      ),
-    },
-    {
-      title: 'จำนวนเงิน',
-      key: 'amount',
-      width: 130,
-      align: 'right' as const,
-      render: (_: unknown, r: RetentionRow) => <span>{money2(r.amount ?? 0)}</span>,
-    },
-    {
-      title: 'หมายเหตุ',
-      key: 'remarks',
-      render: (_: unknown, r: RetentionRow) => (
-        <Input
-          size="small"
-          value={r.remarks}
-          placeholder="หมายเหตุ"
-          onChange={(e) => updateRetention(r.key, { remarks: e.target.value })}
-        />
-      ),
-    },
-    {
-      title: '',
-      key: 'action',
-      width: 40,
-      align: 'center' as const,
-      render: (_: unknown, r: RetentionRow) => (
-        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeRetention(r.key)} />
-      ),
-    },
-  ]
 
   const penaltyColumns = [
     {
@@ -504,41 +310,44 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
           {advanceSlot}
         </Card>
       )}
-      <Card title="7.2 เงินงวดสัญญา" size="small" style={subCardStyle}>
-        <Table
-          rowKey="key"
-          size="small"
-          pagination={false}
-          dataSource={installments}
-          columns={installmentColumns}
-          scroll={{ x: 900 }}
-          locale={{ emptyText: 'ยังไม่มีงวดงาน' }}
-        />
-        <div style={{ marginTop: 12 }}>
-          <Button icon={<PlusOutlined />} size="small" onClick={addInstallment}>
-            เพิ่มงวดงาน
-          </Button>
-        </div>
+      {progressSlot && (
+        <Card title="7.2 เงินงวดสัญญา" size="small" style={subCardStyle}>
+          {progressSlot}
+        </Card>
+      )}
+
+      <Card title="7.3 หักเงินประกันผลงาน" size="small" style={subCardStyle}>
+        <Row gutter={[16, 8]}>
+          <Col xs={24} md={8}>
+            <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>หักเงินประกันผลงาน</div>
+            <Select
+              style={{ width: '100%' }}
+              value={retentionPct}
+              options={[
+                { value: 0, label: 'ไม่มี' },
+                ...RETENTION_PCT_OPTIONS.map((v) => ({ value: v, label: `${v}%` })),
+                ...(retentionPct > 0 && !RETENTION_PCT_OPTIONS.includes(retentionPct)
+                  ? [{ value: retentionPct, label: `${retentionPct}%` }]
+                  : []),
+              ]}
+              onChange={(v: number) => setRetention({ pct: v })}
+            />
+          </Col>
+          <Col xs={24} md={16}>
+            <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>หมายเหตุ</div>
+            <Input.TextArea
+              autoSize={{ minRows: 1 }}
+              maxLength={500}
+              disabled={retentionPct === 0}
+              value={retentionRemarks}
+              placeholder={retentionPct === 0 ? '' : 'หมายเหตุ'}
+              onChange={(e) => setRetention({ remarks: e.target.value })}
+            />
+          </Col>
+        </Row>
       </Card>
 
-      <Card title="7.3 เงินประกัน" size="small" style={subCardStyle}>
-        <Table
-          rowKey="key"
-          size="small"
-          pagination={false}
-          dataSource={retentions}
-          columns={retentionColumns}
-          scroll={{ x: 700 }}
-          locale={{ emptyText: 'ยังไม่มีรายการเงินประกัน' }}
-        />
-        <div style={{ marginTop: 12 }}>
-          <Button icon={<PlusOutlined />} size="small" onClick={addRetention}>
-            เพิ่มรายการเงินประกัน
-          </Button>
-        </div>
-      </Card>
-
-      <Card title="7.4 หักคืนคำนวณ" size="small" style={subCardStyle}>
+      <Card title="7.4 หักเงินคืนจ่ายล่วงหน้า" size="small" style={subCardStyle}>
         <Row gutter={[16, 8]}>
           {[
             { label: 'เงินล่วงหน้าที่หัก (บาท)', value: `${money2(advAmount)} บาท` },
@@ -554,7 +363,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       </Card>
 
       {otherSlot && (
-        <Card title="7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ)" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
+        <Card title="7.5 หักอื่นๆ" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
           {otherSlot}
         </Card>
       )}

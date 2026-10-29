@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/components/common/DateTimeText'
 import { ROUTER_BASENAME } from '@/config/env'
 import React, { useEffect, useRef, useState } from 'react'
 import { Modal, Table, Tag, Tooltip } from 'antd'
@@ -13,6 +14,10 @@ interface CostCodePoLine {
   // 'TR' rows (project transfer): po_no is the TF document number, project_name the OTHER project of the
   // transfer, quantity negative when the goods left this project; doc_project_code owns the document.
   doc_project_code?: string | null
+  // When the document (PO / petty cash / transfer) was created; shown with the time.
+  created_at?: string | null
+  updated_at?: string | null
+  updated_by_name?: string | null
   po_id: number
   po_no: string
   project_code: string
@@ -43,14 +48,17 @@ interface Props {
 
 const MIN_COL_WIDTH = 80
 const DEFAULT_WIDTHS: Record<string, number> = {
-  // Sum 1120 ~ the modal body at 1170px (was 1010 at 900px), so the extra width is used.
+  // Sum ~1710 ~ the modal body at 1755px (1170 widened by 25% on each side), so the extra width is used.
   source: 100,
   po_no: 170,
-  project_name: 240,
-  item_name: 320,
+  project_name: 300,
+  item_name: 400,
   quantity: 110,
   unit: 90,
-  remarks: 190,
+  remarks: 300,
+  created_at: 150,
+  updated_at: 150,
+  updated_by_name: 130,
 }
 
 // Same react-resizable pattern as POStatusPage.tsx (copied locally, no shared component).
@@ -140,7 +148,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
         ) : v === 'TR' ? (
           <Tag color="green" style={{ margin: 0 }}>โอน</Tag>
         ) : (
-          <Tag color="blue" style={{ margin: 0 }}>PO</Tag>
+          <Tag color="blue" style={{ margin: 0 }}>OF</Tag>
         ),
     },
     {
@@ -206,6 +214,28 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
           '-'
         ),
     },
+    {
+      title: 'วันที่สร้างเอกสาร',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      ...col('created_at'),
+      render: (v?: string | null) => formatDateTime(v) || '-',
+    },
+    {
+      title: 'วันที่อัปเดตล่าสุด',
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      ...col('updated_at'),
+      render: (v?: string | null) => formatDateTime(v) || '-',
+    },
+    {
+      title: 'ผู้อัปเดตล่าสุด',
+      dataIndex: 'updated_by_name',
+      key: 'updated_by_name',
+      ...col('updated_by_name'),
+      ellipsis: true,
+      render: (v?: string | null) => v || '-',
+    },
   ]
 
   const scrollX = Object.values(widths).reduce((a, b) => a + b, 0)
@@ -216,7 +246,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       onCancel={onClose}
       footer={null}
       destroyOnClose
-      width={1170}
+      width={1755}
       style={{ maxWidth: '95vw' }}
       title={
         target ? (

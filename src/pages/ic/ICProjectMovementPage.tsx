@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
+import { icService } from '@/services/icService'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 import dayjs from 'dayjs'
 import {
@@ -57,6 +58,8 @@ interface MovementHeader {
   doc_type?: 'ISSUE' | 'TRANSFER'
   status?: 'DRAFT' | 'POSTED'
   requested_by?: number
+  requested_by_name?: string
+  requested_by_username?: string
   doc_date?: string
   remark?: string
   remarks?: string
@@ -234,24 +237,21 @@ const ICProjectMovementPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCode])
 
-  // Step 3: load users for the "ผู้ขอเบิก" dropdown, same source as PR create page.
+  // Step 3: load users for the "ผู้ขอเบิก" dropdown.
   useEffect(() => {
     let cancelled = false
     const fetchUsers = async () => {
       setUsersLoading(true)
       try {
-        const res = await axios.get(`${BASE_URL}/users/allUser`, {
-          headers: authHeader,
-          params: { role: 'requester' },
-        })
-        const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
-        const list = Array.isArray(raw) ? raw : []
+        // Same list as the "ผู้จัดทำ" picker on the project page, so the requester chosen there always
+        // resolves to a name here.
+        const list = await icService.getPreparers(accessToken ?? '')
         if (!cancelled) {
           setUsers(
-            list.map((u: any) => ({
+            list.map((u) => ({
               id: String(u.id),
               username: u.username,
-              fullName: u.full_name ?? u.fullName ?? u.username,
+              fullName: u.full_name ?? u.username,
               department: u.department ?? '-',
             }))
           )
@@ -707,13 +707,26 @@ const ICProjectMovementPage: React.FC = () => {
                     )}
                   </div>
                 )}
-                options={users.map((u) => ({
-                  value: Number(u.id),
-                  label: formatApproverOption(u.username, u.id),
-                  searchLabel: `${u.username ?? ''} ${u.fullName} ${u.department ?? ''}`,
-                  name: formatApproverOption(u.username, u.id),
-                  dept: u.department,
-                }))}
+                options={[
+                  ...users.map((u) => ({
+                    value: Number(u.id),
+                    label: formatApproverOption(u.username, u.id),
+                    searchLabel: `${u.username ?? ''} ${u.fullName} ${u.department ?? ''}`,
+                    name: formatApproverOption(u.username, u.id),
+                    dept: u.department,
+                  })),
+                  // The saved requester may not be in the role-filtered list above; without this the
+                  // Select shows the raw id (e.g. 13) instead of the name.
+                  ...(header?.requested_by != null && !users.some((u) => Number(u.id) === header.requested_by)
+                    ? [{
+                        value: header.requested_by,
+                        label: header.requested_by_username || header.requested_by_name || String(header.requested_by),
+                        searchLabel: `${header.requested_by_username ?? ''} ${header.requested_by_name ?? ''}`,
+                        name: header.requested_by_username || header.requested_by_name || String(header.requested_by),
+                        dept: undefined as string | undefined,
+                      }]
+                    : []),
+                ]}
               />
             </Form.Item>
           </div>

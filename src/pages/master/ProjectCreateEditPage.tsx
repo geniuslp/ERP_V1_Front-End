@@ -1,3 +1,4 @@
+import { calcProjectTier, formatProjectTier, PROJECT_TIER_RANGE } from '@/utils/projectTier'
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Card, Form, Input, Select, DatePicker, Button, Row, Col, message, InputNumber, Table, Typography, Modal } from 'antd'
@@ -113,6 +114,9 @@ const ProjectCreateEditPage: React.FC = () => {
   const [jobRows, setJobRows] = useState<JobRow[]>([])
   const watchedBudget: number | undefined = Form.useWatch('budget_amount', form)
   const watchedVo: number | undefined = Form.useWatch('vo_amount', form)
+  const watchedContract: number | undefined = Form.useWatch('contract_amount', form)
+  // Tier follows the project value as soon as it is typed (same rule as the DB's project_tier).
+  const previewTier = calcProjectTier(projectKind === 'VO' ? watchedVo : watchedBudget, watchedContract)
   // Job-share base: NEW -> contract value (budget_amount), VO -> vo_amount. Empty/0 is allowed.
   const shareBase = Number(projectKind === 'VO' ? watchedVo : watchedBudget) || 0
   const jobTypeMap = new Map(jobTypes.map((j) => [j.job_code, j]))
@@ -489,6 +493,11 @@ const ProjectCreateEditPage: React.FC = () => {
                   parser={(v) => (v ? Number(v.replace(/[฿,\s]/g, '')) : 0)}
                   placeholder="0.00"
                 />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="Tier โครงการ" extra={previewTier ? PROJECT_TIER_RANGE[previewTier] : 'ยังไม่ระบุมูลค่า'}>
+                <Input readOnly value={formatProjectTier(previewTier)} />
               </Form.Item>
             </Col>
             <Col md={12} xs={24}>

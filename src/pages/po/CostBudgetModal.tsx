@@ -195,19 +195,7 @@ const CostBudgetModal: React.FC<Props> = ({ projectCode, onClose }) => {
       dataIndex: 'pu_cost',
       key: 'pu_cost',
       align: 'right',
-      render: (v: number, r) => {
-        const po = r.po_cost ?? 0
-        const pc = r.pc_cost ?? 0
-        // Split only when the API sent it; petty cash part hidden when 0.
-        if (r.po_cost == null && r.pc_cost == null) return thb(v)
-        const split = `PO ${thb(po)}${pc ? ` / เงินสดย่อย ${thb(pc)}` : ''}`
-        return (
-          <div>
-            <div>{thb(v)}</div>
-            <div style={{ fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{split}</div>
-          </div>
-        )
-      },
+      render: (v: number) => thb(v),
     },
     { title: 'Pu.Bal', dataIndex: 'pu_bal', key: 'pu_bal', align: 'right', render: bal },
     { title: 'Ac.Cost', dataIndex: 'ac_cost', key: 'ac_cost', align: 'right', render: (v: number) => thb(v) },

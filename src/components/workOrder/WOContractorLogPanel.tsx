@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
-import { Button, Col, Form, Input, InputNumber, Row, Select, Spin, Table, Tabs, message } from 'antd'
+import { Button, Col, Form, Input, InputNumber, Popconfirm, Row, Select, Spin, Table, Tabs, Upload, message } from 'antd'
+import { DeleteOutlined, InboxOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import WOContractorBillTab from '@/components/workOrder/WOContractorBillTab'
+import { WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -13,6 +15,16 @@ const fieldStyle: React.CSSProperties = { width: '100%', borderRadius: 8 }
 const FIELD_SPAN = { xs: 24, sm: 12, md: 8 }
 
 type ItemType = 'CONTRACT' | 'ADVANCE' | 'RETENTION'
+
+interface LogFile {
+  id: number
+  file_name: string
+  file_path: string
+  file_size?: number | null
+  uploaded_at?: string | null
+}
+
+const fmtSize = (n?: number | null) => (n ? (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`) : '-')
 
 interface TermRow {
   item_type: ItemType
@@ -37,25 +49,35 @@ const emptyTerms = (): TermRow[] => [
 const woProjectLabel = (code?: string | null, name?: string | null, text?: string | null) =>
   code ? `${code} ${name ?? ''}`.trim() : (text ?? '')
 
+// ลักษณะของสัญญา comes from the work order as created; an old WO may hold a dropdown code instead of text.
+const woContractDescription = (v?: string | null) =>
+  v ? (WO_CONTRACT_DESCRIPTION_LABEL[v as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? v) : ''
+
 const errText = (e: any, fallback: string) =>
   e?.response?.data?.message || e?.response?.data?.error || fallback
 
 interface Props {
   woId: number
+  // Called with the contract money paid through all SAVED bills (ex VAT / WHT) and the WO contract value (on load and after every save).
+  onBillsPaidChange?: (paid: number, contractAmount: number) => void
 }
 
 /**
  * บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง for ONE work order, shown inside the finance WO detail page
- * (FinancePaymentDetailPage). Tab 1 ข้อมูลเอกสาร + tab 2 ประเภทรับวางบิล. One record per WO: it is looked up
+ * (FinancePaymentDetailPage). Tab 1 ข้อมูลเอกสาร (Contract table / ประเภทวางบิล via two buttons) + tab 2 แนบไฟล์ PDF/JPEG. One record per WO: it is looked up
  * by WO (GET /wo-contractor-log/by-wo/:woId) and created on the first save.
  */
-const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
+const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const headers = { Authorization: `Bearer ${accessToken}` }
   const [form] = Form.useForm()
 
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('doc')
+  // Inside the document tab: nothing is shown until a button is pressed — Contract table or the bill form (ประเภทวางบิล).
+  const [docView, setDocView] = useState<'contract' | 'bill' | null>(null)
+  const [files, setFiles] = useState<LogFile[]>([])
+  const [uploading, setUploading] = useState(false)
   const [logId, setLogId] = useState<number | undefined>()
   const [terms, setTerms] = useState<TermRow[]>(emptyTerms())
   // WO-derived values tab 2 needs (supplier for PAY TO, credit term from supplier.payment_terms).
@@ -71,6 +93,8 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
       setLoading(true)
       form.resetFields()
       setLogId(undefined)
+      setFiles([])
+      setDocView(null)
       setTerms(emptyTerms())
       setPjCurrent(undefined)
       try {
@@ -82,14 +106,16 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
           const d = res.data?.data
           if (cancelled) return
           setLogId(existingId)
+          loadFiles(existingId)
           form.setFieldsValue({
             wo_no: d.wo_no,
             supplier_name: d.supplier_name ?? '',
             wo_project: woProjectLabel(d.wo_project_code, d.wo_project_name, d.wo_project_name_text),
-            contract_description: d.contract_description ?? '',
-            project_code: d.project_code ?? undefined,
+            contract_description: woContractDescription(d.contract_description),
+            // PJ defaults to the work order's project when none was chosen; still editable.
+            project_code: d.project_code ?? d.wo_project_code ?? undefined,
           })
-          setPjCurrent(d.project_code ?? undefined)
+          setPjCurrent(d.project_code ?? d.wo_project_code ?? undefined)
           setWoCtx({ supplier: d.supplier_name ?? '', credit: d.credit_term_days, contractAmount: Number(d.contract_amount ?? 0) })
           const saved: TermRow[] = Array.isArray(d.terms) ? d.terms : []
           setTerms(emptyTerms().map((t) => saved.find((s) => s.item_type === t.item_type) ?? t))
@@ -102,11 +128,15 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
             wo_no: wo?.wo_no,
             supplier_name: wo?.supplier_name ?? '',
             wo_project: woProjectLabel(wo?.project_code, wo?.project_name, wo?.project_name_text),
-            contract_description: wo?.contract_description ?? '',
+            contract_description: woContractDescription(wo?.contract_description),
+            // PJ defaults to the work order's project; the user can still change it.
+            project_code: wo?.project_code ?? undefined,
           })
+          setPjCurrent(wo?.project_code ?? undefined)
           setWoCtx({ supplier: wo?.supplier_name ?? '', credit: null, contractAmount: Number(wo?.contract_amount ?? 0) })
           setTerms((prev) => prev.map((t) => (t.item_type === 'CONTRACT' ? { ...t, amount: wo?.contract_amount ?? null } : t)))
         }
+        if (!cancelled) await loadSummary()
       } catch (e) {
         if (!cancelled) message.error(errText(e, 'โหลดข้อมูลบันทึกงานของผู้รับเหมาไม่สำเร็จ'))
       } finally {
@@ -120,27 +150,76 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
   const setTerm = (type: ItemType, patch: Partial<TermRow>) =>
     setTerms((prev) => prev.map((t) => (t.item_type === type ? { ...t, ...patch } : t)))
 
-  const numCell = (type: ItemType, key: 'percent' | 'amount' | 'accumulate' | 'balance', isPct = false) => (
-    <InputNumber<number>
-      style={{ width: '100%' }}
-      min={0}
-      precision={2}
-      controls={false}
-      value={terms.find((t) => t.item_type === type)?.[key] ?? undefined}
-      onChange={(v) => setTerm(type, { [key]: v ?? null })}
-      addonAfter={isPct ? '%' : undefined}
-      formatter={isPct ? undefined : (v) => (v === undefined ? '' : `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ','))}
-      parser={isPct ? undefined : (v) => Number((v ?? '').replace(/,/g, ''))}
-    />
-  )
+  // Contract / Advance / Retention are calculated (GET /wo-contractor-log/summary/:woId) — shown read-only.
+  const numCell = (type: ItemType, key: 'percent' | 'amount' | 'accumulate' | 'balance', isPct = false) => {
+    const v = terms.find((t) => t.item_type === type)?.[key]
+    const text = v == null ? '-' : isPct ? `${Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : Number(v).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return <div style={{ textAlign: 'right', padding: '4px 0', fontVariantNumeric: 'tabular-nums' }}>{text}</div>
+  }
+
+  // Pulls the calculated rows; called on load and after a bill is saved (the totals change then).
+  const loadSummary = async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/wo-contractor-log/summary/${woId}`, { headers })
+      const d = res.data?.data
+      if (!d) return
+      onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract?.amount ?? 0))
+      setTerms([
+        { item_type: 'CONTRACT', percent: d.contract.percent, amount: d.contract.amount, accumulate: d.contract.accumulate, balance: d.contract.balance },
+        { item_type: 'ADVANCE', percent: d.advance.percent, amount: d.advance.amount, accumulate: d.advance.accumulate, balance: d.advance.balance },
+        { item_type: 'RETENTION', percent: d.retention.percent, amount: d.retention.amount, accumulate: d.retention.accumulate, balance: d.retention.balance },
+      ])
+    } catch (e) {
+      message.error(errText(e, 'โหลดสรุป Contract / Advance / Retention ไม่สำเร็จ'))
+    }
+  }
 
   const columns: ColumnsType<TermRow> = [
-    { title: 'รายการ (Item)', dataIndex: 'item_type', render: (t: ItemType) => TERM_LABEL[t], width: 160 },
-    { title: '%', width: 140, render: (_, r) => numCell(r.item_type, 'percent', true) },
-    { title: 'Amount', width: 200, render: (_, r) => numCell(r.item_type, 'amount') },
-    { title: 'Accumulate (สะสม)', width: 200, render: (_, r) => numCell(r.item_type, 'accumulate') },
-    { title: 'Balance', width: 200, render: (_, r) => numCell(r.item_type, 'balance') },
+    { title: 'รายการ (Item)', dataIndex: 'item_type', render: (t: ItemType) => TERM_LABEL[t], width: 130 },
+    { title: '%', width: 130, render: (_, r) => numCell(r.item_type, 'percent', true) },
+    { title: 'Amount', width: 170, render: (_, r) => numCell(r.item_type, 'amount') },
+    { title: 'Accumulate (สะสม)', width: 170, render: (_, r) => numCell(r.item_type, 'accumulate') },
+    { title: 'Balance', width: 170, render: (_, r) => numCell(r.item_type, 'balance') },
   ]
+
+  const loadFiles = async (id: number) => {
+    try {
+      const res = await axios.get(`${BASE_URL}/wo-contractor-log/${id}/attachments`, { headers })
+      setFiles(Array.isArray(res.data?.data) ? res.data.data : [])
+    } catch (e) {
+      message.error(errText(e, 'โหลดไฟล์แนบไม่สำเร็จ'))
+    }
+  }
+
+  // Uploading needs a saved record: the first file saves the document data (creating the record) like the bill buttons do.
+  const uploadFile = async (file: File) => {
+    const okType = /\.(pdf|jpe?g)$/i.test(file.name)
+    if (!okType) { message.error('รองรับเฉพาะไฟล์ PDF หรือ JPEG'); return }
+    if (file.size > 10 * 1024 * 1024) { message.error('ไฟล์ต้องมีขนาดไม่เกิน 10 MB'); return }
+    setUploading(true)
+    try {
+      const id = await ensureLog()
+      const fd = new FormData()
+      fd.append('file', file)
+      await axios.post(`${BASE_URL}/wo-contractor-log/${id}/attachments`, fd, { headers })
+      await loadFiles(id)
+      message.success('แนบไฟล์เรียบร้อยแล้ว')
+    } catch (e) {
+      message.error(errText(e, 'แนบไฟล์ไม่สำเร็จ'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeFile = async (f: LogFile) => {
+    if (!logId) return
+    try {
+      await axios.delete(`${BASE_URL}/wo-contractor-log/${logId}/attachments/${f.id}`, { headers })
+      setFiles((prev) => prev.filter((x) => x.id !== f.id))
+    } catch (e) {
+      message.error(errText(e, 'ลบไฟล์ไม่สำเร็จ'))
+    }
+  }
 
   // Saves the tab 1 data (project + Contract/Advance/Retention table), creating the record on the first call, and
   // returns its id. Tab 2's บันทึกร่าง / บันทึก buttons call this before saving the bill, so tab 2 is the only place
@@ -162,6 +241,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
     try {
       const g = await axios.get(`${BASE_URL}/wo-contractor-log/${id}`, { headers })
       setWoCtx((p) => ({ ...p, credit: g.data?.data?.credit_term_days ?? null }))
+      await loadSummary()
     } catch { /* tab 2 simply keeps the credit term it has */ }
   }
 
@@ -190,37 +270,78 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
         </Col>
       </Row>
 
-      <div style={{ marginBottom: 12 }}>
-        <Button onClick={() => setActiveTab('billType')}>ประเภทวางบิล</Button>
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+        <Button type={docView === 'contract' ? 'primary' : 'default'} onClick={() => setDocView('contract')}>Contract</Button>
+        <Button type={docView === 'bill' ? 'primary' : 'default'} onClick={() => setDocView('bill')}>ประเภทวางบิล</Button>
       </div>
 
+      <div style={{ display: docView === 'contract' ? 'block' : 'none' }}>
       <Table<TermRow>
         rowKey="item_type"
         size="small"
         pagination={false}
         dataSource={terms}
         columns={columns}
-        scroll={{ x: 700 }}
+        className="wo-log-terms"
+        scroll={{ x: 770 }}
         style={{ marginBottom: 20 }}
       />
 
-      <Row gutter={[16, 0]}>
-        <Col {...FIELD_SPAN}>
-          <Form.Item label={<span style={labelStyle}>PJ</span>} name="project_code" style={{ marginBottom: 0 }}>
-            <Select
-              showSearch
-              allowClear
-              loading={projectsLoading}
-              style={fieldStyle}
-              placeholder="เลือกโครงการ"
-              optionFilterProp="label"
-              options={projects}
-              onChange={(v?: string) => setPjCurrent(v)}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
+      </div>
     </Form>
+  )
+
+  const billView = (
+    <div style={{ display: docView === 'bill' ? 'block' : 'none' }}>
+      <WOContractorBillTab
+        logId={logId}
+        onEnsureLog={ensureLog}
+        onBillSaved={refreshCredit}
+        woId={woId}
+        supplierName={woCtx.supplier}
+        creditTermDays={woCtx.credit}
+        // The bill's % -> amount always uses this work order's own contract value (not the editable Contract row).
+        contractAmount={woCtx.contractAmount || (terms.find((t) => t.item_type === 'CONTRACT')?.amount ?? 0)}
+        defaultAdvPct={terms.find((t) => t.item_type === 'ADVANCE')?.percent}
+        defaultRetentionPct={terms.find((t) => t.item_type === 'RETENTION')?.percent}
+      />
+    </div>
+  )
+
+  const filesTab = (
+    <div>
+      <Upload.Dragger
+        accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+        showUploadList={false}
+        multiple
+        disabled={uploading}
+        beforeUpload={(file) => { void uploadFile(file as unknown as File); return false }}
+        style={{ marginBottom: 16 }}
+      >
+        <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+        <p className="ant-upload-text">{uploading ? 'กำลังอัปโหลด...' : 'ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์'}</p>
+        <p className="ant-upload-hint">รองรับไฟล์ PDF / JPEG ไฟล์ละไม่เกิน 10 MB (เลือกได้หลายไฟล์)</p>
+      </Upload.Dragger>
+      <Table<LogFile>
+        rowKey="id"
+        size="small"
+        pagination={false}
+        dataSource={files}
+        locale={{ emptyText: 'ยังไม่มีไฟล์แนบ' }}
+        columns={[
+          { title: 'ชื่อไฟล์', dataIndex: 'file_name', render: (v: string, r) => <a href={r.file_path} target="_blank" rel="noopener noreferrer">{v}</a> },
+          { title: 'ขนาด', dataIndex: 'file_size', width: 110, align: 'right', render: (v?: number | null) => fmtSize(v) },
+          {
+            title: '', key: 'del', width: 56, align: 'center',
+            render: (_, r) => (
+              <Popconfirm title="ลบไฟล์นี้?" okText="ลบ" cancelText="ยกเลิก" onConfirm={() => removeFile(r)}>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              </Popconfirm>
+            ),
+          },
+        ]}
+      />
+    </div>
   )
 
   if (loading) {
@@ -230,27 +351,12 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId }) => {
   return (
     <div>
       <Tabs
+        className="wo-log-tabs"
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[
-          { key: 'doc', label: 'ข้อมูลเอกสาร', children: docTab },
-          {
-            key: 'billType',
-            label: 'ประเภทรับวางบิล',
-            children: (
-              <WOContractorBillTab
-                logId={logId}
-                onEnsureLog={ensureLog}
-                onBillSaved={refreshCredit}
-                woId={woId}
-                supplierName={woCtx.supplier}
-                creditTermDays={woCtx.credit}
-                contractAmount={terms.find((t) => t.item_type === 'CONTRACT')?.amount ?? woCtx.contractAmount ?? 0}
-                defaultAdvPct={terms.find((t) => t.item_type === 'ADVANCE')?.percent}
-                defaultRetentionPct={terms.find((t) => t.item_type === 'RETENTION')?.percent}
-              />
-            ),
-          },
+          { key: 'doc', label: 'ข้อมูลเอกสาร', children: <>{docTab}{billView}</> },
+          { key: 'files', label: 'แนบไฟล์ PDF/JPEG', children: filesTab },
         ]}
       />
     </div>
