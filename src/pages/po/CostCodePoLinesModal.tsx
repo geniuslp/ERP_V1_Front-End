@@ -8,7 +8,10 @@ import api from '@/services/api'
 // Row of GET /po/cost-budget/:projectCode/cost-codes/:costSubgroupId/po-lines
 interface CostCodePoLine {
   // 'PC' rows: po_id/po_no/po_status hold the petty cash header id / document number / status.
-  source?: 'PO' | 'PC'
+  source?: 'PO' | 'PC' | 'TR'
+  // 'TR' rows (project transfer): po_no is the TF document number, project_name the OTHER project of the
+  // transfer, quantity negative when the goods left this project; doc_project_code owns the document.
+  doc_project_code?: string | null
   po_id: number
   po_no: string
   project_code: string
@@ -130,9 +133,11 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       dataIndex: 'source',
       key: 'source',
       ...col('source'),
-      render: (v: 'PO' | 'PC' | undefined) =>
+      render: (v: 'PO' | 'PC' | 'TR' | undefined) =>
         v === 'PC' ? (
           <Tag color="orange" style={{ margin: 0 }}>เงินสดย่อย</Tag>
+        ) : v === 'TR' ? (
+          <Tag color="green" style={{ margin: 0 }}>โอน</Tag>
         ) : (
           <Tag color="blue" style={{ margin: 0 }}>PO</Tag>
         ),
@@ -145,7 +150,13 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       // Detail routes open in a new tab (PO without the approval-scoping flag).
       render: (v: string, r) => (
         <a
-          href={r.source === 'PC' ? `/petty-cash/${r.po_id}` : `/po/approval/${r.po_id}`}
+          href={
+            r.source === 'PC'
+              ? `/petty-cash/${r.po_id}`
+              : r.source === 'TR'
+                ? `/ic/projects/${r.doc_project_code}/movement/${r.po_id}`
+                : `/po/approval/${r.po_id}`
+          }
           target="_blank"
           rel="noopener noreferrer"
           style={{ fontWeight: 600 }}
@@ -208,7 +219,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       title={
         target ? (
           <div>
-            <div>{`รายการ PO / เงินสดย่อย - ${target.costCode} ${target.description ?? ''}`.trim()}</div>
+            <div>{`รายการ PO / เงินสดย่อย / โอน - ${target.costCode} ${target.description ?? ''}`.trim()}</div>
             <div style={{ fontSize: 12, fontWeight: 400, color: '#60a5fa', marginTop: 2 }}>
               {`${target.projectCode} ${(target.projectName ?? '').replace(/\s+/g, ' ')}`.trim()}
             </div>
@@ -229,7 +240,7 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
         // 55vh x 1.3 = ~72vh, capped to the viewport minus the modal chrome (max 90vh).
         scroll={{ x: scrollX, y: 'min(72vh, calc(100vh - 260px))' }}
         locale={{
-          emptyText: loading ? ' ' : error ? <span style={{ color: '#dc2626' }}>{error}</span> : 'ไม่มีรายการ PO หรือเงินสดย่อยภายใต้รหัสต้นทุนนี้',
+          emptyText: loading ? ' ' : error ? <span style={{ color: '#dc2626' }}>{error}</span> : 'ไม่มีรายการ PO เงินสดย่อย หรือโอนภายใต้รหัสต้นทุนนี้',
         }}
       />
     </Modal>
