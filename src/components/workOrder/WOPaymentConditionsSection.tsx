@@ -10,17 +10,20 @@ import type {
 
 const DATE_FORMAT = 'YYYY-MM-DD'
 
+// Each numbered block is a clearly separate card: blue outline + blue left bar + a stronger navy shadow
+// (the matching header tint lives in index.css under .wo-block).
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
-  border: 'none',
-  boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
-  marginBottom: 16,
+  border: '1px solid #bcd0f0',
+  borderLeft: '4px solid #2563eb',
+  boxShadow: '0 4px 16px rgba(15,45,94,0.14)',
+  marginBottom: 20,
 }
 
 const subCardStyle: React.CSSProperties = {
   borderRadius: 10,
-  border: '1px solid #e5e7eb',
-  boxShadow: 'none',
+  border: '1px solid #c7d9f5',
+  boxShadow: '0 1px 4px rgba(15,45,94,0.08)',
   marginBottom: 16,
 }
 
@@ -304,7 +307,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   ]
 
   return (
-    <Card title="7. เงื่อนไขการจ่ายเงิน" style={cardStyle}>
+    <Card className="wo-block" title="7. เงื่อนไขการจ่ายเงิน" style={cardStyle}>
       {advanceSlot && (
         <Card title="7.1 เงินล่วงหน้า" size="small" style={subCardStyle}>
           {advanceSlot}

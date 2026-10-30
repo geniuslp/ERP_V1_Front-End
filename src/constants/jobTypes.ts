@@ -38,6 +38,8 @@ export interface JobTypeOption {
 // new codes (MS, EE, SN, FF, GS, AC) share no common prefix. Mirrors tradeJobCodes in erp-api job_type.go.
 export const TRADE_JOB_CODES = ['MS', 'EE', 'SN', 'FF', 'GS', 'AC', 'CS', 'AR']
 export const isTradeJobCode = (code: string): boolean => TRADE_JOB_CODES.includes(code)
+// A work order's งานระบบ may be any engineering system plus G (General Code). Mirrors IsWorkOrderSystemCode in erp-api.
+export const isWorkOrderSystemCode = (code: string): boolean => isTradeJobCode(code) || code === 'G'
 
 export const JOB_TYPES: JobTypeOption[] = [
   { code: 'MS', label: 'MS - Metal Structure', filterSubjectCodes: ['M', 'S', 'L'], filterJobCode: 'P' },

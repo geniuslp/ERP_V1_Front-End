@@ -423,3 +423,8 @@ body {
 .wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active { background: #1d4ed8; box-shadow: 0 2px 8px rgba(15,45,94,0.18); }
 .wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #fff; font-weight: 600; }
 .wo-log-tabs .ant-tabs-ink-bar { background: #0f2d5e; height: 3px; }
+
+/* WO create page: every numbered block is its own card — tinted header, navy title, blue divider. */
+.wo-block > .ant-card-head { background: #eef4ff; border-bottom: 1px solid #cfe0f7; border-radius: 12px 12px 0 0; }
+.wo-block > .ant-card-head .ant-card-head-title { color: #0f2d5e; font-weight: 700; }
+.wo-block .ant-card.ant-card-small > .ant-card-head { background: #f6f9ff; border-bottom: 1px solid #dbe6f5; }

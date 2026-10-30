@@ -23,7 +23,7 @@ import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WAREHOUSE_PROJECT_CODES } from '@/constants/warehouseProjects'
 import { useJobTypes } from '@/hooks/useJobTypeNames'
-import { isTradeJobCode } from '@/constants/jobTypes'
+import { isWorkOrderSystemCode } from '@/constants/jobTypes'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 
 // "เจ้าของโครงการ (ผู้ว่าจ้าง)" — only the head-office option is offered; sent as employer_name.
@@ -48,16 +48,19 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 // Sub-block inside a numbered section (same look as WOPaymentConditionsSection's 7.x blocks).
 const subCardStyle: React.CSSProperties = {
   borderRadius: 10,
-  border: '1px solid #e5e7eb',
-  boxShadow: 'none',
+  border: '1px solid #c7d9f5',
+  boxShadow: '0 1px 4px rgba(15,45,94,0.08)',
   marginBottom: 16,
 }
 
+// Each numbered block is a clearly separate card: blue outline + blue left bar + a stronger navy shadow
+// (the matching header tint lives in index.css under .wo-block).
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
-  border: 'none',
-  boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
-  marginBottom: 16,
+  border: '1px solid #bcd0f0',
+  borderLeft: '4px solid #2563eb',
+  boxShadow: '0 4px 16px rgba(15,45,94,0.14)',
+  marginBottom: 20,
 }
 
 const labelStyle: React.CSSProperties = { color: '#374151', fontSize: 13 }
@@ -339,7 +342,7 @@ const WorkOrderCreatePage: React.FC = () => {
         setLoadedStatus(wo.status)
         setLoadedContractAmount(wo.contract_amount != null ? Number(wo.contract_amount) : undefined)
         const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
-        setLegacyWorkSystem(storedSystems.filter((v) => !isTradeJobCode(v)))
+        setLegacyWorkSystem(storedSystems.filter((v) => !isWorkOrderSystemCode(v)))
         form.setFieldsValue({
           ...wo,
           approver_id: wo.approver_id != null ? Number(wo.approver_id) : undefined,
@@ -588,7 +591,7 @@ const WorkOrderCreatePage: React.FC = () => {
 
   if (loading) {
     return (
-      <Card style={cardStyle}>
+      <Card className="wo-block" style={cardStyle}>
         <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
       </Card>
     )
@@ -676,7 +679,7 @@ const WorkOrderCreatePage: React.FC = () => {
               >
                 <Form.Item name="supplier_name" hidden><Input /></Form.Item>
 
-                <Card title="เอกสาร" style={cardStyle}>
+                <Card className="wo-block" title="เอกสาร" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN}>
                       <Form.Item label={<span style={labelStyle}>เลขที่ WO</span>} name="wo_no">
@@ -692,7 +695,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 1. เจ้าของโครงการ — 12 + 12 */}
-                <Card title="1. เจ้าของโครงการ (ผู้ว่าจ้าง)" style={cardStyle}>
+                <Card className="wo-block" title="1. เจ้าของโครงการ (ผู้ว่าจ้าง)" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item label={<span style={labelStyle}>เจ้าของโครงการ (ผู้ว่าจ้าง)</span>} name="employer_name" rules={[{ required: true, message: 'กรุณาระบุเจ้าของโครงการ' }]}>
@@ -737,7 +740,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 2. ผู้รับจ้าง / ผู้ให้เช่า — row 1: 12 + 6 + 6, row 2: 12 */}
-                <Card title="2. ผู้รับจ้าง / ผู้ให้เช่า" style={cardStyle}>
+                <Card className="wo-block" title="2. ผู้รับจ้าง / ผู้ให้เช่า" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item label={<span style={labelStyle}>บริษัท</span>} name="supplier_id" rules={[{ required: true, message: 'กรุณาเลือกบริษัทผู้รับจ้าง / ผู้ให้เช่า' }]}>
@@ -772,7 +775,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 3. ประเภทสัญญา — 6 */}
-                <Card title="3. สัญญานี้เป็นสัญญาประเภท" style={cardStyle}>
+                <Card className="wo-block" title="3. สัญญานี้เป็นสัญญาประเภท" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN}>
                       <Form.Item label={<span style={labelStyle}>ประเภทสัญญา</span>} name="contract_type" style={{ marginBottom: 0 }}>
@@ -788,7 +791,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 4. งานระบบ — 12 (multi-select tags need the room) */}
-                <Card title="4. งานระบบ" style={cardStyle}>
+                <Card className="wo-block" title="4. งานระบบ" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item
@@ -804,7 +807,7 @@ const WorkOrderCreatePage: React.FC = () => {
                           placeholder="เลือกงานระบบ"
                           options={[
                             ...jobTypes
-                              .filter((j) => isTradeJobCode(j.job_code))
+                              .filter((j) => isWorkOrderSystemCode(j.job_code))
                               .map((j) => ({ value: j.job_code, label: `${j.job_code} - ${j.job_name}` })),
                             ...legacyWorkSystem.map((v) => ({ value: v, label: `${WO_WORK_SYSTEM_LABEL[v] ?? v} (ค่าเดิม)` })),
                           ]}
@@ -815,7 +818,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 5. ลักษณะของสัญญา — 12 */}
-                <Card title="5. ลักษณะของสัญญา" style={cardStyle}>
+                <Card className="wo-block" title="5. ลักษณะของสัญญา" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item label={<span style={labelStyle}>ลักษณะของสัญญา</span>} name="contract_description" style={{ marginBottom: 0 }}>
@@ -826,7 +829,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 6. มูลค่าสัญญา (ไม่รวม VAT) — 6 + 6 + 6 */}
-                <Card title="6. มูลค่าสัญญา (ไม่รวม VAT)" style={cardStyle}>
+                <Card className="wo-block" title="6. มูลค่าสัญญา (ไม่รวม VAT)" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN}>
                       <Form.Item
@@ -942,7 +945,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 />
 
                 {/* 8. ระยะเวลาสัญญา — 6 + 6 + 6 + 6 */}
-                <Card title="8. ระยะเวลาสัญญา" style={cardStyle}>
+                <Card className="wo-block" title="8. ระยะเวลาสัญญา" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN}>
                       <Form.Item label={<span style={labelStyle}>วันที่เริ่มงาน</span>} name="start_date">
@@ -976,7 +979,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 9. อ้างอิงสัญญา — 12 */}
-                <Card title="9. อ้างอิงสัญญา" style={cardStyle}>
+                <Card className="wo-block" title="9. อ้างอิงสัญญา" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item label={<span style={labelStyle}>เลขที่อ้างอิง</span>} name="ref_no" style={{ marginBottom: 0 }}>
@@ -987,7 +990,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 </Card>
 
                 {/* 10. เงื่อนไขอื่นๆ — 24 */}
-                <Card title="10. เงื่อนไขอื่นๆ" style={cardStyle}>
+                <Card className="wo-block" title="10. เงื่อนไขอื่นๆ" style={cardStyle}>
                   <Row gutter={[16, 0]}>
                     <Col xs={24}>
                       <Form.Item label={<span style={labelStyle}>เงื่อนไขอื่นๆ</span>} name="other_terms" style={{ marginBottom: 0 }}>
