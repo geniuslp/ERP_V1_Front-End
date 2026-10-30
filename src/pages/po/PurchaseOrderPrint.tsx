@@ -1,3 +1,6 @@
+import { signerNameFontPt } from '@/utils/signerName'
+import { paginateRows } from '@/utils/printPagination'
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
@@ -208,6 +211,8 @@ function calcSummary(data:POData) {
 const MM_TO_PX = 96/25.4
 const PAGE_H_MM = 275
 const BOTTOM_BUFFER_MM = 8
+// The last page's table has a little more padding per row than the measuring table.
+const SPACED_ROW_EXTRA_MM = 1.6
 
 const CSS = `
   .po-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
@@ -320,7 +325,7 @@ const POHeader = ({data,pageNum,totalPages}:{data:POData;pageNum:number;totalPag
         <div style={{fontSize:'11pt',color:'#02276e',lineHeight:1.05,fontFamily: "Cordia New",marginLeft:'3px'}}>
           <div style={{whiteSpace:'nowrap'}}>1467 ถนนกาญจนาภิเษก แขวงบางแคเหนือ เขตบางแค กรุงเทพฯ 10160</div>
           <div style={{whiteSpace:'nowrap'}}>1467 Kanjanapisek Rd., Bangkaenua, Bangkae, Bangkok 10160</div>
-          <div style={{whiteSpace:'nowrap'}}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;105554142442&nbsp;&nbsp;www.geniuslp.com</div>
+          <div style={{whiteSpace:'nowrap'}}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;0105554142442&nbsp;&nbsp;www.geniuslp.com</div>
         </div>
       </div>
     </div>
@@ -363,8 +368,8 @@ const POInfoBox = ({data}:{data:POData}) => (
   </div>
 )
 
-const ItemRow = ({row}:{row:POItem}) => (
-  <tr>
+const ItemRow = ({row,rowRef}:{row:POItem;rowRef?:React.Ref<HTMLTableRowElement>}) => (
+  <tr ref={rowRef}>
     <td style={{textAlign:'center'}}>{row.no}</td>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
@@ -398,7 +403,7 @@ const POFooter = ({data}:{data:POData}) => {
         <div style={{display:'flex',borderBottom:'1px solid #000'}}>
           <div style={{flex:1,padding:'4px 8px',borderRight:'1px solid #000',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div style={{fontWeight:700,marginBottom:2}}>หมายเหตุ / Remark</div>
-            {data.remark.split('\n').map((l,i)=><div key={i} style={{lineHeight:'1.2'}}>{l}</div>)}
+            <FormattedNote value={data.remark} lineHeight="1.2" />
             <div style={{marginTop:4,lineHeight:'1.2'}}>
               <div><b>Delivery Date :</b>&nbsp;{data.deliveryDate}&nbsp;&nbsp;<b>Delivery Place :</b>&nbsp;{data.deliveryPlace}</div>
               {/* Contract Delivery had no real backing field (was a hardcoded
@@ -446,7 +451,7 @@ const POFooter = ({data}:{data:POData}) => {
                 <div className="auth-head">
                   {sig?.signature_data_url
                     ? <SignatureImg src={sig.signature_data_url} alt={col.label} />
-                    : sig?.full_name && <div style={{textAlign:'center',fontSize:'8.5pt'}}>{sig.full_name}</div>}
+                    : sig?.full_name && <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>}
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>
@@ -474,11 +479,10 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   const refHeader = useRef<HTMLDivElement>(null)
   const refInfo   = useRef<HTMLDivElement>(null)
   const refFooter = useRef<HTMLDivElement>(null)
-  const refRow    = useRef<HTMLTableRowElement>(null)
+  const refRows = useRef<(HTMLTableRowElement | null)[]>([])
   const refThead  = useRef<HTMLTableSectionElement>(null)
 
   const [pages,    setPages]    = useState<POItem[][]|null>(null)
-  const [rowsLast, setRowsLast] = useState(10)
   const [imagesReady, setImagesReady] = useState(false)
 
   useEffect(()=>{
@@ -513,29 +517,27 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   useEffect(()=>{
     if(pages!==null) return
-    if(!refHeader.current||!refInfo.current||!refFooter.current||!refRow.current||!refThead.current) return
-    const px2mm = (px:number)=>px/MM_TO_PX
+    if (!refHeader.current || !refInfo.current || !refFooter.current || !refThead.current) return
+    const px2mm = (px: number) => px / MM_TO_PX
     const hMm = px2mm(refHeader.current.getBoundingClientRect().height)
     const iMm = px2mm(refInfo.current.getBoundingClientRect().height)
     const fMm = px2mm(refFooter.current.getBoundingClientRect().height)
     const tMm = px2mm(refThead.current.getBoundingClientRect().height)
-    const rMm = px2mm(refRow.current.getBoundingClientRect().height)
-    const fixed = hMm+iMm+tMm
-    const rOther = Math.floor((PAGE_H_MM-BOTTOM_BUFFER_MM-fixed)/rMm)
-    const rLast  = Math.floor((PAGE_H_MM-BOTTOM_BUFFER_MM-fixed-fMm)/rMm)
-    console.log(`[PO] h:${hMm.toFixed(1)} i:${iMm.toFixed(1)} f:${fMm.toFixed(1)} t:${tMm.toFixed(1)} r:${rMm.toFixed(1)} → other:${rOther} last:${rLast}`)
-    const result:POItem[][] = []
-    let idx=0
-    while(idx<data.items.length){
-      const last = idx+rOther>=data.items.length
-      result.push(data.items.slice(idx,idx+(last?rLast:rOther)))
-      idx+=last?rLast:rOther
+    const avail = PAGE_H_MM - BOTTOM_BUFFER_MM - (hMm + iMm + tMm)
+    // Every row is measured as it really renders (a long name or a multi-line remark makes a row taller), so a page
+    // never overflows and the footer is always on the last page, at its bottom.
+    const rowEls = data.items.map((_, i) => refRows.current[i])
+    if (rowEls.some((el) => !el)) return
+    const heights = rowEls.map((el) => px2mm(el!.getBoundingClientRect().height))
+    // The last page's rows use the "spaced" table (a little more padding per row): re-check with that extra.
+    let idxPages = paginateRows(heights, avail, fMm)
+    const lastIds = idxPages[idxPages.length - 1]
+    if (lastIds.reduce((a, i) => a + heights[i] + SPACED_ROW_EXTRA_MM, 0) + fMm > avail) {
+      idxPages = paginateRows(heights.map((h) => h + SPACED_ROW_EXTRA_MM), avail, fMm)
     }
-    // Zero items would otherwise leave `result` empty, rendering no page at
-    // all (blank print output) — always emit at least one page so header/
-    // totals/signature block still show for layout preview purposes.
-    if(result.length===0) result.push([])
-    setRowsLast(rLast)
+    const result: POItem[][] = idxPages.map((ids) => ids.map((i) => data.items[i]))
+    // Zero items would otherwise leave `result` empty (blank print): always emit at least one page.
+    if (result.length === 0) result.push([])
     setPages(result)
   })
 
@@ -551,10 +553,9 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
           <div ref={refInfo}><POInfoBox data={data}/></div>
           <table className="po-tbl">{TABLE_COLS}
             <thead ref={refThead}>{TABLE_HEAD.props.children}</thead>
-            <tbody><tr ref={refRow}>
-              <td>1</td><td>CODE</td><td><div>Sample desc</div><div>sub</div></td>
-              <td>10</td><td>เส้น</td><td>1,000.00</td><td>5%</td><td>9,500.00</td>
-            </tr></tbody>
+            <tbody>{data.items.map((row, i) => (
+              <ItemRow key={i} row={row} rowRef={(el)=>{refRows.current[i]=el}}/>
+            ))}</tbody>
           </table>
           <div ref={refFooter}><POFooter data={data}/></div>
         </div>

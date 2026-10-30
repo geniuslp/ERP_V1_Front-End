@@ -1,3 +1,4 @@
+import { signerNameFontPt } from '@/utils/signerName'
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
@@ -181,7 +182,7 @@ const Header = ({ pageNum, totalPages }: { pageNum: number; totalPages: number }
         <div style={{ fontSize: '11pt', color: '#02276e', lineHeight: 1.05, fontFamily: 'Cordia New', marginLeft: '3px' }}>
           <div style={{ whiteSpace: 'nowrap' }}>1467 ถนนกาญจนาภิเษก แขวงบางแคเหนือ เขตบางแค กรุงเทพฯ 10160</div>
           <div style={{ whiteSpace: 'nowrap' }}>1467 Kanjanapisek Rd., Bangkaenua, Bangkae, Bangkok 10160</div>
-          <div style={{ whiteSpace: 'nowrap' }}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;105554142442&nbsp;&nbsp;www.geniuslp.com</div>
+          <div style={{ whiteSpace: 'nowrap' }}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;0105554142442&nbsp;&nbsp;www.geniuslp.com</div>
         </div>
       </div>
     </div>
@@ -266,14 +267,14 @@ const Summary = ({ data }: { data: PettyCashPrintData }) => (
 const Footer = ({ data }: { data: PettyCashPrintData }) => (
   <div className="pcp-auth">
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head">{data.requester && <div>{data.requester}</div>}</div>
+      <div className="pcp-auth-head">{data.requester && <div style={{ fontSize: `${signerNameFontPt(data.requester, 95)}pt` }}>{data.requester}</div>}</div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้ขอเบิก / Requester</div>
       </div>
       <div className="pcp-auth-date">({data.pcDate || '-'})</div>
     </div>
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head">{data.approver && <div>{data.approver}</div>}</div>
+      <div className="pcp-auth-head">{data.approver && <div style={{ fontSize: `${signerNameFontPt(data.approver, 95)}pt` }}>{data.approver}</div>}</div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้อนุมัติ / Approver</div>
       </div>

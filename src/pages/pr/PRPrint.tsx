@@ -1,3 +1,6 @@
+import { signerNameFontPt } from '@/utils/signerName'
+import FormattedNote from '@/components/common/FormattedNote'
+import { paginateRows } from '@/utils/printPagination'
 import React, { useEffect, useRef, useState } from 'react'
 import { ORDER_TYPE_LABEL as SHARED_ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 import ReactDOM from 'react-dom'
@@ -111,6 +114,8 @@ const PRINT_ORDER_TYPE_LABEL: Record<string, string> = {
 const MM_TO_PX = 96 / 25.4
 const PAGE_H_MM = 275
 const BOTTOM_BUFFER_MM = 8
+// The last page's table has a little more padding per row than the measuring table.
+const SPACED_ROW_EXTRA_MM = 1.6
 
 const CSS = `
   .pr-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
@@ -202,7 +207,7 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
         <div style={{ fontSize: '11pt', color: '#02276e', lineHeight: 1.05, fontFamily: 'Cordia New', marginLeft: '3px' }}>
           <div style={{ whiteSpace: 'nowrap' }}>1467 ถนนกาญจนาภิเษก แขวงบางแคเหนือ เขตบางแค กรุงเทพฯ 10160</div>
           <div style={{ whiteSpace: 'nowrap' }}>1467 Kanjanapisek Rd., Bangkaenua, Bangkae, Bangkok 10160</div>
-          <div style={{ whiteSpace: 'nowrap' }}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;105554142442&nbsp;&nbsp;www.geniuslp.com</div>
+          <div style={{ whiteSpace: 'nowrap' }}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;0105554142442&nbsp;&nbsp;www.geniuslp.com</div>
         </div>
       </div>
     </div>
@@ -230,7 +235,7 @@ const PRInfoBox = ({ data }: { data: PRData }) => (
     <div style={{ display: 'flex', gap: 4 }}>
       <b style={{ flexShrink: 0 }}>หมายเหตุ :</b>
       <span>
-        {(data.remark || '').split('\n').map((l, i) => <div key={i}>{l}</div>)}
+        <FormattedNote value={data.remark} />
       </span>
     </div>
   </div>
@@ -254,14 +259,14 @@ const formatCostCodeForPrint = (costCode?: string): string => {
 // line, just without the dash.
 const cleanItemName = (desc: string): string => desc.replace(/\s*--\s*/g, ' ').trim()
 
-const ItemRow = ({ row }: { row: PRItem }) => (
-  <tr>
+const ItemRow = ({ row, rowRef }: { row: PRItem; rowRef?: React.Ref<HTMLTableRowElement> }) => (
+  <tr ref={rowRef}>
     <td style={{ textAlign: 'center' }}>{row.no}</td>
     <td style={{ color: '#444', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatCostCodeForPrint(row.costCode)}</td>
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {cleanItemName(row.desc)}{row.spec ? ` ${row.spec}` : ''}
       {row.remark && (
-        <div style={{ fontSize: '10.5pt', color: '#333' }}>{row.remark}</div>
+        <div style={{ fontSize: '10.5pt', color: '#333' }}><FormattedNote value={row.remark} /></div>
       )}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
@@ -291,7 +296,7 @@ const PRFooter = ({ data }: { data: PRData }) => (
             {data.requesterSignature?.signatureDataUrl ? (
               <SignatureImg src={data.requesterSignature.signatureDataUrl} alt="ผู้ขอซื้อ" />
             ) : (data.requesterName || data.requesterSignature?.fullName) && (
-              <div style={{ textAlign: 'center', fontSize: '8.5pt' }}>{data.requesterName || data.requesterSignature?.fullName}</div>
+              <div style={{ textAlign: 'center', fontSize: `${signerNameFontPt(data.requesterName || data.requesterSignature?.fullName, 48.5)}pt` }}>{data.requesterName || data.requesterSignature?.fullName}</div>
             )}
           </div>
           <div className="auth-body">
@@ -323,11 +328,10 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
   const refHeader = useRef<HTMLDivElement>(null)
   const refInfo = useRef<HTMLDivElement>(null)
   const refFooter = useRef<HTMLDivElement>(null)
-  const refRow = useRef<HTMLTableRowElement>(null)
+  const refRows = useRef<(HTMLTableRowElement | null)[]>([])
   const refThead = useRef<HTMLTableSectionElement>(null)
 
   const [pages, setPages] = useState<PRItem[][] | null>(null)
-  const [rowsLast, setRowsLast] = useState(10)
   const [imagesReady, setImagesReady] = useState(false)
 
   useEffect(() => {
@@ -362,25 +366,27 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
 
   useEffect(() => {
     if (pages !== null) return
-    if (!refHeader.current || !refInfo.current || !refFooter.current || !refRow.current || !refThead.current) return
+    if (!refHeader.current || !refInfo.current || !refFooter.current || !refThead.current) return
     const px2mm = (px: number) => px / MM_TO_PX
     const hMm = px2mm(refHeader.current.getBoundingClientRect().height)
     const iMm = px2mm(refInfo.current.getBoundingClientRect().height)
     const fMm = px2mm(refFooter.current.getBoundingClientRect().height)
     const tMm = px2mm(refThead.current.getBoundingClientRect().height)
-    const rMm = px2mm(refRow.current.getBoundingClientRect().height)
     const fixed = hMm + iMm + tMm
-    const rOther = Math.floor((PAGE_H_MM - BOTTOM_BUFFER_MM - fixed) / rMm)
-    const rLast = Math.floor((PAGE_H_MM - BOTTOM_BUFFER_MM - fixed - fMm) / rMm)
-    const result: PRItem[][] = []
-    let idx = 0
-    while (idx < data.items.length) {
-      const last = idx + rOther >= data.items.length
-      result.push(data.items.slice(idx, idx + (last ? rLast : rOther)))
-      idx += last ? rLast : rOther
+    const avail = PAGE_H_MM - BOTTOM_BUFFER_MM - fixed
+    // Every row is measured as it really renders (a long item name or a multi-line remark makes a row taller), so a
+    // page never overflows and the footer is always on the last page, at its bottom.
+    const rowEls = data.items.map((_, i) => refRows.current[i])
+    if (rowEls.some((el) => !el)) return
+    const heights = rowEls.map((el) => px2mm(el!.getBoundingClientRect().height))
+    // The last page's rows use the "spaced" table (a little more padding per row): re-check with that extra.
+    let idxPages = paginateRows(heights, avail, fMm)
+    const lastIds = idxPages[idxPages.length - 1]
+    if (lastIds.reduce((a, i) => a + heights[i] + SPACED_ROW_EXTRA_MM, 0) + fMm > avail) {
+      idxPages = paginateRows(heights.map((h) => h + SPACED_ROW_EXTRA_MM), avail, fMm)
     }
+    const result: PRItem[][] = idxPages.map((ids) => ids.map((i) => data.items[i]))
     if (result.length === 0) result.push([])
-    setRowsLast(rLast)
     setPages(result)
   })
 
@@ -396,10 +402,9 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
           <div ref={refInfo}><PRInfoBox data={data} /></div>
           <table className="pr-tbl">{TABLE_COLS}
             <thead ref={refThead}>{TABLE_HEAD.props.children}</thead>
-            <tbody><tr ref={refRow}>
-              <td>1</td><td>CC-001</td><td>Sample desc</td>
-              <td>10</td><td>เส้น</td>
-            </tr></tbody>
+            <tbody>{data.items.map((row, i) => (
+              <ItemRow key={i} row={row} rowRef={(el) => { refRows.current[i] = el }} />
+            ))}</tbody>
           </table>
           <div ref={refFooter}><PRFooter data={data} /></div>
         </div>
