@@ -228,7 +228,9 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
   // Spec follows the chosen Material, Brand follows the chosen Spec (nothing to pick until the parent is set)
   const specOptions = row.matNameId ? allSpecs.filter((o) => o.parentId === Number(row.matNameId)) : []
   const rowSpecId = specOptions.find((o) => o.code === row.specCode)?.id
-  const brandOptions = rowSpecId ? allBrands.filter((o) => o.parentId === rowSpecId) : []
+  // Legacy brands whose code is not 2 digits (e.g. "000 — -", created by the old '000' fallback) are not offered:
+  // picking one would build a 16-char mat_code again. Leave brand empty to get the '00' placeholder.
+  const brandOptions = rowSpecId ? allBrands.filter((o) => o.parentId === rowSpecId && BRAND_CODE_RE.test(o.code)) : []
   const rowBrandId = brandOptions.find((o) => o.code === row.brandCode)?.id
   useEffect(() => {
     if (!accessToken) return
