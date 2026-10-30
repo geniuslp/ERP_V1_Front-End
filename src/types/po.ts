@@ -50,6 +50,9 @@ export interface POListItem {
   // the PO list — deduplicated server-side but deduped defensively client-side too.
   job_names?: string[]
   updated_by_name?: string
+  // Last REAL edit of the PO's content (approve / reject / cancel / goods receipt do not count); absent = never edited.
+  last_edited_at?: string | null
+  last_edited_by_name?: string | null
   // Confirmed present on GET /po (list) as of this session — backend now
   // selects po.project_code directly (internal/handlers/po.go List).
   project_code?: string
