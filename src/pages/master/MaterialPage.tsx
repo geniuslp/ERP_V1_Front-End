@@ -169,6 +169,20 @@ const nextCode = (codes: string[]): string => {
   return `${prefix}${String(max + 1).padStart(width, '0')}`
 }
 
+// The brand segment of a material code is exactly 2 digits (P + subgroup 3 + name 3 + spec 3 + BRAND 2 +
+// unit 3; unit stays 3). A 3-digit brand shifts the code to 16 chars (PG06003008000030 instead of
+// PG0600300800030), so brand codes are validated here and the "no brand" placeholder is '00'.
+const BRAND_CODE_RE = /^\d{2}$/
+const BRAND_CODE_MSG = 'รหัสยี่ห้อต้องเป็นตัวเลข 2 หลัก (เช่น 00, 01)'
+const BRAND_CODE_PLACEHOLDER = '00'
+const nextBrandCode = (codes: string[]): string => {
+  const max = codes.reduce((m, raw) => {
+    const t = (raw ?? '').trim()
+    return /^\d{1,2}$/.test(t) ? Math.max(m, parseInt(t, 10)) : m
+  }, 0)
+  return String(max + 1).padStart(2, '0')
+}
+
 // Footer of every dropdown: switches that field of the row to "new value" mode.
 const withAddNew = (onAdd: () => void) => (menu: React.ReactElement) => (
   <>
@@ -285,7 +299,7 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
   })
   const addBrand = () => onChange(row.rowKey, {
     brandIsText: true, brandName: '',
-    brandCode: nextCode([...brandOptions.map((o) => o.code), ...others.filter((r) => r.brandIsText).map((r) => r.brandCode)]),
+    brandCode: nextBrandCode([...brandOptions.map((o) => o.code), ...others.filter((r) => r.brandIsText).map((r) => r.brandCode)]),
   })
   const addUnit = () => onChange(row.rowKey, {
     unitIsText: true, unitName: '',
@@ -513,7 +527,8 @@ const InsertRow: React.FC<InsertRowProps> = ({ row, displayNumber, groupOptions,
         <Row gutter={0} className="mm-pair">
           <Col span={9}>
             <FL text="รหัสยี่ห้อ" />
-            <Input size="small" placeholder="กรอกรหัสยี่ห้อ" value={row.brandCode}
+            <Input size="small" placeholder="เลข 2 หลัก" maxLength={2} value={row.brandCode}
+              status={row.brandCode.trim() && !BRAND_CODE_RE.test(row.brandCode.trim()) ? 'error' : undefined}
               onChange={(e) => onChange(row.rowKey, { brandCode: e.target.value })} />
           </Col>
           <Col span={13}>
@@ -604,8 +619,8 @@ const FILE_COLS = ['groupCode', 'subGroupCode', 'subGroupName', 'materialCode', 
 const downloadTemplate = () => {
   const ws = XLSX.utils.aoa_to_sheet([
     FILE_COLS,
-    ['GRP001', 'SUB001', 'วัตถุดิบเหล็ก', 'MAT001', 'เหล็กแผ่น SS400', 'SP001', '3x1200x2400 mm', 'BR001', 'TATA Steel', 'UN001', 'แผ่น'],
-    ['GRP002', 'SUB003', 'สินค้าอุปโภค', 'MAT004', 'ถุงพลาสติก', '', '', 'BR004', 'Thai Poly', 'UN004', 'ถุง'],
+    ['GRP001', 'SUB001', 'วัตถุดิบเหล็ก', 'MAT001', 'เหล็กแผ่น SS400', 'SP001', '3x1200x2400 mm', '01', 'TATA Steel', 'UN001', 'แผ่น'],
+    ['GRP002', 'SUB003', 'สินค้าอุปโภค', 'MAT004', 'ถุงพลาสติก', '', '', '04', 'Thai Poly', 'UN004', 'ถุง'],
   ])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Material')
@@ -652,6 +667,9 @@ const parseRows = (rows: Record<string, string>[], groups: GroupRaw[]): ParsedRo
 
     if (!grp)
       return { row: i + 2, groupCode, groupId: '', valid: false, error: `ไม่พบกลุ่ม "${groupCode}"`, data }
+
+    if (brandCode && !BRAND_CODE_RE.test(brandCode))
+      return { row: i + 2, groupCode, groupId: grp.id, valid: false, error: `${BRAND_CODE_MSG} (พบ "${brandCode}")`, data }
 
     return { row: i + 2, groupCode, groupId: grp.id, valid: true, data }
   })
@@ -1067,7 +1085,7 @@ const MaterialPage: React.FC = () => {
   // left Spec/Brand unselected (those fields aren't required on this form, but the
   // backend's mat_code still needs *something* in that position).
   const buildMatCode = (r: PendingRow) =>
-    [r.groupId, r.subGroupCode, r.materialCode, r.specCode.trim() || '000', r.brandCode.trim() || '000', r.unitCode].map((x) => x.trim()).join('')
+    [r.groupId, r.subGroupCode, r.materialCode, r.specCode.trim() || '000', r.brandCode.trim() || BRAND_CODE_PLACEHOLDER, r.unitCode].map((x) => x.trim()).join('')
 
   // Pre-submit duplicate check — calls the same GET /master/materials/{code} the
   // material detail/edit page already uses to look up one material by mat_code.
@@ -1096,6 +1114,10 @@ const MaterialPage: React.FC = () => {
       !r.materialCode || !r.materialName || !r.unitCode || !r.unitName
     )
     if (invalid) { message.warning('กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบทุกรายการ'); return }
+    if (rowsToSubmit.some((r) => r.brandCode.trim() && !BRAND_CODE_RE.test(r.brandCode.trim()))) {
+      message.warning(BRAND_CODE_MSG)
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -1122,7 +1144,7 @@ const MaterialPage: React.FC = () => {
           mat_name_th:      t(r.materialName),
           spec_code:        t(r.specCode)        || '000',
           spec_description: t(r.specDescription) || '-',
-          brand_code:       t(r.brandCode)       || '000',
+          brand_code:       t(r.brandCode)       || BRAND_CODE_PLACEHOLDER,
           brand_name:       t(r.brandName)       || '-',
           unit_code:        t(r.unitCode),
           unit_name:        t(r.unitName),
@@ -1571,7 +1593,15 @@ const MaterialPage: React.FC = () => {
           </Row>
           <Divider orientation="left" orientationMargin={0} style={{ fontSize: 12, color: '#b45309', margin: '0 0 12px' }}>ยี่ห้อ</Divider>
           <Row gutter={12}>
-            <Col span={10}><Form.Item label="รหัสยี่ห้อ" name="brandCode"><Input /></Form.Item></Col>
+            <Col span={10}><Form.Item label="รหัสยี่ห้อ" name="brandCode"
+              rules={[{
+                // a legacy value already on the record may stay as it is; anything typed must be 2 digits
+                validator: (_, v) => {
+                  const t = String(v ?? '').trim()
+                  return !t || BRAND_CODE_RE.test(t) || t === editing?.brandCode
+                    ? Promise.resolve() : Promise.reject(new Error(BRAND_CODE_MSG))
+                },
+              }]}><Input /></Form.Item></Col>
             <Col span={14}><Form.Item label="ชื่อยี่ห้อ" name="brandName"><Input /></Form.Item></Col>
           </Row>
           <Divider orientation="left" orientationMargin={0} style={{ fontSize: 12, color: '#059669', margin: '0 0 12px' }}>หน่วย</Divider>
