@@ -82,6 +82,7 @@ export interface WorkOrderLine {
   disc?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: number | null
+  remarks?: string | null // per-line รายละเอียด
 }
 
 export interface WOListItem {
@@ -144,6 +145,11 @@ export interface WorkOrder {
   warranty_years?: number
   has_penalty?: boolean // 8.1 เบี้ยปรับ มี/ไม่มี — fixed 1.00% of contract value per day
   warranty_note?: string // 8.2 ประกันผลงาน (free text)
+
+  // PR this WO was pulled from (null/absent = created without one). On save: send the PR id to link,
+  // omit/null to keep the stored link, 0 to clear it. pr_no is response-only.
+  pr_id?: number | null
+  pr_no?: string | null
 
   // ── Cost-code line items (mirrors PO's use_discount/discount_type/use_vat/
   // use_wht header flags + per-line discount/wht_rate — see WorkOrderLine) ──
@@ -240,5 +246,36 @@ export interface WOListResult {
 export type WorkOrderPayload = Omit<
   WorkOrder,
   'id' | 'status' | 'revision_round' | 'approver_name' | 'approved_at' | 'rejected_reason' |
-  'created_by_name' | 'created_at' | 'updated_at' | 'supplier_name' | 'supplier_code' | 'project_name'
+  'created_by_name' | 'created_at' | 'updated_at' | 'supplier_name' | 'supplier_code' | 'project_name' | 'pr_no'
 >
+
+// What a WO takes from a PR: project + job (→ งานระบบ) for tab 1, and the requested lines for tab 2.
+export interface WOPRSource {
+  pr_id: number
+  pr_no: string
+  project_code: string | null
+  job_code: string | null
+  lines: {
+    cost_code: string | null
+    mat_name: string | null
+    spec_name: string | null
+    unit_name: string | null
+    qty_requested: number
+    remarks: string | null
+  }[]
+}
+
+// One row of GET /work-order/available-prs: an approved PR (COMPLETED) of type PO/WO or WO that is
+// not already behind another live work order.
+export interface WOAvailablePR {
+  pr_id: number
+  pr_no: string
+  pr_type: string
+  order_type: string
+  job_code?: string | null
+  project_code?: string | null
+  project_name?: string | null
+  requested_by: string
+  pr_date: string
+  remarks?: string | null
+}

@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useState } from 'react'
 import { Card, Input, Button, Table, Descriptions, InputNumber, Space, message, Modal, Rate, Alert } from 'antd'
 import { SearchOutlined, InboxOutlined } from '@ant-design/icons'
@@ -258,7 +259,7 @@ const GoodsReceiptPage: React.FC = () => {
               <Descriptions.Item label="Warehouse">{po.warehouse_code || '—'}</Descriptions.Item>
               <Descriptions.Item label="สถานะ PO">{po.status}</Descriptions.Item>
               <Descriptions.Item label="สกุลเงิน">{po.currency}</Descriptions.Item>
-              <Descriptions.Item label="มูลค่าสุทธิ">{po.net_amount?.toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item label="มูลค่าสุทธิ">{formatMoney(po.net_amount)}</Descriptions.Item>
               <Descriptions.Item label="วันที่ส่ง">{formatDate(po.expected_date)}</Descriptions.Item>
             </Descriptions>
 

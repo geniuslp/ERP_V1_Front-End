@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useMemo, useState } from 'react'
 import { Row, Col, Card, Table, Tag, Typography, Progress, Input, Select } from 'antd'
 import {
@@ -230,7 +231,7 @@ const DashboardPage: React.FC = () => {
     { title: 'จำนวน WO', dataIndex: 'wo', key: 'wo', align: 'right' as const },
     {
       title: 'มูลค่ารวม', dataIndex: 'amount', key: 'amount', align: 'right' as const,
-      render: (v: number) => `฿${v.toLocaleString()}`,
+      render: (v: number) => `฿${formatMoney(v)}`,
     },
     {
       title: 'สัดส่วนงบ', dataIndex: 'pct', key: 'pct',
@@ -251,7 +252,7 @@ const DashboardPage: React.FC = () => {
     { title: 'รายการ', dataIndex: 'item', key: 'item' },
     {
       title: 'มูลค่า', dataIndex: 'amount', key: 'amount', align: 'right' as const,
-      render: (v: number) => `฿${v.toLocaleString()}`,
+      render: (v: number) => `฿${formatMoney(v)}`,
     },
     {
       title: 'สถานะ', dataIndex: 'status', key: 'status',
@@ -265,7 +266,7 @@ const DashboardPage: React.FC = () => {
   ]
 
   return (
-    <div>
+    <div className="erp-no-block">
       <PageHeader
         title="Dashboard"
         subtitle="ภาพรวมระบบจัดซื้อจัดจ้าง"

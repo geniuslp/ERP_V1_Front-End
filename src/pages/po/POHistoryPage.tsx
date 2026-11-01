@@ -17,7 +17,6 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
-import DateTimeText from '@/components/common/DateTimeText'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS, isOhOrderType } from '@/constants/orderTypes'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
@@ -46,6 +45,13 @@ const getRowClassName = (record: POListItem): string => {
   }
   if (record.status_receive === 'RECEIVED') return ROW_TINT_CLASS.green
   return ''
+}
+
+// DD/MM/YYYY HH:mm shown right in the cell (history page shows who/when for create, edit and approve).
+const fmtDateTime = (v?: string | null): string => {
+  if (!v) return '—'
+  const d = dayjs(v)
+  return d.isValid() ? d.format('DD/MM/YYYY HH:mm') : '—'
 }
 
 const PROJECT_COLUMN_DEFAULT_WIDTH = 140
@@ -133,6 +139,19 @@ const POHistoryPage: React.FC = () => {
   const [expectedDateColWidth, setExpectedDateColWidth] = useState(EXPECTED_DATE_COLUMN_DEFAULT_WIDTH)
   const handleExpectedDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setExpectedDateColWidth(data.size.width)
+  }
+  // Widths of the created / last-edited columns (resizable like the others, not persisted).
+  const [extraColWidths, setExtraColWidths] = useState<Record<string, number>>({})
+  const resizable = (key: string, def: number) => {
+    const width = extraColWidths[key] ?? def
+    return {
+      width,
+      onHeaderCell: () => ({
+        width,
+        onResize: (_e: React.SyntheticEvent, data: ResizeCallbackData) =>
+          setExtraColWidths((p) => ({ ...p, [key]: data.size.width })),
+      }),
+    }
   }
   const [approvedByColWidth, setApprovedByColWidth] = useState(APPROVED_BY_COLUMN_DEFAULT_WIDTH)
   const handleApprovedByColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
@@ -281,15 +300,55 @@ const POHistoryPage: React.FC = () => {
         `${(r.total_amount - (r.discount_amount ?? 0)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
     },
     {
+      title: 'ผู้สร้างใบ',
+      key: 'created_by_name',
+      ellipsis: true,
+      ...resizable('created_by', 140),
+      render: (_: unknown, r) => r.created_by_name || '—',
+    },
+    {
+      title: 'วันที่สร้างใบ',
+      key: 'created_at',
+      ...resizable('created_at', 150),
+      render: (_: unknown, r) => fmtDateTime(r.created_at),
+    },
+    {
+      // Real edits only (PUT /po/:id, edit-approved) — approving, rejecting or receiving goods does not count.
       title: 'แก้ไขล่าสุดโดย',
-      key: 'last_edited_by',
-      render: (_: unknown, r) => {
-        const name =
-          r.updated_by_name && r.updated_by_name !== r.created_by_name
-            ? r.updated_by_name
-            : r.created_by_name
-        return name || '-'
-      },
+      key: 'last_edited_by_name',
+      ellipsis: true,
+      ...resizable('last_edited_by', 140),
+      render: (_: unknown, r) => r.last_edited_by_name || '—',
+    },
+    {
+      title: 'วันที่แก้ไขล่าสุด',
+      key: 'last_edited_at',
+      ...resizable('last_edited_at', 150),
+      render: (_: unknown, r) => fmtDateTime(r.last_edited_at),
+    },
+    {
+      title: 'ผู้อนุมัติ PO',
+      dataIndex: 'approved_by_name',
+      key: 'approved_by_name',
+      width: approvedByColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: approvedByColWidth,
+        onResize: handleApprovedByColResize,
+      }),
+      render: (v: string | null) => v || '—',
+    },
+    {
+      // approved_at — nullable timestamp of the latest APPROVE action (GET /po list); date and time.
+      title: 'วันที่อนุมัติ PO',
+      dataIndex: 'approved_at',
+      key: 'approved_at',
+      width: approvedAtColWidth,
+      onHeaderCell: () => ({
+        width: approvedAtColWidth,
+        onResize: handleApprovedAtColResize,
+      }),
+      render: (v: string | null) => fmtDateTime(v),
     },
     {
       title: 'วันที่เปิด PO',
@@ -303,19 +362,6 @@ const POHistoryPage: React.FC = () => {
       render: (v: string) => v ? dayjs(v).format('DD/MM/YYYY') : '-',
     },
     {
-      // approved_at — nullable ISO timestamp of the latest APPROVE action from
-      // approval_log (GET /po list, confirmed present). Date + time, not just date.
-      title: 'วันที่อนุมัติ PO',
-      dataIndex: 'approved_at',
-      key: 'approved_at',
-      width: approvedAtColWidth,
-      onHeaderCell: () => ({
-        width: approvedAtColWidth,
-        onResize: handleApprovedAtColResize,
-      }),
-      render: (v: string | null) => <DateTimeText value={v} />,
-    },
-    {
       title: 'กำหนดส่งของ',
       dataIndex: 'expected_date',
       key: 'expected_date',
@@ -325,18 +371,6 @@ const POHistoryPage: React.FC = () => {
         onResize: handleExpectedDateColResize,
       }),
       render: (v: string | null) => v ? dayjs(v).format('DD/MM/YYYY') : '-',
-    },
-    {
-      title: 'ผู้อนุมัติ',
-      dataIndex: 'approved_by_name',
-      key: 'approved_by_name',
-      width: approvedByColWidth,
-      ellipsis: true,
-      onHeaderCell: () => ({
-        width: approvedByColWidth,
-        onResize: handleApprovedByColResize,
-      }),
-      render: (v: string | null) => v || '—',
     },
     {
       title: 'หมายเหตุ PO',
@@ -435,7 +469,7 @@ const POHistoryPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           rowClassName={(record) => getRowClassName(record)}
           size="small"
-          scroll={{ x: 2350 }}
+          scroll={{ x: 2930 }}
           locale={{ emptyText: 'ไม่พบข้อมูล' }}
           pagination={{
             current: page,

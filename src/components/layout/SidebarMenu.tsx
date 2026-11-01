@@ -121,17 +121,23 @@ const subIconMap: Record<string, React.ReactNode> = {
 
 // Colour variants for children inside a top-level group, matched by menu_code PREFIX so future
 // children (new petty cash / WO menus) pick the colour up automatically. Keys are the top-level
-// group's menu_code; anything not listed stays 'default' (current look). 'blue' items get the
-// .erp-menu-blue class (styles in index.css).
-type MenuColorVariant = 'default' | 'blue'
+// group's menu_code; anything not listed stays default. Each variant becomes an
+// .erp-menu-<variant> class (colours in index.css): PR green, PO amber, WO blue, petty cash purple.
+type MenuColorVariant = 'pr' | 'po' | 'wo' | 'petty'
 const MENU_COLOR_GROUPS: Record<string, { prefix: string; variant: MenuColorVariant }[]> = {
-  MENU_PR: [{ prefix: 'MENU_PETTY_CASH', variant: 'blue' }],
-  MENU_PO: [{ prefix: 'MENU_WO', variant: 'blue' }],
+  MENU_PR: [
+    { prefix: 'MENU_PETTY_CASH', variant: 'petty' },
+    { prefix: 'MENU_PR', variant: 'pr' },
+  ],
+  MENU_PO: [
+    { prefix: 'MENU_WO', variant: 'wo' },
+    { prefix: 'MENU_PO', variant: 'po' },
+  ],
 }
 
 const menuColorClass = (rootCode: string, menuCode: string): string | undefined => {
   const rule = MENU_COLOR_GROUPS[rootCode]?.find((r) => menuCode.startsWith(r.prefix))
-  return rule?.variant === 'blue' ? 'erp-menu-blue' : undefined
+  return rule ? `erp-menu-${rule.variant}` : undefined
 }
 
 interface VisibleMenuNode extends PermMenu {

@@ -7,7 +7,11 @@ import type { PermMenu } from '@/types/permission.types'
 
 export interface NavNode extends PermMenu {
   children: NavNode[]
+  // The user has no permission for this entry: it is still listed, but greyed out and not clickable.
+  noAccess?: boolean
 }
+
+export const NO_ACCESS_TITLE = 'ไม่มีสิทธิ์เข้าถึงเมนูนี้'
 
 // Frontend-only override shared with the sidebar: these entries were consolidated into the history pages.
 const HIDDEN_MENU_CODES = ['MENU_PR_STATUS', 'MENU_PO_STATUS']
@@ -39,14 +43,34 @@ export function useNavTree() {
         const kids = build(m.id, depth + 1, new Set(seen).add(m.id))
         if (byParent.has(m.id)) {
           if (kids.length > 0) out.push({ ...m, children: kids })
-        } else if (isCreateMenu(m.menu_code) ? can(m.menu_code, 'write') : can(m.menu_code, 'read')) {
-          out.push({ ...m, children: [] })
+        } else {
+          // Entries the user cannot open stay in the menu (disabled) instead of disappearing.
+          const allowed = isCreateMenu(m.menu_code) ? can(m.menu_code, 'write') : can(m.menu_code, 'read')
+          out.push({ ...m, children: [], noAccess: !allowed })
         }
       }
       return out
     }
 
-    return build(null, 0, new Set())
+    // Main menus behave as before: one is listed only when the user can open at least one entry inside it.
+    // Inside a listed main menu, the entries they cannot open stay visible but disabled.
+    const hasAccess = (n: NavNode): boolean => (n.children.length > 0 ? n.children.some(hasAccess) : !n.noAccess)
+    const top = build(null, 0, new Set()).filter(hasAccess)
+    // Frontend-only order override inside OF: "อนุมัติใบขอซื้อ" sits right after the PR history entry,
+    // i.e. before the petty cash entries (swaps the old 3rd and 4th entries). Other entries keep their order.
+    const of = top.find((n) => n.menu_code === 'MENU_PR')
+    if (of) {
+      const approvalIdx = of.children.findIndex((c) => c.menu_code === 'MENU_PR_APPROVAL')
+      const pettyIdx = of.children.findIndex((c) => c.menu_code === 'MENU_PETTY_CASH_CREATE')
+      if (approvalIdx > pettyIdx && pettyIdx !== -1) {
+        const kids = of.children.slice()
+        const [approval] = kids.splice(approvalIdx, 1)
+        kids.splice(pettyIdx, 0, approval)
+        of.children = kids
+      }
+    }
+
+    return top
       // Same frontend-only ordering override as the sidebar: Memo before PR.
       .sort((a, b) => {
         if (a.menu_code === 'MENU_MEMO' && b.menu_code === 'MENU_PR') return -1
@@ -76,6 +100,30 @@ export function shortLabel(node: Pick<PermMenu, 'menu_code' | 'menu_name'>): str
   const idx = name.search(FIRST_THAI)
   const head = (idx === -1 ? name : name.slice(0, idx)).trim()
   return head || name.trim()
+}
+
+// ── Sub-menu colour groups (colours live in the CSS of TopNavMenu.tsx) ─────────────────────────
+// Matched by menu_code PREFIX inside a main menu, first rule wins, so future entries of the same
+// kind pick the colour up automatically: PR green, PO amber, WO blue, petty cash purple.
+export type NavColor = 'pr' | 'po' | 'wo' | 'petty' | 'memo' | 'ic' | 'budget' | 'stock'
+// Main menus whose whole dropdown shares one colour (also the fallback for entries no prefix rule matches,
+// e.g. IC's "คลัง" whose menu_code is not MENU_-prefixed).
+const NAV_ROOT_COLOR: Record<string, NavColor> = { MENU_MEMO: 'memo', MENU_IC: 'ic' }
+const NAV_COLOR_RULES: Record<string, { prefix: string; color: NavColor }[]> = {
+  MENU_PR: [
+    { prefix: 'MENU_PETTY_CASH', color: 'petty' },
+    { prefix: 'MENU_PR', color: 'pr' },
+  ],
+  MENU_IC: [{ prefix: 'master-stock', color: 'stock' }], // "คลัง" (its menu_code is not MENU_-prefixed)
+  MENU_PO: [
+    { prefix: 'MENU_WO', color: 'wo' },
+    { prefix: 'MENU_PO_COST_BUDGET', color: 'budget' }, // must stay before the generic MENU_PO rule
+    { prefix: 'MENU_PO', color: 'po' },
+  ],
+}
+
+export function navColor(rootCode: string, menuCode: string): NavColor | undefined {
+  return NAV_COLOR_RULES[rootCode]?.find((r) => menuCode.startsWith(r.prefix))?.color ?? NAV_ROOT_COLOR[rootCode]
 }
 
 // ── Numbering ──────────────────────────────────────────────────────────────────────────────────

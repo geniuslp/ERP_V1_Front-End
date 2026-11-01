@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input } from 'antd'
@@ -315,7 +316,7 @@ const PettyCashDetailPage: React.FC = () => {
               onDeleteSaved={handleAttachDelete}
             />
           </Descriptions.Item>
-          <Descriptions.Item label="หมายเหตุ" span={2}>{pc?.remarks || '—'}</Descriptions.Item>
+          <Descriptions.Item label="หมายเหตุ" span={2}><FormattedNote value={pc?.remarks} empty="—" /></Descriptions.Item>
         </Descriptions>
       </Card>
 

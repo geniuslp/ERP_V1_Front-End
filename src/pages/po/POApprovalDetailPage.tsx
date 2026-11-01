@@ -1,3 +1,5 @@
+import { BLOCK_CARD_STYLE } from '@/constants/blockStyle'
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useState, useEffect } from 'react'
 import {
   Button, Descriptions, Table, Alert, Spin,
@@ -39,9 +41,8 @@ const MENU_CODE = 'MENU_PO_STATUS'
 // const canCancel = isManager && po.status === 'APPROVED'
 
 const cardStyle: React.CSSProperties = {
+  ...BLOCK_CARD_STYLE,
   background: '#fff',
-  borderRadius: 12,
-  boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
   padding: 24,
   marginBottom: 16,
 }
@@ -300,9 +301,9 @@ const POApprovalDetailPage: React.FC = () => {
     },
     {
       title: 'หมายเหตุ',
-      dataIndex: 'remarks',
       key: 'remarks',
-      render: (v: string | undefined) => v ?? '—',
+      // The line's remark is saved in `description` (what the PO form's remark box sends); `remarks` is the older column.
+      render: (_: unknown, r: POLine) => <FormattedNote value={r.description ?? r.remarks} empty="—" />,
     },
   ]
 
@@ -492,7 +493,7 @@ const POApprovalDetailPage: React.FC = () => {
             span={3}
             contentStyle={po.status === 'REJECTED' ? { color: '#dc2626', fontWeight: 600 } : {}}
           >
-            {po.remarks ?? '-'}
+            <FormattedNote value={po.remarks} empty="-" />
           </Descriptions.Item>
         </Descriptions>
       </div>

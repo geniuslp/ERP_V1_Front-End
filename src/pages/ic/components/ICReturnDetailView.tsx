@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
 import { Button, Descriptions, Space, Spin, Table, message } from 'antd'
 import { ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons'
@@ -102,7 +103,7 @@ const ICReturnDetailView: React.FC<Props> = ({ returnId, onBack }) => {
             align: 'right' as const,
             render: (_: unknown, l: any) => formatQty(Number(l.return_qty ?? l.qty ?? 0)),
           },
-          { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v: string) => v || '-' },
+          { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v: string) => <FormattedNote value={v} empty="-" /> },
         ]}
       />
 

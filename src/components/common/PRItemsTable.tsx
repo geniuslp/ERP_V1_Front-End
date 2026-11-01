@@ -8,7 +8,6 @@ import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/C
 import type { Material, PROrderType } from '@/types'
 import { isOhOrderType } from '@/constants/orderTypes'
 import { useAppSelector } from '@/store'
-import { isExemptMatCode } from '@/utils/matCode'
 import { formatItemLabel } from '@/utils/itemLabel'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 import { missingCostRowProps } from '@/utils/validateCostCode'
@@ -369,10 +368,6 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
     const m = materials[0]
     if (!key || !m) return
     if (materials.length > 1) message.info('เลือกได้ 1 วัสดุต่อรายการ — ใช้รายการแรกที่เลือก')
-    if (!isExemptMatCode(m.mat_code) && items.some((i) => i.key !== key && i.code === m.mat_code)) {
-      message.warning('วัสดุนี้มีอยู่ในรายการอื่นแล้ว')
-      return
-    }
     setItems((prev) => prev.map((i) => (i.key === key ? {
       ...i,
       code: m.mat_code,
@@ -383,13 +378,8 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
   }
 
   const handleMaterialConfirm = (materials: Material[]) => {
-    const existingCodes = new Set(items.map((i) => i.code).filter(Boolean))
-    // x## codes (e.g. x01, x02) are exempt from the duplicate check — always
-    // allowed through even if already present in the list.
-    const toAdd = materials.filter((m) => isExemptMatCode(m.mat_code) || !existingCodes.has(m.mat_code))
-    if (toAdd.length < materials.length) {
-      message.warning(`ข้ามรายการที่มีอยู่แล้ว ${materials.length - toAdd.length} รายการ`)
-    }
+    // The same material may be on several lines of one PR (e.g. one line per cost code) — no de-duplication.
+    const toAdd = materials
     if (toAdd.length === 0) return
     setItems((prev) => {
       // Fill existing blank rows (e.g. one just added via "เพิ่มรายการใหม่") first,
@@ -484,23 +474,14 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
             </Space.Compact>
           )
         }
-        // Inline-only warning (never blocks typing) for a manually-entered
-        // mat_code that duplicates another row's — x## codes are exempt and
-        // never flagged, matching handleMaterialConfirm's dedupe exemption.
-        const isDuplicate = !!r.code && !isExemptMatCode(r.code) &&
-          items.some((other) => other.key !== r.key && other.code === r.code)
         return (
           <div>
             <Input
               size="small"
               value={r.code}
               placeholder="รหัสสินค้า"
-              status={isDuplicate ? 'warning' : undefined}
               onChange={(e) => updateItem(r.key, 'code', e.target.value)}
             />
-            {isDuplicate && (
-              <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>รหัสซ้ำกับรายการอื่น</div>
-            )}
           </div>
         )
       },

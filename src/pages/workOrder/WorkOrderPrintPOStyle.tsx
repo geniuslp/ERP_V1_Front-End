@@ -208,20 +208,20 @@ const AUTH_COLS = [
 
 const FillerTr = () => (
   <tr style={{height:'100%'}}>
-    <td/><td/><td/><td/><td/><td/><td/><td/>
+    <td/><td/><td/><td/><td/><td/>
   </tr>
 )
 
+// WO's item table: ลำดับ / รหัสต้นทุน / รายละเอียด / จำนวน / ราคา/หน่วย / รวม (no unit or per-line discount column).
 const TABLE_COLS = (
   <colgroup>
-    <col style={{width:'11mm'}}/><col style={{width:'19mm'}}/><col/>
-    <col style={{width:'13mm'}}/><col style={{width:'14.16mm'}}/>
-    <col style={{width:'22mm'}}/><col style={{width:'19.84mm'}}/><col style={{width:'28mm'}}/>
+    <col style={{width:'12mm'}}/><col style={{width:'24mm'}}/><col/>
+    <col style={{width:'18mm'}}/><col style={{width:'28mm'}}/><col style={{width:'30mm'}}/>
   </colgroup>
 )
 const TABLE_HEAD = (
   <thead><tr>
-    {["ITEM","COST CODE","DESCRIPTION","QTY","UNIT","PRICE/UNIT","DISCOUNT","TOTAL (BAHT)"].map(h=><th key={h}>{h}</th>)}
+    {["ลำดับ","รหัสต้นทุน","รายละเอียด","จำนวน","ราคา/หน่วย","รวม"].map(h=><th key={h}>{h}</th>)}
   </tr></thead>
 )
 
@@ -286,12 +286,10 @@ const ItemRow = ({row,rowRef}:{row:WOPOItem;rowRef?:React.Ref<HTMLTableRowElemen
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
       <div>{row.desc}</div>
-      {row.subDesc&&<div style={{color:'#555',marginTop:'1px'}}>{row.subDesc}</div>}
+      {row.subDesc&&<div style={{color:'#555',marginTop:'1px',whiteSpace:'pre-line'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
-    <td style={{textAlign:'center'}}>{row.unit}</td>
     <td style={{textAlign:'right'}}>{row.pricePerUnit?thb(row.pricePerUnit):''}</td>
-    <td style={{textAlign:'center'}}>{row.disc?(row.discType==='amt'?thb(row.disc):`${row.disc}%`):''}</td>
     <td style={{textAlign:'right'}}>{row.desc?thb(lineAmt(row)):''}</td>
   </tr>
 )

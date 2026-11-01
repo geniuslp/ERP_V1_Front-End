@@ -1,6 +1,7 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useState } from 'react'
-import { Table, Button, InputNumber, Input, Space, Select } from 'antd'
-import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { Table, Button, InputNumber, Input, Space, Select, Tooltip, Badge } from 'antd'
+import { DeleteOutlined, PlusOutlined, CalculatorOutlined, LeftOutlined, RightOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons'
 import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
@@ -17,6 +18,8 @@ export interface WOLineItem {
   cost_code: string
   cost_code_label?: string | null
   description?: string
+  // Per-line รายละเอียด (free text, max 1000) — same as PR's row detail; edited in the row expanded by the 📄 icon.
+  remark?: string
   qty: number
   unit_price: number
   disc?: number
@@ -55,6 +58,11 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
   const [costCodeModalRowKey, setCostCodeModalRowKey] = useState<string | null>(null)
   // Row whose รายละเอียด is being filled from the material list (the text stays typeable).
   const [materialRowKey, setMaterialRowKey] = useState<string | null>(null)
+
+  // Rows whose รายละเอียด textarea is open — same expandable-row pattern as PRItemsTable.
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([])
+  const toggleExpand = (key: string) =>
+    setExpandedKeys((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
 
   const renumber = (rows: WOLineItem[]) => rows.map((r, idx) => ({ ...r, no: idx + 1 }))
 
@@ -315,18 +323,36 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
       width: 120,
       align: 'right' as const,
       render: (_: unknown, r: WOLineItem) => (
-        <span style={{ fontSize: 13 }}>{(r.qty * r.unit_price).toLocaleString('th-TH')}</span>
+        <span style={{ fontSize: 13 }}>{formatMoney(r.qty * r.unit_price)}</span>
       ),
     },
     ...taxColumns,
     {
       title: '',
       key: 'action',
-      width: 40,
+      width: 72,
       align: 'center' as const,
-      render: (_: unknown, r: WOLineItem) => (
-        <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeItem(r.key)} />
-      ),
+      render: (_: unknown, r: WOLineItem) => {
+        const hasRemark = !!(r.remark && r.remark.trim())
+        return (
+          <Space size={0}>
+            <Tooltip title={hasRemark ? 'มีรายละเอียด — คลิกเพื่อดู/แก้ไข' : 'เพิ่มรายละเอียด'}>
+              <Badge dot={hasRemark} offset={[-2, 2]}>
+                <Button
+                  type="text"
+                  size="small"
+                  aria-expanded={expandedKeys.includes(r.key)}
+                  aria-controls={`wo-item-desc-${r.key}`}
+                  icon={<FileTextOutlined />}
+                  style={{ color: hasRemark ? '#2563eb' : undefined }}
+                  onClick={() => toggleExpand(r.key)}
+                />
+              </Badge>
+            </Tooltip>
+            <ConfirmDeleteButton type="text" size="small" onConfirm={() => removeItem(r.key)} />
+          </Space>
+        )
+      },
     },
   ]
 
@@ -348,6 +374,24 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
         size="small"
         locale={{ emptyText: 'ยังไม่มีรายการ — กด "เพิ่มแถว" เพื่อเริ่มต้น' }}
         scroll={{ x: 700 }}
+        expandable={{
+          expandedRowKeys: expandedKeys,
+          showExpandColumn: false,
+          expandedRowRender: (r: WOLineItem) => (
+            <div id={`wo-item-desc-${r.key}`} style={{ padding: '4px 8px' }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>รายละเอียด / Description</div>
+              <Input.TextArea
+                autoFocus
+                value={r.remark ?? ''}
+                placeholder="เพิ่มรายละเอียดสำหรับรายการนี้..."
+                autoSize={{ minRows: 2 }}
+                maxLength={1000}
+                showCount
+                onChange={(e) => updateItem(r.key, 'remark', e.target.value)}
+              />
+            </div>
+          ),
+        }}
         summary={() => {
           let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
           items.forEach((r) => {

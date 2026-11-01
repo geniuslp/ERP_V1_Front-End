@@ -12,6 +12,7 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, trend }) => (
   <Card
+    className="erp-stat-card"
     style={{
       borderRadius: 12,
       border: 'none',

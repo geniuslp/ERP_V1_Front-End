@@ -101,6 +101,7 @@ export interface POLine {
   amount: number
   status: string
   remarks?: string
+  description?: string | null // the line's remark as typed on the PO form
   mat_name?: string
   unit_name?: string
   brand?: string

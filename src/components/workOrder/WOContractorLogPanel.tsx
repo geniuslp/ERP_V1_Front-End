@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import WOContractorBillTab from '@/components/workOrder/WOContractorBillTab'
+import WOAttachmentPanel from '@/components/workOrder/WOAttachmentPanel'
 import { WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -46,7 +47,14 @@ const emptyTerms = (): TermRow[] => [
   { item_type: 'RETENTION', percent: null, amount: null, accumulate: null, balance: null },
 ]
 
-const woProjectLabel = (code?: string | null, name?: string | null, text?: string | null) =>
+// Shown (as "-") until the first bill exists.
+const EMPTY_TERMS: TermRow[] = [
+  { item_type: 'CONTRACT', percent: null, amount: null, accumulate: null, balance: null },
+  { item_type: 'ADVANCE', percent: null, amount: null, accumulate: null, balance: null },
+  { item_type: 'RETENTION', percent: null, amount: null, accumulate: null, balance: null },
+]
+
+const woProjectLabel =(code?: string | null, name?: string | null, text?: string | null) =>
   code ? `${code} ${name ?? ''}`.trim() : (text ?? '')
 
 // ลักษณะของสัญญา comes from the work order as created; an old WO may hold a dropdown code instead of text.
@@ -75,13 +83,17 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('doc')
   // Inside the document tab: nothing is shown until a button is pressed — Contract table or the bill form (ประเภทวางบิล).
-  const [docView, setDocView] = useState<'contract' | 'bill' | null>(null)
+  // Contract is the open view from the start (and whenever the panel reloads); ประเภทวางบิล switches to the bill form.
+  const [docView, setDocView] = useState<'contract' | 'bill'>('contract')
   const [files, setFiles] = useState<LogFile[]>([])
   const [uploading, setUploading] = useState(false)
   const [logId, setLogId] = useState<number | undefined>()
   const [terms, setTerms] = useState<TermRow[]>(emptyTerms())
   // WO-derived values tab 2 needs (supplier for PAY TO, credit term from supplier.payment_terms).
-  const [woCtx, setWoCtx] = useState<{ supplier?: string; credit?: number | null; contractAmount?: number }>({})
+  // Contract value after the advance is taken out: the base of every installment %.
+  const [paymentBase, setPaymentBase] = useState<number | null>(null)
+  const [billDefaults, setBillDefaults] = useState<{ adv: number | null; ret: number | null }>({ adv: null, ret: null })
+  const [woCtx, setWoCtx] =useState<{ supplier?: string; credit?: number | null; contractAmount?: number }>({})
 
   const [pjCurrent, setPjCurrent] = useState<string | undefined>()
   const { options: projects, loading: projectsLoading } = useProjectOptions({}, pjCurrent)
@@ -94,7 +106,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       form.resetFields()
       setLogId(undefined)
       setFiles([])
-      setDocView(null)
+      setDocView('contract')
       setTerms(emptyTerms())
       setPjCurrent(undefined)
       try {
@@ -163,7 +175,18 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       const res = await axios.get(`${BASE_URL}/wo-contractor-log/summary/${woId}`, { headers })
       const d = res.data?.data
       if (!d) return
-      onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract?.amount ?? 0))
+      // The paid-vs-contract comparison outside this panel uses the full contract value, not the post-advance base.
+      onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract_total ?? d.contract?.amount ?? 0))
+      setPaymentBase(Number(d.contract?.amount ?? 0))
+      // Credit term comes from the supplier even before the log record exists; keep a value already loaded from the record.
+      setWoCtx((prev) => ({ ...prev, credit: prev.credit ?? d.credit_term_days ?? null }))
+      // Tab 2's defaults (advance / retention %) come from the WO even while the table below stays empty.
+      setBillDefaults({ adv: d.advance?.percent ?? null, ret: d.retention?.percent ?? null })
+      // The table stays empty until the first bill is made in tab 2.
+      if (!Number(d.bill_count ?? 0)) {
+        setTerms(EMPTY_TERMS)
+        return
+      }
       setTerms([
         { item_type: 'CONTRACT', percent: d.contract.percent, amount: d.contract.amount, accumulate: d.contract.accumulate, balance: d.contract.balance },
         { item_type: 'ADVANCE', percent: d.advance.percent, amount: d.advance.amount, accumulate: d.advance.accumulate, balance: d.advance.balance },
@@ -276,17 +299,16 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       </div>
 
       <div style={{ display: docView === 'contract' ? 'block' : 'none' }}>
-      <Table<TermRow>
-        rowKey="item_type"
-        size="small"
-        pagination={false}
-        dataSource={terms}
-        columns={columns}
-        className="wo-log-terms"
-        scroll={{ x: 770 }}
-        style={{ marginBottom: 20 }}
-      />
-
+        <Table<TermRow>
+          rowKey="item_type"
+          size="small"
+          pagination={false}
+          dataSource={terms}
+          columns={columns}
+          className="wo-log-terms"
+          scroll={{ x: 770 }}
+          style={{ marginBottom: 20 }}
+        />
       </div>
     </Form>
   )
@@ -302,14 +324,21 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
         creditTermDays={woCtx.credit}
         // The bill's % -> amount always uses this work order's own contract value (not the editable Contract row).
         contractAmount={woCtx.contractAmount || (terms.find((t) => t.item_type === 'CONTRACT')?.amount ?? 0)}
-        defaultAdvPct={terms.find((t) => t.item_type === 'ADVANCE')?.percent}
-        defaultRetentionPct={terms.find((t) => t.item_type === 'RETENTION')?.percent}
+        paymentBase={paymentBase ?? undefined}
+        defaultAdvPct={billDefaults.adv}
+        defaultRetentionPct={billDefaults.ret}
       />
     </div>
   )
 
   const filesTab = (
     <div>
+      {/* Files attached to the work order itself (WO create / edit page), read-only here; hidden when there are none. */}
+      {woId ? (
+        <div style={{ marginBottom: 20 }}>
+          <WOAttachmentPanel woId={woId} readOnly hideWhenEmpty title="ไฟล์แนบจากหนังสือสั่งจ้าง" />
+        </div>
+      ) : null}
       <Upload.Dragger
         accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
         showUploadList={false}
@@ -351,7 +380,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   return (
     <div>
       <Tabs
-        className="wo-log-tabs"
+        className="erp-tabs-lg"
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[

@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
 import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin, Modal, DatePicker, message } from 'antd'
 import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
@@ -646,7 +647,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       width: 120,
       align: 'right' as const,
       render: (_: unknown, r: POLineItem) => (
-        <span style={{ fontSize: 13 }}>{(r.qty * r.unit_price).toLocaleString('th-TH')}</span>
+        <span style={{ fontSize: 13 }}>{formatMoney(r.qty * r.unit_price)}</span>
       ),
     },
     {

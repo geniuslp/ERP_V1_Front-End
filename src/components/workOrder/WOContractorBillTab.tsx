@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Button, Col, DatePicker, Input, InputNumber, Row, Select, Space, Table, Tag, Tooltip, message,
+  Button, Col, DatePicker, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, SaveOutlined, FileAddOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, SaveOutlined, FileAddOutlined, EyeOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
@@ -54,6 +54,7 @@ interface InvoiceRow {
   delivery_date: string | null
   bill_date: string | null
   pay_date: string | null
+  amount: number | null
 }
 
 interface BillListItem {
@@ -82,6 +83,8 @@ interface Props {
   supplierName?: string
   creditTermDays?: number | null
   contractAmount: number
+  // Contract value minus the advance: the base of "เงินงวดนี้" %. Falls back to contractAmount until the summary loads.
+  paymentBase?: number
   // Tab 1 table values, used only as defaults for a new bill.
   defaultAdvPct?: number | null
   defaultRetentionPct?: number | null
@@ -98,7 +101,32 @@ interface InvoiceHistoryRow {
   delivery_date: string | null
   bill_date: string | null
   pay_date: string | null
+  invoice_amount: number | null
 }
+
+interface BillDetail {
+  id: number
+  bill_type: BillType
+  installment_no: number | null
+  status: BillStatus
+  progress_note: string | null
+  subtotal: number
+  net_amount: number
+  lines: { line_code: string; percent: number | null; amount: number }[]
+}
+
+// Order and wording of the lines in the "what was paid" popup (same as the summary table of the form).
+const DETAIL_LINES: { code: string; label: string }[] = [
+  { code: 'ADV', label: '1. เงินเบิกล่วงหน้า (ADV. PAYMENT)' },
+  { code: 'PROGRESS', label: '2. เงินงวดนี้' },
+  { code: 'ADV_DEDUCT', label: '3. หักเงินจ่ายล่วงหน้า' },
+  { code: 'VAT', label: '4. ภาษีมูลค่าเพิ่ม (VAT)' },
+  { code: 'SUBTOTAL', label: 'รวมเป็นเงิน (1)' },
+  { code: 'RETENTION', label: '5. หักเงินประกันผลงาน' },
+  { code: 'WHT', label: '6. หัก ณ ที่จ่าย' },
+  { code: 'OTHER', label: '7. หักอื่นๆ' },
+  { code: 'NET', label: 'จ่ายสุทธิ' },
+]
 
 interface BillForm {
   bill_type: BillType
@@ -115,14 +143,16 @@ interface BillForm {
   adv_deduct_pct: number
   vat_pct: number
   retention_pct: number
+  retention_amount: number | null // set once the amount is typed by hand; null = follows retention_pct
   wht_type: string
   wht_pct: number
   other_amount: number
 }
 
 const WOContractorBillTab: React.FC<Props> = ({
-  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, defaultAdvPct, defaultRetentionPct,
+  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, paymentBase, defaultAdvPct, defaultRetentionPct,
 }) => {
+  const installmentBase = paymentBase && paymentBase > 0 ? paymentBase : contractAmount
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const headers = { Authorization: `Bearer ${accessToken}` }
 
@@ -152,6 +182,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     adv_deduct_pct: 0,
     vat_pct: 7,
     retention_pct: defaultRetentionPct ?? 0,
+    retention_amount: null,
     wht_type: WHT_TYPE_OPTIONS[0].value,
     wht_pct: WHT_TYPE_OPTIONS[0].rate,
     other_amount: 0,
@@ -166,6 +197,9 @@ const WOContractorBillTab: React.FC<Props> = ({
   // Invoices of every payment (bill) of this contract, shown under the invoice table being filled in.
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryRow[]>([])
   const [saving, setSaving] = useState(false)
+  // Popup with what a past payment (bill) paid: every summary line with its % and amount.
+  const [detail, setDetail] = useState<BillDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const keySeq = useRef(0)
 
   const patch = (p: Partial<BillForm>) => setF((prev) => ({ ...prev, ...p }))
@@ -207,6 +241,29 @@ const WOContractorBillTab: React.FC<Props> = ({
     if (billId === null) setF(newForm())
   }, [billId, newForm])
 
+  const showDetail = async (id: number) => {
+    setDetailLoading(true)
+    try {
+      const res = await axios.get(`${BASE_URL}/wo-contractor-log/bills/${id}`, { headers })
+      setDetail(res.data?.data ?? null)
+    } catch (e) {
+      message.error(errText(e, 'โหลดรายละเอียดการจ่ายไม่สำเร็จ'))
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const detailRows = useMemo(() => {
+    if (!detail) return []
+    const byCode = new Map(detail.lines.map((l) => [l.line_code, l]))
+    return DETAIL_LINES.map((d) => {
+      if (d.code === 'SUBTOTAL') return { ...d, percent: null, amount: Number(detail.subtotal), strong: true }
+      if (d.code === 'NET') return { ...d, percent: null, amount: Number(detail.net_amount), strong: true }
+      const l = byCode.get(d.code)
+      return { ...d, percent: l?.percent ?? null, amount: Number(l?.amount ?? 0), strong: false }
+    })
+  }, [detail])
+
   const startNew = () => {
     setBillId(null)
     setBillStatus('DRAFT')
@@ -238,6 +295,12 @@ const WOContractorBillTab: React.FC<Props> = ({
         adv_deduct_pct: Number(line('ADV_DEDUCT')?.percent ?? 0),
         vat_pct: Number(line('VAT')?.percent ?? 0),
         retention_pct: Number(line('RETENTION')?.percent ?? 0),
+        // A saved amount that doesn't follow its % was typed by hand: keep it as typed.
+        retention_amount: (() => {
+          const amt = Number(line('RETENTION')?.amount ?? 0)
+          const base = Number(line('ADV')?.amount ?? 0) + Number(line('PROGRESS')?.amount ?? 0)
+          return Math.abs(amt - round2((base * Number(line('RETENTION')?.percent ?? 0)) / 100)) > 0.01 ? amt : null
+        })(),
         wht_type: d.wht_type ?? WHT_TYPE_OPTIONS[0].value,
         wht_pct: Number(line('WHT')?.percent ?? 0),
         other_amount: Number(line('OTHER')?.amount ?? 0),
@@ -249,6 +312,7 @@ const WOContractorBillTab: React.FC<Props> = ({
         delivery_date: r.delivery_date,
         bill_date: r.bill_date,
         pay_date: r.pay_date,
+        amount: r.invoice_amount ?? null,
       })))
     } catch (e) {
       message.error(errText(e, 'โหลดข้อมูลไม่สำเร็จ'))
@@ -256,7 +320,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   }
 
   // เงินงวดนี้: % of the contract value <-> amount, either one can be typed and the other follows.
-  const pctOfContract = (amount: number) => (contractAmount > 0 ? round2((amount / contractAmount) * 100) : 0)
+  const pctOfContract = (amount: number) => (installmentBase > 0 ? round2((amount / installmentBase) * 100) : 0)
 
   // ── Summary (สรุปรายการเบิก), all AUTO from the percentages / typed amounts ──
   const calc = useMemo(() => {
@@ -267,23 +331,32 @@ const WOContractorBillTab: React.FC<Props> = ({
     const afterDeduct = base - advDeduct
     const vat = round2(afterDeduct * f.vat_pct / 100)
     const subtotal = round2(afterDeduct + vat)
-    const retention = round2(base * f.retention_pct / 100)
+    // 5. retention: the % and the amount are both typeable; the one typed last wins and the other follows.
+    const retention = f.retention_amount ?? round2(base * f.retention_pct / 100)
+    const retentionPct = f.retention_amount != null
+      ? (base > 0 ? round2((f.retention_amount / base) * 100) : 0)
+      : f.retention_pct
     const wht = round2(afterDeduct * f.wht_pct / 100)
     const net = round2(subtotal - retention - wht - f.other_amount)
-    return { adv, progress, advDeduct, vat, subtotal, retention, wht, net }
+    return { adv, progress, advDeduct, vat, subtotal, retention, retentionPct, wht, net }
   }, [f, contractAmount])
 
-  const pickInstallment = (no?: number) => {
-    const ins = installments.find((i) => i.installment_no === no)
+  const invoiceTotal = useMemo(() => round2(invoices.reduce((s, r) => s + (r.amount ?? 0), 0)), [invoices])
+  const historyTotal = useMemo(() => round2(invoiceHistory.reduce((s, r) => s + (r.invoice_amount ?? 0), 0)), [invoiceHistory])
+
+  // "งวดที่" (top) and the installment of "2. เงินงวดนี้" are one value: changing either one changes both, and a number
+  // that matches one of the WO's installments (งวดงาน) fills the amount / % too (still editable afterwards).
+  const setInstallmentNo = (no: number | null) => {
+    const ins = no == null ? undefined : installments.find((i) => i.installment_no === no)
     if (!ins) {
-      patch({ progress_installment_no: null })
+      patch({ installment_no: no, progress_installment_no: no })
       return
     }
     patch({
-      progress_installment_no: ins.installment_no,
+      installment_no: no,
+      progress_installment_no: no,
       progress_amount: Number(ins.amount ?? 0),
       progress_pct: pctOfContract(Number(ins.amount ?? 0)),
-      installment_no: ins.installment_no,
     })
   }
 
@@ -305,6 +378,20 @@ const WOContractorBillTab: React.FC<Props> = ({
       render: (v: string, r) => <Input value={v} onChange={(e) => setInvoice(r.key, { invoice_no: e.target.value })} />,
     },
     { title: 'INVOICE DATE', dataIndex: 'invoice_date', width: 160, render: (v, r) => dateCell(r.key, 'invoice_date', v) },
+    {
+      title: 'มูลค่า/INV ที่เบิก', dataIndex: 'amount', width: 170, align: 'right',
+      render: (v: number | null, r) => (
+        <InputNumber<number>
+          style={{ width: '100%' }}
+          min={0}
+          precision={2}
+          controls={false}
+          placeholder="0.00"
+          value={v ?? undefined}
+          onChange={(val) => setInvoice(r.key, { amount: val ?? null })}
+        />
+      ),
+    },
     { title: 'วันที่ส่งมอบงาน', dataIndex: 'delivery_date', width: 160, render: (v, r) => dateCell(r.key, 'delivery_date', v) },
     { title: 'วันที่วางบิล', dataIndex: 'bill_date', width: 160, render: (v, r) => dateCell(r.key, 'bill_date', v) },
     { title: 'วันที่จ่าย', dataIndex: 'pay_date', width: 160, render: (v, r) => dateCell(r.key, 'pay_date', v) },
@@ -352,20 +439,29 @@ const WOContractorBillTab: React.FC<Props> = ({
       key: 'progress',
       label: (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flexShrink: 0 }}>2. เงินงวดนี้</span>
-          <Input
-            size="small"
-            maxLength={500}
-            style={{ flex: 1, minWidth: 0 }}
-            placeholder="ระบุงวด/รายละเอียดเงินงวดนี้"
-            value={f.progress_note}
-            onChange={(e) => patch({ progress_note: e.target.value })}
-          />
+          <span style={{ flexShrink: 0 }}>2. เงินงวดนี้ งวดที่</span>
+          {/* One joined field: installment number + free-text detail */}
+          <Space.Compact size="small" style={{ flex: 1, minWidth: 0 }}>
+            <InputNumber<number>
+              min={1}
+              precision={0}
+              controls={false}
+              style={{ width: 64 }}
+              value={f.installment_no ?? undefined}
+              onChange={(v) => setInstallmentNo(v ?? null)}
+            />
+            <Input
+              maxLength={500}
+              placeholder="ระบุงวด/รายละเอียดเงินงวดนี้"
+              value={f.progress_note}
+              onChange={(e) => patch({ progress_note: e.target.value })}
+            />
+          </Space.Compact>
         </div>
       ),
       pct: pctInput(
         f.progress_pct,
-        (v) => patch({ progress_pct: v, progress_amount: round2((contractAmount * v) / 100) }),
+        (v) => patch({ progress_pct: v, progress_amount: round2((installmentBase * v) / 100) }),
       ),
       amount: (
         <InputNumber<number>
@@ -394,8 +490,17 @@ const WOContractorBillTab: React.FC<Props> = ({
     {
       key: 'retention',
       label: '5. หักเงินประกันผลงาน',
-      pct: pctInput(f.retention_pct, (v) => patch({ retention_pct: v })),
-      amount: amountText(calc.retention),
+      pct: pctInput(calc.retentionPct, (v) => patch({ retention_pct: v, retention_amount: null })),
+      amount: (
+        <InputNumber<number>
+          style={{ width: 180 }}
+          min={0}
+          precision={2}
+          controls={false}
+          value={calc.retention}
+          onChange={(v) => patch({ retention_amount: v ?? 0 })}
+        />
+      ),
     },
     {
       key: 'wht',
@@ -462,7 +567,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       { line_code: 'PROGRESS', percent: f.progress_pct, amount: calc.progress },
       { line_code: 'ADV_DEDUCT', percent: f.adv_deduct_pct, amount: calc.advDeduct },
       { line_code: 'VAT', percent: f.vat_pct, amount: calc.vat },
-      { line_code: 'RETENTION', percent: f.retention_pct, amount: calc.retention },
+      { line_code: 'RETENTION', percent: calc.retentionPct, amount: calc.retention },
       { line_code: 'WHT', percent: f.wht_pct, amount: calc.wht },
       { line_code: 'OTHER', percent: null, amount: f.other_amount },
     ],
@@ -472,6 +577,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       delivery_date: r.delivery_date,
       bill_date: r.bill_date,
       pay_date: r.pay_date,
+      invoice_amount: r.amount,
     })),
   })
 
@@ -531,7 +637,7 @@ const WOContractorBillTab: React.FC<Props> = ({
               min={1}
               precision={0}
               value={f.installment_no ?? undefined}
-              onChange={(v) => patch({ installment_no: v ?? null })}
+              onChange={(v) => setInstallmentNo(v ?? null)}
             />
           </Col>
           <Col {...FIELD_SPAN}>
@@ -579,15 +685,22 @@ const WOContractorBillTab: React.FC<Props> = ({
           pagination={false}
           dataSource={invoices}
           columns={invoiceColumns}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1070 }}
           locale={{ emptyText: 'ยังไม่มีใบกำกับภาษี' }}
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={2} align="right"><strong>รวมมูลค่า/INV ที่เบิก</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={2} align="right"><strong>{money(invoiceTotal)}</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={3} colSpan={4} />
+            </Table.Summary.Row>
+          )}
         />
         <div style={{ marginTop: 12 }}>
           <Button
             size="small"
             icon={<PlusOutlined />}
             onClick={() => setInvoices((p) => [...p, {
-              key: ++keySeq.current, invoice_no: '', invoice_date: null, delivery_date: null, bill_date: null, pay_date: null,
+              key: ++keySeq.current, invoice_no: '', invoice_date: null, delivery_date: null, bill_date: null, pay_date: null, amount: null,
             }])}
           >
             เพิ่มใบกำกับภาษี
@@ -602,14 +715,25 @@ const WOContractorBillTab: React.FC<Props> = ({
           size="small"
           pagination={false}
           dataSource={invoiceHistory}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1170 }}
           locale={{ emptyText: 'ยังไม่มีรายการที่บันทึก' }}
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={4} align="right"><strong>รวมมูลค่า/INV ที่เบิก</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={4} align="right"><strong>{money(historyTotal)}</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={5} colSpan={5} />
+            </Table.Summary.Row>
+          )}
           rowClassName={(r) => (r.bill_id === billId ? 'ant-table-row-selected' : '')}
           columns={[
             { title: 'ครั้งที่จ่าย', dataIndex: 'bill_no', width: 100, align: 'center' as const },
             { title: 'ประเภท', dataIndex: 'bill_type', width: 150, render: (v: BillType) => BILL_TYPE_LABEL[v] ?? v },
             { title: 'ใบกำกับภาษี / INVOICE NO.', dataIndex: 'invoice_no', render: (v: string | null) => v || '—' },
             { title: 'INVOICE DATE', dataIndex: 'invoice_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
+            {
+              title: 'มูลค่า/INV ที่เบิก', dataIndex: 'invoice_amount', width: 150, align: 'right' as const,
+              render: (v: number | null) => (v == null ? '—' : money(Number(v))),
+            },
             { title: 'วันที่ส่งมอบงาน', dataIndex: 'delivery_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
             { title: 'วันที่วางบิล', dataIndex: 'bill_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
             { title: 'วันที่จ่าย', dataIndex: 'pay_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
@@ -617,8 +741,43 @@ const WOContractorBillTab: React.FC<Props> = ({
               title: 'สถานะ', dataIndex: 'status', width: 90,
               render: (v: BillStatus) => <Tag color={v === 'SAVED' ? 'green' : 'default'}>{v === 'SAVED' ? 'SAVE' : 'DRAFT'}</Tag>,
             },
+            {
+              title: '', width: 120,
+              render: (_: unknown, r: InvoiceHistoryRow) => (
+                <Button size="small" icon={<EyeOutlined />} onClick={() => showDetail(r.bill_id)}>รายละเอียด</Button>
+              ),
+            },
           ]}
         />
+        <Modal
+          open={!!detail || detailLoading}
+          onCancel={() => setDetail(null)}
+          footer={<Button onClick={() => setDetail(null)}>ปิด</Button>}
+          width={620}
+          loading={detailLoading}
+          title={detail
+            ? `รายละเอียดการจ่าย — ${BILL_TYPE_LABEL[detail.bill_type] ?? detail.bill_type}${detail.installment_no ? ` งวดที่ ${detail.installment_no}` : ''}`
+            : 'รายละเอียดการจ่าย'}
+        >
+          {detail?.progress_note ? <div style={{ marginBottom: 8, color: '#6b7280' }}>{detail.progress_note}</div> : null}
+          <Table
+            rowKey="code"
+            size="small"
+            pagination={false}
+            dataSource={detailRows}
+            columns={[
+              { title: 'รายการ', dataIndex: 'label', render: (v: string, r: { strong: boolean }) => (r.strong ? <strong>{v}</strong> : v) },
+              {
+                title: '%', dataIndex: 'percent', width: 100, align: 'right' as const,
+                render: (v: number | null) => (v == null ? '—' : `${money(Number(v))}%`),
+              },
+              {
+                title: 'จำนวนเงิน', dataIndex: 'amount', width: 160, align: 'right' as const,
+                render: (v: number, r: { strong: boolean }) => (r.strong ? <strong>{money(v)}</strong> : money(v)),
+              },
+            ]}
+          />
+        </Modal>
       </div>
 
       <div style={subCardStyle}>

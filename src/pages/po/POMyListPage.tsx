@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Button, Space, message } from 'antd'
 import { EyeOutlined } from '@ant-design/icons'
@@ -69,7 +70,7 @@ const POMyListPage: React.FC = () => {
       title: 'มูลค่า (บาท)',
       key: 'net_amount',
       align: 'right',
-      render: (_: unknown, r) => r.net_amount.toLocaleString('th-TH'),
+      render: (_: unknown, r) => formatMoney(r.net_amount),
     },
     {
       title: 'วันที่สั่ง',

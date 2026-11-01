@@ -153,6 +153,16 @@ Style มาตรฐานทุก Card:
 }}>
 ```
 
+#### Block card (Card = block ของฟอร์ม/เอกสาร/รายการ)
+Card ทุกใบทั้งแอปเป็น "block" หน้าตาเดียวกับหน้าสร้าง WO — กำหนดด้วย CSS กลางใน `src/index.css` (ไม่ต้องใส่ className / style เพิ่มในแต่ละหน้า):
+- แถบสีน้ำเงินด้านซ้าย `4px solid #2563eb`, เส้นขอบ `1px solid #bcd0f0`, `borderRadius: 12`, เงา navy `0 4px 16px rgba(15,45,94,0.14)` (ใช้กับ Card ทุกใบ ทั้งที่มีและไม่มี `title`)
+- Card ที่มี `title` เพิ่มหัวการ์ด: พื้น `#eef4ff`, เส้นคั่นล่าง `#cfe0f7`, ชื่อหัวข้อสี `#0f2d5e` หนา (700)
+- ชุดนี้ใช้ `!important` ทับ inline style ของ Card ในหน้าเก่า (`border: 'none'`, เงาอ่อน) จึงเปลี่ยนทุกหน้าพร้อมกัน — ถ้าเขียนหน้าใหม่ ไม่ต้องกำหนด border/เงาเอง
+- **block ที่ไม่ได้ใช้ antd Card** (เป็น `<div>` ที่เขียน style เอง เช่น หน้ารายละเอียด PO, ไฟล์แนบใน Memo, แผงในหน้า Master): ใช้ `BLOCK_CARD_STYLE` (+ `BLOCK_HEAD_STYLE` สำหรับแถบหัวแผง) จาก `src/constants/blockStyle.ts` — อย่าเขียน border/เงาเอง
+- **ไม่ใช้กับ:** Card ขนาดเล็ก (`size="small"`, ใช้เป็น sub-block ในบล็อกใหญ่ — หัวสีอ่อนกว่า `#f6f9ff`), Card ใน Modal/Drawer, การ์ดตัวเลขสถิติ (`StatCard`, class `erp-stat-card`) และทุกอย่างที่อยู่ใต้ wrapper `className="erp-no-block"` (ตอนนี้คือหน้า Dashboard)
+- ต้องการยกเว้นหน้าไหน ใส่ `className="erp-no-block"` ที่ wrapper ของหน้านั้น
+- ใช้ selector `:not(<selector ซับซ้อน>)` ซึ่งรองรับ Chrome/Edge 88+, Safari 9+, Firefox 84+ (ไม่ต้องพึ่ง `:has()` แล้ว)
+
 ### Button
 - Primary: gradient น้ำเงิน (override ใน index.css)
 - Default: border ปกติ
@@ -256,6 +266,14 @@ Pattern สำหรับฟอร์มที่มีรายการย่
 ส่วนย่อยเป็น `<Card size="small" title="7.1 …">` ซ้อนในการ์ดหลัก ด้วย `subCardStyle = { borderRadius: 10, border: '1px solid #e5e7eb', boxShadow: 'none', marginBottom: 16 }`
 (บล็อกสุดท้ายใช้ `marginBottom: 0`). ชื่อ sub-block ขึ้นต้นด้วยเลขหัวข้อ เช่น "7.5 …", "8.1 เบี้ยปรับ" — ไม่ใช้ช่องธรรมดาเรียงในการ์ดเดียวเมื่อสเก็ตช์/สเปกแบ่งเป็นข้อย่อย
 (`subCardStyle` ถูกประกาศซ้ำใน `WOPaymentConditionsSection.tsx`, `WorkOrderCreatePage.tsx`, `WOContractorBillTab.tsx` — ยังไม่มี shared constant)
+
+### Large tabs (tab หลักของหน้า)
+tab ที่เป็นโครงหลักของหน้า (ตอนนี้: `WorkOrderCreatePage.tsx` — "สร้างหนังสือสั่งจ้าง (WO)" / "รายละเอียดหนังสือสั่งจ้าง", `WOContractorLogPanel.tsx`, และ `FinancePaymentsPage.tsx` — PO / WO / เงินสดย่อย) ใช้ `<Tabs className="erp-tabs-lg">`
+(สไตล์อยู่ใน `src/index.css`, ใช้ซ้ำได้กับหน้าอื่นที่มี tab หลัก) ไม่ใช้ tab แบบ antd ปกติ เพราะเล็กและแยกไม่ชัดว่าเปิดอยู่ tab ไหน:
+- **Tab ที่เปิดอยู่:** พื้นสีน้ำเงินทึบ `#1d4ed8` ตัวอักษรขาว หนา (700) พร้อมเงาน้ำเงินกรมท่า — เห็นชัดทันที
+- **Tab ที่ไม่ได้เปิด:** พื้นฟ้าอ่อน `#e6eefb` ตัวอักษร `#3b4d6b`; hover เป็น `#d3e2fa`; tab ที่ disabled (เช่น tab 2 ก่อนบันทึกครั้งแรก) จางลง (`opacity 0.55`)
+- **ขนาด:** `padding: 14px 36px`, ตัวอักษร `17px`, มุมบนโค้ง `12px`, ช่องว่างระหว่าง tab `8px`; เส้นใต้แถว tab หนา `3px` สี `#1d4ed8` (ซ่อน ink-bar เดิมของ antd)
+- ใช้เฉพาะ tab ที่เป็นโครงหลักของหน้า (เปลี่ยนแล้วเนื้อหาทั้งหน้าเปลี่ยน เช่น เปลี่ยนประเภทเอกสาร) — tab ย่อยหรือตัวกรองเล็กๆ ในการ์ดไม่ต้องใช้
 
 ---
 

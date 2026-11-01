@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type {
   WOListItem, WOListParams, WOListResult, WorkOrder, WorkOrderPayload, WOPaymentConditions,
+  WOAvailablePR, WOPRSource,
 } from '@/types/workOrder'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -82,6 +83,37 @@ export const workOrderService = {
 
   reject: async (token: string, id: string | number, reason: string): Promise<void> => {
     await axios.put(`${BASE_URL}/approval/WO/${id}/reject`, { comments: reason }, { headers: authHeader(token) })
+  },
+
+  // Approved PRs (COMPLETED) of type PO/WO or WO that no live work order uses yet. woId keeps the PR
+  // already linked to the WO being edited in the list.
+  getAvailablePRs: async (token: string, woId?: string | number): Promise<WOAvailablePR[]> => {
+    const res = await axios.get(`${BASE_URL}/work-order/available-prs`, {
+      headers: authHeader(token),
+      params: woId ? { wo_id: woId } : undefined,
+    })
+    const payload = res.data?.data ?? res.data
+    return Array.isArray(payload) ? payload : []
+  },
+
+  // PR header + lines (GET /pr/:id) — the pieces a WO pulls from it.
+  getPRSource: async (token: string, prId: number): Promise<WOPRSource> => {
+    const res = await axios.get(`${BASE_URL}/pr/${prId}`, { headers: authHeader(token) })
+    const raw = res.data?.data ?? res.data
+    return {
+      pr_id: Number(raw.id ?? prId),
+      pr_no: raw.pr_no,
+      project_code: raw.project_code ?? null,
+      job_code: raw.job_code ?? null,
+      lines: (Array.isArray(raw.lines) ? raw.lines : []).map((l: any) => ({
+        cost_code: l.cost_code ?? null,
+        mat_name: l.mat_name ?? null,
+        spec_name: l.spec_name ?? null,
+        unit_name: l.unit_name ?? null,
+        qty_requested: Number(l.qty_requested) || 0,
+        remarks: l.remarks ?? null,
+      })),
+    }
   },
 
   getPaymentConditions: async (token: string, woId: string | number): Promise<WOPaymentConditions> => {

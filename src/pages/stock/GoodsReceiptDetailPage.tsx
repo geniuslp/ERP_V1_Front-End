@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
 import { Card, Button, Table, Descriptions, InputNumber, message, Modal, Rate, Input, DatePicker, Spin, Checkbox } from 'antd'
 import { InboxOutlined, ArrowLeftOutlined } from '@ant-design/icons'
@@ -302,7 +303,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
               <Descriptions.Item key="project_code" label="รหัส Project">{po.project_code || '-'}</Descriptions.Item>
               <Descriptions.Item key="status" label="สถานะ PO">{po.status}</Descriptions.Item>
               <Descriptions.Item key="currency" label="สกุลเงิน">{po.currency}</Descriptions.Item>
-              <Descriptions.Item key="net_amount" label="มูลค่าสุทธิ">{(po.net_amount ?? 0).toLocaleString()}</Descriptions.Item>
+              <Descriptions.Item key="net_amount" label="มูลค่าสุทธิ">{formatMoney(po.net_amount ?? 0)}</Descriptions.Item>
             </Descriptions>
           </Card>
 

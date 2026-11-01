@@ -11,6 +11,7 @@ import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
+import WOEditApprovedButton from '@/components/workOrder/WOEditApprovedButton'
 import type { WOListItem } from '@/types/workOrder'
 
 const MENU_CODE = 'MENU_WO_CREATE'
@@ -125,6 +126,9 @@ const WorkOrderListPage: React.FC = () => {
             <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${r.id}/edit`)}>
               แก้ไข
             </Button>
+          )}
+          {(r.status === 'APPROVED' || r.status === 'PENDING_REAPPROVAL') && (
+            <WOEditApprovedButton woId={r.id} woNo={r.wo_no} size="small" />
           )}
           <WorkOrderPrintTrigger id={r.id} buttonProps={{ size: 'small' }} label="พิมพ์" />
         </Space>

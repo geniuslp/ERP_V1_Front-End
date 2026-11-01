@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 import { DownOutlined, LeftOutlined, MenuOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
 import {
-  PARAM_REQUIRED_MENU_CODES, TOPNAV_MAX_WIDTH, TOPNAV_MIN_WIDTH, TOPNAV_WIDTHS_RESET_EVENT,
-  findActive, numberLeaves, loadTopNavWidths, saveTopNavWidths, shortLabel, useNavTree, type NavNode,
+  NO_ACCESS_TITLE, PARAM_REQUIRED_MENU_CODES, TOPNAV_MAX_WIDTH, TOPNAV_MIN_WIDTH, TOPNAV_WIDTHS_RESET_EVENT,
+  findActive, navColor, numberLeaves, loadTopNavWidths, saveTopNavWidths, shortLabel, useNavTree, type NavNode,
 } from './topNavData'
 
 // Top navigation bar (replaces the sidebar). Desktop (>=992px): a horizontally scrollable strip of text-only
@@ -45,6 +45,16 @@ const CSS = `
 .tn-panel-title { padding: 6px 12px 8px; font-size: 12px; font-weight: 600; color: #60a5fa; border-bottom: 1px solid #dbeafe; margin-bottom: 6px; }
 .tn-group-head { padding: 8px 12px 4px; font-size: 12px; font-weight: 600; color: #60a5fa; }
 .tn-child { display: block; padding: 10px 12px; border-radius: 8px; color: #1e3a8a; font-size: 14px; text-decoration: none; cursor: pointer; }
+.tn-child.tn-c-pr    { --tn-c: #047857; --tn-c-bg: #ecfdf5; --tn-c-dk: #6ee7b7; }
+.tn-child.tn-c-po    { --tn-c: #b45309; --tn-c-bg: #fffbeb; --tn-c-dk: #fcd34d; }
+.tn-child.tn-c-wo    { --tn-c: #1d4ed8; --tn-c-bg: #eff6ff; --tn-c-dk: #93c5fd; }
+.tn-child.tn-c-petty { --tn-c: #7e22ce; --tn-c-bg: #faf5ff; --tn-c-dk: #d8b4fe; }
+.tn-child.tn-c-memo  { --tn-c: #0e7490; --tn-c-bg: #ecfeff; --tn-c-dk: #67e8f9; }
+.tn-child.tn-c-ic    { --tn-c: #be123c; --tn-c-bg: #fff1f2; --tn-c-dk: #fda4af; }
+.tn-child.tn-c-budget { --tn-c: #4d7c0f; --tn-c-bg: #f7fee7; --tn-c-dk: #bef264; }
+.tn-child.tn-c-stock { --tn-c: #c2410c; --tn-c-bg: #fff7ed; --tn-c-dk: #fdba74; }
+.tn-child[class*="tn-c-"] { color: var(--tn-c); box-shadow: inset 3px 0 0 var(--tn-c); }
+.tn-child[class*="tn-c-"]:hover, .tn-child[class*="tn-c-"].tn-child-active { background: var(--tn-c-bg); color: var(--tn-c); }
 .tn-child:hover { background: #eff6ff; }
 .tn-child.tn-child-active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
 .tn-child[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
@@ -54,6 +64,15 @@ const CSS = `
 .tn-drawer-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
 .tn-drawer-item.tn-active { background: linear-gradient(135deg,#2563eb,#1d4ed8); color: #fff; font-weight: 600; }
 .tn-drawer-sub { background: ${NAVY_DARK}; }
+.tn-drawer-item.tn-c-pr    { --tn-c: #6ee7b7; }
+.tn-drawer-item.tn-c-po    { --tn-c: #fcd34d; }
+.tn-drawer-item.tn-c-wo    { --tn-c: #93c5fd; }
+.tn-drawer-item.tn-c-petty { --tn-c: #d8b4fe; }
+.tn-drawer-item.tn-c-memo  { --tn-c: #67e8f9; }
+.tn-drawer-item.tn-c-ic    { --tn-c: #fda4af; }
+.tn-drawer-item.tn-c-budget { --tn-c: #bef264; }
+.tn-drawer-item.tn-c-stock { --tn-c: #fdba74; }
+.tn-drawer-item[class*="tn-c-"] { color: var(--tn-c); box-shadow: inset 3px 0 0 var(--tn-c); }
 .tn-drawer-sub .tn-drawer-item { padding-left: 32px; font-size: 14px; }
 .tn-drawer-sub .tn-drawer-item[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .tn-drawer-head { padding: 10px 16px 4px 32px; font-size: 12px; font-weight: 600; color: #60a5fa; }
@@ -378,10 +397,12 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
   const renderEntry = (n: NavNode) => {
     const label = `${entryNumbers.get(n.menu_code) ?? ''}. ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
-    if (PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
+    const color = openNode ? navColor(openNode.menu_code, n.menu_code) : undefined
+    const colorCls = color ? ` tn-c-${color}` : ''
+    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
-        <span key={n.id} data-nav-entry role="menuitem" aria-disabled="true" tabIndex={-1} className="tn-child"
-          title={PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
+        <span key={n.id} data-nav-entry role="menuitem" aria-disabled="true" tabIndex={-1} className={`tn-child${colorCls}`}
+          title={n.noAccess ? NO_ACCESS_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
           {label}
         </span>
       )
@@ -389,7 +410,7 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
     return (
       <Link key={n.id} to={n.menu_path} data-nav-entry role="menuitem" title={n.menu_name}
         aria-current={isActive ? 'page' : undefined}
-        className={`tn-child${isActive ? ' tn-child-active' : ''}`}>
+        className={`tn-child${colorCls}${isActive ? ' tn-child-active' : ''}`}>
         {label}
       </Link>
     )
@@ -470,7 +491,7 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
                           <span className="tn-label">{label}</span>
                           <DownOutlined className="tn-chev" />
                         </button>
-                      ) : n.menu_path ? (
+                      ) : n.menu_path && !n.noAccess ? (
                         <Link
                           to={n.menu_path}
                           ref={(el) => { if (el) triggerEls.current.set(n.menu_code, el); else triggerEls.current.delete(n.menu_code) }}
@@ -481,7 +502,7 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
                           <span className="tn-label">{label}</span>
                         </Link>
                       ) : (
-                        <span className="tn-trigger" aria-disabled="true" title={n.menu_name}>
+                        <span className="tn-trigger" aria-disabled="true" title={n.noAccess ? NO_ACCESS_TITLE : n.menu_name}>
                           <span className="tn-label">{label}</span>
                         </span>
                       )}
@@ -574,20 +595,22 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const renderLeaf = (n: NavNode, nums: Map<string, number>) => {
+  const renderLeaf = (n: NavNode, nums: Map<string, number>, rootCode: string) => {
     const label = `${nums.get(n.menu_code) ?? ''}. ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
-    if (PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
+    const color = navColor(rootCode, n.menu_code)
+    const colorCls = color ? ` tn-c-${color}` : ''
+    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
-        <span key={n.id} className="tn-drawer-item" aria-disabled="true"
-          title={PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
+        <span key={n.id} className={`tn-drawer-item${colorCls}`} aria-disabled="true"
+          title={n.noAccess ? NO_ACCESS_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
           {label}
         </span>
       )
     }
     return (
       <Link key={n.id} to={n.menu_path} aria-current={isActive ? 'page' : undefined}
-        className={`tn-drawer-item${isActive ? ' tn-active' : ''}`}>
+        className={`tn-drawer-item${colorCls}${isActive ? ' tn-active' : ''}`}>
         {label}
       </Link>
     )
@@ -631,6 +654,9 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
               {loading ? null : tree.map((n) => {
                 const isActiveTop = active.topCode === n.menu_code
                 if (n.children.length === 0) {
+                  if (n.noAccess) {
+                    return <span key={n.id} className="tn-drawer-item" aria-disabled="true" title={NO_ACCESS_TITLE}>{n.menu_name}</span>
+                  }
                   return n.menu_path ? (
                     <Link key={n.id} to={n.menu_path} aria-current={isActiveTop ? 'page' : undefined}
                       className={`tn-drawer-item${isActiveTop ? ' tn-active' : ''}`}>
@@ -659,10 +685,10 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
                             c.children.length > 0 ? (
                               <div key={c.id}>
                                 <div className="tn-drawer-head">{c.menu_name}</div>
-                                {c.children.map((x) => renderLeaf(x, nums))}
+                                {c.children.map((x) => renderLeaf(x, nums, n.menu_code))}
                               </div>
                             ) : (
-                              renderLeaf(c, nums)
+                              renderLeaf(c, nums, n.menu_code)
                             ),
                           )
                         })()}

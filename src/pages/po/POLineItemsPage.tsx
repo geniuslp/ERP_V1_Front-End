@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useCallback, useEffect, useState } from 'react'
 import { Card, Table, Space, message, Input, Row, Col, Tag, Button, DatePicker, Select, Modal, Descriptions, Tooltip } from 'antd'
 import { SearchOutlined, ReloadOutlined, DownloadOutlined } from '@ant-design/icons'
@@ -340,7 +341,7 @@ const POLineItemsPage: React.FC = () => {
         return code ? (l.cost_subgroup_name ? `${code} - ${l.cost_subgroup_name}` : code) : '-'
       },
     },
-    { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v?: string) => v || '-' },
+    { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v?: string) => <FormattedNote value={v} empty="-" /> },
     {
       title: '',
       dataIndex: 'status',

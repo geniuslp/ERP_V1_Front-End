@@ -1,3 +1,5 @@
+import { formatMoney } from '@/utils/formatMoney'
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Descriptions, Form, InputNumber, DatePicker, Select, Input, Button, Space, Alert, Modal, Tag, Tooltip, message } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
@@ -245,7 +247,7 @@ const FinancePaymentDetailPage: React.FC = () => {
       ),
     },
     { title: 'ผู้จ่ายเงิน', dataIndex: 'paid_by_name', key: 'paid_by_name', render: (v?: string) => v || '—' },
-    { title: 'หมายเหตุ', dataIndex: 'remark', key: 'remark', render: (v?: string) => v || '—' },
+    { title: 'หมายเหตุ', dataIndex: 'remark', key: 'remark', render: (v?: string) => <FormattedNote value={v} empty="—" /> },
     {
       title: '',
       key: 'reversal-tag',
@@ -333,14 +335,14 @@ const FinancePaymentDetailPage: React.FC = () => {
       dataIndex: 'unit_price',
       key: 'unit_price',
       width: 120,
-      render: (v: number) => v.toLocaleString('th-TH'),
+      render: (v: number) => formatMoney(v),
     },
     {
       title: 'มูลค่า',
       dataIndex: 'amount',
       key: 'amount',
       width: 130,
-      render: (v: number) => v.toLocaleString('th-TH'),
+      render: (v: number) => formatMoney(v),
     },
     {
       title: 'สถานะ',

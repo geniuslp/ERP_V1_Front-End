@@ -61,24 +61,28 @@ body {
   -webkit-line-clamp: 2;
 }
 
-/* Sidebar 'blue' colour variant (see MENU_COLOR_GROUPS in SidebarMenu.tsx). The class is only emitted
-   by the sidebar, and also reaches the collapsed-mode popup menus. #60A5FA on the #0f2d5e sidebar is
-   ~5.4:1 (AA); the brand #2563EB would be ~2.2:1 there. Selected keeps the shared gradient + white
-   text, with a brighter bar, so it differs from the plain blue state. */
-.ant-menu-dark .ant-menu-item.erp-menu-blue,
-.ant-menu-dark .ant-menu-submenu.erp-menu-blue > .ant-menu-submenu-title {
-  color: #60a5fa;
-  box-shadow: inset 3px 0 0 #60a5fa;
+/* Sidebar sub-menu colour variants (see MENU_COLOR_GROUPS in SidebarMenu.tsx): PR green, PO amber,
+   WO blue, petty cash purple. Classes are only emitted by the sidebar and also reach the
+   collapsed-mode popup menus. All base colours are >= AA on the #0f2d5e sidebar. Selected keeps the
+   shared gradient + white text, with a brighter bar. */
+.erp-menu-pr    { --erp-mc: #34d399; --erp-mc-hi: #6ee7b7; --erp-mc-bg: rgba(52, 211, 153, 0.14); }
+.erp-menu-po    { --erp-mc: #fbbf24; --erp-mc-hi: #fcd34d; --erp-mc-bg: rgba(251, 191, 36, 0.14); }
+.erp-menu-wo    { --erp-mc: #60a5fa; --erp-mc-hi: #93c5fd; --erp-mc-bg: rgba(96, 165, 250, 0.14); }
+.erp-menu-petty { --erp-mc: #c084fc; --erp-mc-hi: #d8b4fe; --erp-mc-bg: rgba(192, 132, 252, 0.14); }
+.ant-menu-dark .ant-menu-item[class*="erp-menu-"],
+.ant-menu-dark .ant-menu-submenu[class*="erp-menu-"] > .ant-menu-submenu-title {
+  color: var(--erp-mc);
+  box-shadow: inset 3px 0 0 var(--erp-mc);
 }
-.ant-menu-dark .ant-menu-item.erp-menu-blue a { color: inherit; }
-.ant-menu-dark .ant-menu-item.erp-menu-blue:not(.ant-menu-item-selected):hover,
-.ant-menu-dark .ant-menu-submenu.erp-menu-blue > .ant-menu-submenu-title:hover {
-  background: rgba(96, 165, 250, 0.14) !important;
-  color: #93c5fd;
+.ant-menu-dark .ant-menu-item[class*="erp-menu-"] a { color: inherit; }
+.ant-menu-dark .ant-menu-item[class*="erp-menu-"]:not(.ant-menu-item-selected):hover,
+.ant-menu-dark .ant-menu-submenu[class*="erp-menu-"] > .ant-menu-submenu-title:hover {
+  background: var(--erp-mc-bg) !important;
+  color: var(--erp-mc-hi);
 }
-.ant-menu-dark .ant-menu-item.erp-menu-blue.ant-menu-item-selected {
+.ant-menu-dark .ant-menu-item[class*="erp-menu-"].ant-menu-item-selected {
   color: #fff;
-  box-shadow: inset 3px 0 0 #93c5fd;
+  box-shadow: inset 3px 0 0 var(--erp-mc-hi);
 }
 
 /* Header logo + title link: only a subtle opacity change on hover/focus. */
@@ -410,21 +414,37 @@ body {
   font-weight: 400;
 }
 
-/* WO contractor log panel: Contract table is narrower with roomy cells; the top tabs show the active tab as a
-   filled pill so it is obvious which one is open. */
+/* WO contractor log panel: Contract table is narrower with roomy cells. */
 .wo-log-terms { max-width: 1107px; }
 .wo-log-terms .ant-table-thead > tr > th,
 .wo-log-terms .ant-table-tbody > tr > td { padding: 12px 24px !important; }
-.wo-log-tabs > .ant-tabs-nav { margin-bottom: 20px; }
-.wo-log-tabs > .ant-tabs-nav::before { border-bottom: 2px solid #dbe6f5; }
-.wo-log-tabs .ant-tabs-tab { padding: 9px 22px; margin: 0 6px 0 0 !important; border-radius: 8px 8px 0 0; background: #eef3fa; transition: background .15s; }
-.wo-log-tabs .ant-tabs-tab .ant-tabs-tab-btn { color: #4b5d78; font-weight: 500; }
-.wo-log-tabs .ant-tabs-tab:hover { background: #dde8f7; }
-.wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active { background: #1d4ed8; box-shadow: 0 2px 8px rgba(15,45,94,0.18); }
-.wo-log-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #fff; font-weight: 600; }
-.wo-log-tabs .ant-tabs-ink-bar { background: #0f2d5e; height: 3px; }
+/* Large tabs for pages with two main tabs (WO create, WO contractor log): big hit area and an obvious active tab —
+   the open tab is a solid blue block with white bold text, the others are pale with dark text. */
+.erp-tabs-lg > .ant-tabs-nav { margin-bottom: 20px; }
+.erp-tabs-lg > .ant-tabs-nav::before { border-bottom: 3px solid #1d4ed8; }
+.erp-tabs-lg .ant-tabs-tab { padding: 14px 36px; margin: 0 8px 0 0 !important; border-radius: 12px 12px 0 0; background: #e6eefb; transition: background .15s; }
+.erp-tabs-lg .ant-tabs-tab .ant-tabs-tab-btn { font-size: 17px; font-weight: 500; color: #3b4d6b; }
+.erp-tabs-lg .ant-tabs-tab:hover { background: #d3e2fa; }
+.erp-tabs-lg .ant-tabs-tab.ant-tabs-tab-active { background: #1d4ed8; box-shadow: 0 -2px 10px rgba(15,45,94,0.22); }
+.erp-tabs-lg .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: #fff; font-weight: 700; }
+.erp-tabs-lg .ant-tabs-tab.ant-tabs-tab-disabled { opacity: 0.55; }
+.erp-tabs-lg .ant-tabs-ink-bar { display: none; }
 
-/* WO create page: every numbered block is its own card — tinted header, navy title, blue divider. */
+/* Section "block" cards, same look everywhere (first designed for the WO create page): every Card is a block —
+   blue left bar, light border, navy shadow; a Card with a title also gets the tinted header, navy bold title and
+   blue divider. Applies app-wide (inline card styles are overridden with !important); left out: small cards
+   (sub-blocks keep the paler header below), cards inside modals / drawers, stat tiles (.erp-stat-card) and anything
+   under a .erp-no-block wrapper (the dashboard). Plain-<div> blocks use constants/blockStyle.ts instead.
+   .wo-block is the old WO-only class, still honoured. */
+.ant-card:not(.ant-card-small):not(.erp-stat-card):not(.ant-modal *):not(.ant-drawer *):not(.erp-no-block *),
+.wo-block {
+  border: 1px solid #bcd0f0 !important;
+  border-left: 4px solid #2563eb !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(15,45,94,0.14) !important;
+}
+.ant-card:not(.ant-card-small):not(.ant-modal *):not(.ant-drawer *):not(.erp-no-block *) > .ant-card-head,
 .wo-block > .ant-card-head { background: #eef4ff; border-bottom: 1px solid #cfe0f7; border-radius: 12px 12px 0 0; }
+.ant-card:not(.ant-card-small):not(.ant-modal *):not(.ant-drawer *):not(.erp-no-block *) > .ant-card-head .ant-card-head-title,
 .wo-block > .ant-card-head .ant-card-head-title { color: #0f2d5e; font-weight: 700; }
-.wo-block .ant-card.ant-card-small > .ant-card-head { background: #f6f9ff; border-bottom: 1px solid #dbe6f5; }
+.ant-card .ant-card.ant-card-small > .ant-card-head { background: #f6f9ff; border-bottom: 1px solid #dbe6f5; }

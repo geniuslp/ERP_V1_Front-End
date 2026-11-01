@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Table, Tag, Timeline, Button, Modal, message, Spin } from 'antd'
 import { ExclamationCircleFilled } from '@ant-design/icons'
@@ -122,7 +123,7 @@ const StockTransferDetailView: React.FC<Props> = ({ transferType, menuCode, brea
           render: (v?: number) => (v ?? v === 0 ? v : '—'),
         }]
       : []),
-    { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v?: string) => v || '—' },
+    { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v?: string) => <FormattedNote value={v} empty="—" /> },
   ]
 
   if (loading) {

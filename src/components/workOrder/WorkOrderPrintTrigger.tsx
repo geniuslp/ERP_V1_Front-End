@@ -24,6 +24,8 @@ interface Props {
   getFormData?: () => WOPrintData
   buttonProps?: ButtonProps
   label?: string
+  // When set, the button prints that template straight away (no picker modal) — used where each template gets its own button.
+  fixedTemplate?: WOPrintTemplate
 }
 
 // Shared by WorkOrderDetailPage (single doc) and WorkOrderListPage (row action)
@@ -31,11 +33,12 @@ interface Props {
 // duplicated per page. Same Modal-based "choose an option before proceeding"
 // pattern used elsewhere in this codebase (e.g. the reject-reason Modal on
 // WorkOrderDetailPage / POApprovalDetailPage).
-const WorkOrderPrintTrigger: React.FC<Props> = ({ id, getFormData, buttonProps, label = 'พิมพ์เอกสาร' }) => {
+const WorkOrderPrintTrigger: React.FC<Props> = ({ id, getFormData, buttonProps, label = 'พิมพ์เอกสาร', fixedTemplate }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
 
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [template, setTemplate] = useState<WOPrintTemplate>('WO_STANDARD')
+  const [pickedTemplate, setTemplate] = useState<WOPrintTemplate>('WO_STANDARD')
+  const template = fixedTemplate ?? pickedTemplate
   const [loading, setLoading] = useState(false)
   const [printData, setPrintData] = useState<WOPrintData | null>(null)
 
@@ -64,7 +67,12 @@ const WorkOrderPrintTrigger: React.FC<Props> = ({ id, getFormData, buttonProps, 
 
   return (
     <>
-      <Button icon={<PrinterOutlined />} onClick={() => setPickerOpen(true)} {...buttonProps}>
+      <Button
+        icon={<PrinterOutlined />}
+        loading={fixedTemplate ? loading : undefined}
+        onClick={() => (fixedTemplate ? handleConfirm() : setPickerOpen(true))}
+        {...buttonProps}
+      >
         {label}
       </Button>
 

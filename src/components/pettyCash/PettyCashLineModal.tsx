@@ -618,9 +618,10 @@ const PettyCashLineModal: React.FC<Props> = ({
             <Form.Item name="unit_price" label="ราคา/หน่วย">
               <InputNumber
                 min={0}
+                precision={2}
                 controls={false}
                 style={{ width: '100%', maxWidth: 260 }}
-                placeholder="0"
+                placeholder="0.00"
                 formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
               />

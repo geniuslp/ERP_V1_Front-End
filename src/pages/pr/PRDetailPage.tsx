@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -434,7 +435,7 @@ const PRDetailPage: React.FC = () => {
     { title: 'ตัดจาก Stock', dataIndex: 'qtyReserved', key: 'qtyReserved', width: 110, align: 'right' as const },
     {
       title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks',
-      render: (v?: string | null) => v || <Text type="secondary">—</Text>,
+      render: (v?: string | null) => <FormattedNote value={v} empty={<Text type="secondary">—</Text>} />,
     },
   ]
 
@@ -576,7 +577,7 @@ const PRDetailPage: React.FC = () => {
           <Descriptions.Item label="ประเภท Job">
             {pr.jobCode ? (JOB_TYPES.find((jt) => jt.code === pr.jobCode)?.label ?? pr.jobCode) : '—'}
           </Descriptions.Item>
-          <Descriptions.Item label="หมายเหตุ" span={2}>{pr.remarks || '—'}</Descriptions.Item>
+          <Descriptions.Item label="หมายเหตุ" span={2}><FormattedNote value={pr.remarks} empty="—" /></Descriptions.Item>
         </Descriptions>
       </Card>
 

@@ -1,3 +1,4 @@
+import { BLOCK_CARD_STYLE, BLOCK_HEAD_STYLE } from '@/constants/blockStyle'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Select, Space, Tag, Input, Divider,
@@ -783,11 +784,10 @@ const CostCodePage: React.FC = () => {
   }
 
   const panelStyle: React.CSSProperties = {
-    background: '#fff', borderRadius: 14,
-    boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0', overflow: 'hidden',
+    ...BLOCK_CARD_STYLE, background: '#fff', overflow: 'hidden',
   }
   const panelHead: React.CSSProperties = {
-    padding: '16px 20px', borderBottom: '1px solid #f3f4f6',
+    ...BLOCK_HEAD_STYLE, padding: '16px 20px',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
   }
 

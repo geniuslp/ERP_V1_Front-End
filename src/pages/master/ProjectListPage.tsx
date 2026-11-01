@@ -1,3 +1,5 @@
+import { BLOCK_CARD_STYLE, BLOCK_HEAD_STYLE } from '@/constants/blockStyle'
+import { formatMoney } from '@/utils/formatMoney'
 import { formatProjectTier } from '@/utils/projectTier'
 import React, { useEffect, useRef, useState } from 'react'
 import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Popconfirm, message, Typography, Modal, Row } from 'antd'
@@ -229,11 +231,10 @@ const readFileAsRows = (
   })
 
 const panelStyle: React.CSSProperties = {
-  background: '#fff', borderRadius: 14,
-  boxShadow: '0 1px 6px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0', overflow: 'hidden',
+  ...BLOCK_CARD_STYLE, background: '#fff', overflow: 'hidden',
 }
 const panelHead: React.CSSProperties = {
-  padding: '16px 20px', borderBottom: '1px solid #f3f4f6',
+  ...BLOCK_HEAD_STYLE, padding: '16px 20px',
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
 }
 
@@ -663,7 +664,7 @@ const ProjectListPage: React.FC = () => {
                   {
                     title: 'มูลค่า', key: 'budget', width: 120, align: 'right' as const,
                     render: (_: unknown, r: ParsedRow) => (
-                      <div style={{ fontSize: 12 }}>{r.data.budget_amount.toLocaleString('th-TH')}</div>
+                      <div style={{ fontSize: 12 }}>{formatMoney(r.data.budget_amount)}</div>
                     ),
                   },
                   {

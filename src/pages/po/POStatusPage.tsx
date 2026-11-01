@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Button, Space, message, Input, Row, Col, Tag, Typography, Select, Tooltip } from 'antd'
 import { EyeOutlined, EditOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -251,7 +252,7 @@ const POStatusPage: React.FC = () => {
       align: 'right',
       ellipsis: true,
       onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' as const } }),
-      render: (_: unknown, r) => `${(r.total_amount - (r.discount_amount ?? 0)).toLocaleString('th-TH')} บาท`,
+      render: (_: unknown, r) => `${formatMoney(r.total_amount - (r.discount_amount ?? 0))} บาท`,
     },
     {
       title: 'วันที่สั่ง',

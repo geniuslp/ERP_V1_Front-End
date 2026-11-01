@@ -10,7 +10,8 @@ import api from '@/services/api'
 // Row of GET /po/cost-budget/:projectCode/cost-codes/:costSubgroupId/po-lines
 interface CostCodePoLine {
   // 'PC' rows: po_id/po_no/po_status hold the petty cash header id / document number / status.
-  source?: 'PO' | 'PC' | 'TR'
+  // 'WO' rows (approved work order): po_id/po_no hold the work order id / WO number.
+  source?: 'PO' | 'WO' | 'PC' | 'TR'
   // 'TR' rows (project transfer): po_no is the TF document number, project_name the OTHER project of the
   // transfer, quantity negative when the goods left this project; doc_project_code owns the document.
   doc_project_code?: string | null
@@ -138,17 +139,20 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
 
   const columns: ColumnsType<CostCodePoLine> = [
     {
-      title: 'ประเภท',
+      // Document type of the row, named after the document itself: PO, WO, PC (petty cash) or TF (project transfer).
+      title: 'ประเภทใบงาน',
       dataIndex: 'source',
       key: 'source',
       ...col('source'),
-      render: (v: 'PO' | 'PC' | 'TR' | undefined) =>
+      render: (v: 'PO' | 'WO' | 'PC' | 'TR' | undefined) =>
         v === 'PC' ? (
-          <Tag color="orange" style={{ margin: 0 }}>เงินสดย่อย</Tag>
+          <Tag color="orange" style={{ margin: 0 }}>PC</Tag>
+        ) : v === 'WO' ? (
+          <Tag color="purple" style={{ margin: 0 }}>WO</Tag>
         ) : v === 'TR' ? (
-          <Tag color="green" style={{ margin: 0 }}>โอน</Tag>
+          <Tag color="green" style={{ margin: 0 }}>TF</Tag>
         ) : (
-          <Tag color="blue" style={{ margin: 0 }}>OF</Tag>
+          <Tag color="blue" style={{ margin: 0 }}>PO</Tag>
         ),
     },
     {
@@ -163,7 +167,9 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
           href={`${ROUTER_BASENAME}${
             r.source === 'PC'
               ? `/petty-cash/${r.po_id}`
-              : r.source === 'TR'
+              : r.source === 'WO'
+                ? `/work-order/${r.po_id}`
+                : r.source === 'TR'
                 ? `/ic/projects/${r.doc_project_code}/movement/${r.po_id}`
                 : `/po/approval/${r.po_id}`
           }`}

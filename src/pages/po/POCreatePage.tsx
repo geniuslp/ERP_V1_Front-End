@@ -531,7 +531,7 @@ const POCreatePage: React.FC = () => {
             qty: l.qty_ordered ?? 0,
             unit_price: l.unit_price ?? 0,
             is_from_pr: l.pr_line_id != null,
-            description: l.remarks ?? undefined,
+            description: l.description ?? l.remarks ?? undefined,
             disc: l.discount ?? undefined,
             // Fall back to the header's global type only for legacy rows saved
             // before per-line disc_type existed — never overwrite a row that

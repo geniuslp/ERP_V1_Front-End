@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
@@ -154,7 +155,7 @@ const Tail = ({ remarks }: { remarks: string }) => (
   <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
     <div className="icr-box" style={{ minHeight: '16mm', padding: '3px 8px', fontFamily: "'Cordia New',sans-serif", fontSize: '12pt', lineHeight: 1.2 }}>
       <b>Remark :</b>&nbsp;
-      <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{remarks.trim()}</span>
+      <FormattedNote value={remarks.trim()} style={{ display: 'inline-block', verticalAlign: 'top' }} />
     </div>
     <div className="icr-box" style={{ padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 14 }}>

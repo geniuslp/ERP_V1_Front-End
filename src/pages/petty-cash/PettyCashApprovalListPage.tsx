@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
 import { Table, Select, Input, Button, Space, Badge, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
@@ -66,7 +67,7 @@ const PettyCashApprovalListPage: React.FC = () => {
       key: 'net_amount',
       width: 160,
       align: 'right',
-      render: (_: unknown, r) => `${r.net_amount.toLocaleString('th-TH')} ${r.currency}`,
+      render: (_: unknown, r) => `${formatMoney(r.net_amount)} ${r.currency}`,
     },
     { title: 'สถานะ', dataIndex: 'status', key: 'status', width: 130, render: (v: string) => <StatusBadge status={v} /> },
     {

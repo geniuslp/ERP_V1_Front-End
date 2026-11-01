@@ -97,6 +97,8 @@ const FinancePaymentsPage: React.FC = () => {
 
   const [projectCode, setProjectCode] = useState('')
   const [status, setStatus] = useState('')
+  // เลขที่เอกสาร (WO tab) — sent as `search` (backend: ILIKE on the document number).
+  const [docNo, setDocNo] = useState('')
 
   // Resizable widths — not persisted, reset on refresh.
   const [docNoColWidth, setDocNoColWidth] = useState(DOC_NO_COL_DEFAULT_WIDTH)
@@ -108,13 +110,20 @@ const FinancePaymentsPage: React.FC = () => {
   const handleResize =
     (set: (w: number) => void) => (_e: React.SyntheticEvent, data: ResizeCallbackData) => set(data.size.width)
 
-  const fetchList = async (nextPage = page, type = docType) => {
+  // `filters` overrides the filter state — needed right after a reset / tab change, when the setState calls
+  // have not been applied yet and this closure would still read the old values.
+  const fetchList = async (
+    nextPage = page,
+    type = docType,
+    filters: { projectCode: string; status: string; docNo: string } = { projectCode, status, docNo },
+  ) => {
     setLoading(true)
     try {
       const result = await financeService.list(accessToken, {
         doc_type: type,
-        project_code: projectCode || undefined,
-        status: status || undefined,
+        project_code: filters.projectCode || undefined,
+        status: filters.status || undefined,
+        search: filters.docNo.trim() || undefined,
         page: nextPage,
         page_size: pageSize,
       })
@@ -128,12 +137,14 @@ const FinancePaymentsPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchList(1, docType) }, [docType])
+  // A tab change clears the filters (handleTabChange), so the reload for the new tab runs with empty ones.
+  useEffect(() => { fetchList(1, docType, { projectCode: '', status: '', docNo: '' }) }, [docType])
 
   const handleReset = () => {
     setProjectCode('')
     setStatus('')
-    fetchList(1, docType)
+    setDocNo('')
+    fetchList(1, docType, { projectCode: '', status: '', docNo: '' })
   }
 
   const handleTabChange = (key: string) => {
@@ -141,6 +152,7 @@ const FinancePaymentsPage: React.FC = () => {
     setDocType(type)
     setProjectCode('')
     setStatus('')
+    setDocNo('')
   }
 
   const columns: ColumnsType<FinancePaymentListItem> = [
@@ -256,6 +268,7 @@ const FinancePaymentsPage: React.FC = () => {
 
       <Card style={cardStyle}>
         <Tabs
+          className="erp-tabs-lg"
           activeKey={docType}
           onChange={handleTabChange}
           items={[
@@ -266,6 +279,16 @@ const FinancePaymentsPage: React.FC = () => {
         />
 
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          {docType === 'WO' && (
+            <Input
+              placeholder="เลขที่ WO"
+              value={docNo}
+              onChange={(e) => setDocNo(e.target.value)}
+              onPressEnter={() => fetchList(1)}
+              style={{ width: 180 }}
+              allowClear
+            />
+          )}
           <Input
             placeholder="โครงการ"
             value={projectCode}

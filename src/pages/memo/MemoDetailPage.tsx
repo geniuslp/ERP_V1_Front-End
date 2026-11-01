@@ -1,3 +1,5 @@
+import { BLOCK_CARD_STYLE } from '@/constants/blockStyle'
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -101,7 +103,7 @@ const formatFileSize = (b: number) =>
 // section, not a Card) — that component isn't exported/reusable across files,
 // so this is a local copy sized for Memo's flat attachments array.
 const AttachmentSection: React.FC<{ title: string; items: MemoAttachmentFile[] }> = ({ title, items }) => (
-  <div style={{ ...cardStyle, padding: 24, marginBottom: 16, background: '#fff' }}>
+  <div style={{ ...BLOCK_CARD_STYLE, padding: 24, marginBottom: 16, background: '#fff' }}>
     <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
       {title}
     </div>
@@ -382,7 +384,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       align: 'center' as const,
       render: (remark?: string) => (
         <div style={{ textAlign: 'left' }}>
-          {remark || <span style={{ color: '#9ca3af' }}>—</span>}
+          <FormattedNote value={remark} empty={<span style={{ color: '#9ca3af' }}>—</span>} />
         </div>
       ),
     },
@@ -485,7 +487,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
             <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>
               หมายเหตุ
             </div>
-            {memo.note}
+            <FormattedNote value={memo.note} />
           </div>
         )}
 

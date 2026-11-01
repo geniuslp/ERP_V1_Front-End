@@ -23,7 +23,6 @@ import { JOB_TYPES } from '@/constants/jobTypes'
 import { isOhOrderType, OH_JOB_CODE } from '@/constants/orderTypes'
 import OrderTypeSelect from '@/components/common/OrderTypeSelect'
 import DepartmentSelect from '@/components/common/DepartmentSelect'
-import { isExemptMatCode } from '@/utils/matCode'
 import {
   COST_CODE_REQUIRED_MESSAGE,
   findLinesMissingCostCode,
@@ -501,25 +500,6 @@ const PRCreatePage: React.FC = () => {
     try {
       const { location_text, required_date, project_code, order_type, pr_type, job_code, requested_by, dept_code } =
         await form.validateFields()
-
-      // Duplicate-material guard — mat_codes matching /^x\d{2}/i (e.g. x01,
-      // x02) are exempt and allowed to repeat freely; every other mat_code
-      // must be unique across this PR's lines. Blank codes are ignored (an
-      // incomplete row, not yet a real duplicate).
-      const nonExemptCodes = lineItems
-        .map((item) => item.mat_code)
-        .filter((code) => code && !isExemptMatCode(code))
-      const seen = new Set<string>()
-      const duplicateCodes = new Set<string>()
-      for (const code of nonExemptCodes) {
-        if (seen.has(code)) duplicateCodes.add(code)
-        seen.add(code)
-      }
-      if (duplicateCodes.size > 0) {
-        message.error(`มีรหัสสินค้าซ้ำกันในใบ: ${Array.from(duplicateCodes).join(', ')}`)
-        setSubmitting(false)
-        return
-      }
 
       // Cost code is required on every line for any submit. Edit mode always
       // submits (PUT then POST /submit) even though it passes 'DRAFT', so it

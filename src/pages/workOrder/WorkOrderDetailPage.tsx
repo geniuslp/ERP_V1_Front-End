@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin, Table } from 'antd'
 import { EditOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
@@ -10,6 +11,7 @@ import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import WOEditApprovedButton from '@/components/workOrder/WOEditApprovedButton'
+import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { WO_CONTRACT_TYPE_LABEL, WO_CONTRACT_DESCRIPTION_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
@@ -115,6 +117,8 @@ const WorkOrderDetailPage: React.FC = () => {
         extra={
           <Space>
             <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="พิมพ์หนังสือสั่งจ้าง" />
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="พิมพ์แบบ PO" />
             {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(wo.status) && (
               <PermissionButton menuCode="MENU_WO_CREATE" action="write" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${wo.id}/edit`)}>
                 แก้ไข
@@ -209,7 +213,7 @@ const WorkOrderDetailPage: React.FC = () => {
           <Descriptions.Item label="ระยะเวลา">{wo.duration_days != null ? `${wo.duration_days} วัน` : '—'}</Descriptions.Item>
           <Descriptions.Item label="วันที่สิ้นสุด">{dateFmt(wo.end_date)}</Descriptions.Item>
           <Descriptions.Item label="ค่าปรับ">{wo.has_penalty ? 'ปรับวันละ 1.00% ของมูลค่างาน' : 'ไม่มี'}</Descriptions.Item>
-          <Descriptions.Item label="ประกันผลงาน 1 ปี">{wo.warranty_note || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ประกันผลงาน">{wo.warranty_years ? `${wo.warranty_years} ปี` : '—'}</Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -223,7 +227,15 @@ const WorkOrderDetailPage: React.FC = () => {
           columns={[
             { title: 'ลำดับ', key: 'no', width: 70, render: (_: unknown, __: WorkOrderLine, i: number) => i + 1 },
             { title: 'Cost Code', dataIndex: 'cost_code', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{formatCostCodeDisplay(v)}</span> },
-            { title: 'รายละเอียด', dataIndex: 'description', render: (v?: string) => v || '—' },
+            {
+              title: 'รายละเอียด', dataIndex: 'description',
+              render: (v: string | undefined, r: WorkOrderLine) => (
+                <div>
+                  <div>{v || '—'}</div>
+                  {r.remarks ? <div style={{ color: '#6b7280', fontSize: 12, whiteSpace: 'pre-line' }}>{r.remarks}</div> : null}
+                </div>
+              ),
+            },
             { title: 'จำนวน', dataIndex: 'qty', width: 90, align: 'center' as const },
             { title: 'ราคา/หน่วย', dataIndex: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => money(v) },
             { title: 'มูลค่า', key: 'amount', width: 120, align: 'right' as const, render: (_: unknown, r: WorkOrderLine) => money(r.qty * r.unit_price) },
@@ -283,7 +295,7 @@ const WorkOrderDetailPage: React.FC = () => {
 
       <Card title="อื่นๆ" style={cardStyle}>
         <Descriptions bordered column={2} size="small">
-          <Descriptions.Item label="เงื่อนไขอื่นๆ" span={2}>{wo.other_terms || '—'}</Descriptions.Item>
+          <Descriptions.Item label="เงื่อนไขอื่นๆ" span={2}><FormattedNote value={wo.other_terms} empty="—" /></Descriptions.Item>
         </Descriptions>
       </Card>
 

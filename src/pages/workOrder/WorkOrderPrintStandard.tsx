@@ -1,3 +1,4 @@
+import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
@@ -6,7 +7,6 @@ import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
-import { formatCostCodeDisplay } from '@/utils/costCode'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 
 // Restored to the original numbered-fields (1–10) paper-form-replica layout,
@@ -65,7 +65,6 @@ const CSS = `
   .wo-std-underline{border-bottom:1px solid #000;padding:0 2px;min-width:60px;display:inline-block;}
 
   /* Cost Code line — simple text display, not a full item table. */
-  .wo-std-costcode{font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.5;margin-top:6px;}
 
   /* Signature block — 4 equal-width columns, fixed height, pinned to bottom. */
   .wo-std-auth{border:1px solid #000;display:flex;height:26mm;margin-top:auto;}
@@ -110,6 +109,9 @@ interface WOPrintDataLite extends Partial<WorkOrder> {}
 // file's blank-fill treatment.
 const val = (v: React.ReactNode) =>
   v === undefined || v === null || v === '' ? <span className="wo-std-underline">&nbsp;</span> : v
+// Long free text (notes / other terms): "1." "2." items and "-" bullets each start a new line.
+const noteVal = (v?: string | null, inline = false) =>
+  val(v ? <FormattedNote value={v} style={inline ? { display: 'inline-block', verticalAlign: 'top' } : undefined} /> : v)
 
 const NumberedFields = ({ data }: { data: WOPrintDataLite }) => {
   const jobNames = useJobTypeNames()
@@ -206,7 +208,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.2 เงินงวดสัญญา : {val(data.progress_payment_note)}</td>
+        <td className="sub">7.2 เงินงวดสัญญา : {noteVal(data.progress_payment_note, true)}</td>
       </tr>
       <tr>
         <td />
@@ -221,7 +223,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.5 หักอื่นๆ : {val(data.other_deduction_note)}</td>
+        <td className="sub">7.5 หักอื่นๆ : {noteVal(data.other_deduction_note, true)}</td>
       </tr>
 
       <tr>
@@ -241,7 +243,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">8.2 ประกันผลงาน 1 ปี{data.warranty_note ? ` : ${data.warranty_note}` : ''}</td>
+        <td className="sub">8.2 ประกันผลงาน{data.warranty_years ? ` ${data.warranty_years} ปี` : ''}</td>
       </tr>
 
       <tr>
@@ -254,25 +256,11 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td className="wo-no">10.</td>
         <td className="wo-label">เงื่อนไขอื่นๆ ระบุเพิ่มเติม</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(data.other_terms)}</td>
+        <td className="wo-value">{noteVal(data.other_terms)}</td>
       </tr>
     </tbody>
   </table>
 )
-
-// Simple text display, not the full item table PO_HEADER uses — per the
-// most recent cost-code revert decision. No pagination needed (this is a
-// single fixed-length form, not an itemized table), so an empty `lines`
-// array is a non-issue here: it just renders the "ไม่มีรายการ" fallback text
-// inline, same page, same as any other empty field.
-const CostCodeLine = ({ data }: { data: WOPrintDataLite }) => {
-  const codes = (data.lines ?? []).map(l => formatCostCodeDisplay(l.cost_code)).filter(Boolean)
-  return (
-    <div className="wo-std-costcode">
-      <b>Cost Code :</b> {codes.length > 0 ? codes.join(', ') : 'ไม่มีรายการ'}
-    </div>
-  )
-}
 
 const AuthBlock = ({ data }: { data: WOPrintDataLite }) => (
   <div className="wo-std-auth">
@@ -326,7 +314,6 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
         <Header data={data} />
         <PartyLine data={data} />
         <NumberedFields data={data} />
-        <CostCodeLine data={data} />
         <AuthBlock data={data} />
       </div>
     </div>, document.body

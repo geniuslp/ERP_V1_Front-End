@@ -29,10 +29,11 @@ export type WOPrintData = Partial<WorkOrder>
 // shape, same underlying data source both templates already share.
 function mapWorkOrderToPOStyle(data: WOPrintData, jobNames: Record<string, string>): WOPOData {
   const useDisc = Boolean(data.use_discount)
-  const items: WOPOItem[] = (data.lines ?? []).map((l) => ({
-    no: String(l.line_no ?? ''),
+  const items: WOPOItem[] = (data.lines ?? []).map((l, i) => ({
+    no: String(l.line_no || i + 1), // saved lines may come back without line_no, so number by position
     code: formatCostCodeDisplay(l.cost_code),
     desc: l.description ?? '',
+    subDesc: l.remarks?.trim() || undefined, // the line's รายละเอียด, printed under the item name
     qty: l.qty,
     unit: '', // no per-line unit field on WorkOrderLine — left blank, not guessed
     pricePerUnit: l.unit_price,

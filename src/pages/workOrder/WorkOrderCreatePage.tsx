@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import {
-  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin, Radio,
+  Card, Form, Input, InputNumber, DatePicker, Select, Button, Row, Col, Tabs, Modal, message, Spin, Radio, Tag, Alert,
 } from 'antd'
 import { SaveOutlined, SendOutlined, CloseOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -11,6 +11,8 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
 import WOItemsTable, { type WOLineItem } from '@/components/workOrder/WOItemsTable'
+import WOPRPickerModal from '@/components/workOrder/WOPRPickerModal'
+import WOAttachmentPanel, { type WOAttachmentHandle } from '@/components/workOrder/WOAttachmentPanel'
 import WOPaymentConditionsSection, {
   toInstallmentRow, toRetentionRow, toPenaltyRow, buildPaymentConditionsPayload,
   type InstallmentRow, type RetentionRow, type PenaltyRow,
@@ -19,7 +21,7 @@ import TaxSidebarPanel from '@/pages/po/components/TaxSidebarPanel'
 import { useAppSelector } from '@/store'
 import { workOrderService } from '@/services/workOrderService'
 import { WO_WORK_SYSTEM_LABEL, WO_CONTRACT_TYPE_OPTIONS, WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
-import type { WorkOrderPayload, WorkOrderLine } from '@/types/workOrder'
+import type { WorkOrderPayload, WorkOrderLine, WOAvailablePR } from '@/types/workOrder'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WAREHOUSE_PROJECT_CODES } from '@/constants/warehouseProjects'
 import { useJobTypes } from '@/hooks/useJobTypeNames'
@@ -136,6 +138,7 @@ const WorkOrderCreatePage: React.FC = () => {
   // away, and Tab 2 stays disabled until then.
   const [activeTab, setActiveTab] = useState<'header' | 'items'>('header')
   const [createdId, setCreatedId] = useState<number | string | undefined>(undefined)
+  const attachRef = useRef<WOAttachmentHandle>(null)
   const woId: number | string | undefined = id ?? createdId
   const isEditApproved = !!editApprovedReason && (loadedStatus === 'APPROVED' || loadedStatus === 'PENDING_REAPPROVAL')
   // Editing an existing, not-yet-approved WO: the contract amount may not go below the loaded value.
@@ -221,6 +224,69 @@ const WorkOrderCreatePage: React.FC = () => {
   // same header-level toggle flags + per-line values PO uses, not new fields
   // invented independently.
   const [items, setItems] = useState<WOLineItem[]>([])
+
+  // PR this WO is pulled from ("ดึงข้อมูลจาก PR"): fills the project and งานระบบ on tab 1 and the lines on
+  // tab 2, and is saved as pr_id. Same idea as PO's PR sidebar, but the list is only approved PRs of type
+  // PO/WO or WO that no other live WO uses.
+  const [selectedPr, setSelectedPr] = useState<{ id: number; no: string } | null>(null)
+  const [prPickerOpen, setPrPickerOpen] = useState(false)
+  const [availablePRs, setAvailablePRs] = useState<WOAvailablePR[]>([])
+  const [availablePRsLoading, setAvailablePRsLoading] = useState(false)
+  const openPrPicker = async () => {
+    setPrPickerOpen(true)
+    setAvailablePRsLoading(true)
+    try {
+      setAvailablePRs(await workOrderService.getAvailablePRs(accessToken, id))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || 'โหลดรายการ PR ไม่สำเร็จ')
+    } finally {
+      setAvailablePRsLoading(false)
+    }
+  }
+  const applyPr = async (pr: WOAvailablePR) => {
+    try {
+      const src = await workOrderService.getPRSource(accessToken, pr.pr_id)
+      setSelectedPr({ id: src.pr_id, no: src.pr_no })
+      // Tab 1: project (existing project only) and งานระบบ (the PR's job, when it is a WO system code).
+      if (src.project_code) form.setFieldValue('project_choice', src.project_code)
+      if (src.job_code && isWorkOrderSystemCode(src.job_code)) {
+        form.setFieldValue('work_system', [src.job_code])
+      } else if (src.job_code) {
+        message.info(`Job ${src.job_code} ของ PR นี้ไม่ใช่งานระบบของ WO กรุณาเลือกงานระบบเอง`)
+      }
+      // Tab 2: one line per PR line — cost code, material (+ spec) as the description, requested qty.
+      // WO lines carry no unit, so the unit is not copied; the price is left for the user to fill in.
+      setItems(src.lines.map((l, i) => ({
+        key: `pr-${src.pr_id}-${i}`,
+        no: i + 1,
+        cost_code: l.cost_code ?? '',
+        cost_code_label: l.cost_code ?? '',
+        description: [l.mat_name, l.spec_name].filter(Boolean).join(' '),
+        remark: l.remarks ?? '',
+        qty: l.qty_requested,
+        unit_price: 0,
+        disc: 0,
+        disc_type: discType,
+        wht_rate: null,
+      })))
+      setPrPickerOpen(false)
+      message.success(`ดึงข้อมูลจาก ${src.pr_no} แล้ว (${src.lines.length} รายการ) — กรอกราคาต่อหน่วยในแท็บรายการ`)
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || 'โหลดข้อมูล PR ไม่สำเร็จ')
+    }
+  }
+  const handlePickPr = (pr: WOAvailablePR) => {
+    if (selectedPr?.id === pr.pr_id) { setPrPickerOpen(false); return }
+    if (!items.some((it) => it.cost_code || it.description)) { void applyPr(pr); return }
+    Modal.confirm({
+      title: `ดึงข้อมูลจาก ${pr.pr_no}?`,
+      content: 'รายการในแท็บรายการ Cost Code ที่กรอกไว้ จะถูกแทนที่ด้วยรายการจาก PR',
+      okText: 'ยืนยัน',
+      cancelText: 'ยกเลิก',
+      onOk: () => applyPr(pr),
+    })
+  }
+
   const [taxOpen, setTaxOpen] = useState(false)
   const [useDisc, setUseDisc] = useState(false)
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
@@ -340,6 +406,7 @@ const WorkOrderCreatePage: React.FC = () => {
           return
         }
         setLoadedStatus(wo.status)
+        setSelectedPr(wo.pr_id ? { id: Number(wo.pr_id), no: wo.pr_no ?? `PR #${wo.pr_id}` } : null)
         setLoadedContractAmount(wo.contract_amount != null ? Number(wo.contract_amount) : undefined)
         const storedSystems: string[] = Array.isArray(wo.work_system) ? wo.work_system : (wo.work_system ? [wo.work_system as unknown as string] : [])
         setLegacyWorkSystem(storedSystems.filter((v) => !isWorkOrderSystemCode(v)))
@@ -369,6 +436,7 @@ const WorkOrderCreatePage: React.FC = () => {
           cost_code: l.cost_code,
           cost_code_label: l.cost_code,
           description: l.description ?? '',
+          remark: l.remarks ?? '',
           qty: l.qty,
           unit_price: l.unit_price,
           disc: l.disc ?? 0,
@@ -450,6 +518,8 @@ const WorkOrderCreatePage: React.FC = () => {
     const {
       advance_pct, advance_amount, retention_pct, penalty_pct_per_day,
       supplier_code, project_name, project_choice,
+      // pr_id / pr_no are seeded from the loaded record too; the PR link comes from `selectedPr` below.
+      pr_id: _seededPrId, pr_no: _seededPrNo,
       // Edit-mode's ...wo seed also put the raw loaded `lines` into the form store; always strip
       // it here and re-add from `items` only when includeLines is set.
       lines: _seededLines,
@@ -461,6 +531,8 @@ const WorkOrderCreatePage: React.FC = () => {
       advance_deduct_pct: displayedAdvancePct,
       advance_deduct_amount: advanceAmount,
       ...resolveProject(project_choice),
+      // The backend keeps the stored link when pr_id is omitted; 0 clears it.
+      pr_id: selectedPr?.id ?? 0,
       wo_date: v.wo_date ? dayjs(v.wo_date).format('YYYY-MM-DD') : undefined,
       start_date: v.start_date ? dayjs(v.start_date).format('YYYY-MM-DD') : undefined,
       end_date: v.end_date ? dayjs(v.end_date).format('YYYY-MM-DD') : undefined,
@@ -481,6 +553,7 @@ const WorkOrderCreatePage: React.FC = () => {
         line_no: i + 1,
         cost_code: item.cost_code,
         description: item.description || undefined,
+        remarks: item.remark?.trim() || null,
         qty: item.qty,
         unit_price: item.unit_price,
         // erp-api's WorkOrderLineInput json key is `disc`, not `discount` (PO's
@@ -534,6 +607,12 @@ const WorkOrderCreatePage: React.FC = () => {
   const handleSaveHeader = async () => {
     if (advanceExceeds) return
     if (!(await validateHeader())) return
+    // Editing an approved WO: nothing is saved on tab 1. Every edit-approved save writes an edit-log row (and
+    // bumps the #R revision number), so the whole edit — header + lines — is sent once, by "ส่งอนุมัติอีกครั้ง".
+    if (isEditApproved) {
+      setActiveTab('items')
+      return
+    }
     setSaving(true)
     try {
       const payload = buildPayload(false, false)
@@ -545,6 +624,8 @@ const WorkOrderCreatePage: React.FC = () => {
         setCreatedId(savedId)
         // Keep the generated number in the form so later full-header saves don't blank it.
         if (wo?.wo_no) form.setFieldValue('wo_no', wo.wo_no)
+        // Files picked before the first save are uploaded now that the work order has an id.
+        await attachRef.current?.uploadPending(savedId)
       }
       if (await savePaymentConditions(savedId)) message.success('บันทึกข้อมูลหนังสือสั่งจ้างสำเร็จ')
       setActiveTab('items')
@@ -579,7 +660,12 @@ const WorkOrderCreatePage: React.FC = () => {
       const wo = await persistWO(woId, buildPayload(submitForApproval, true))
       const savedId = (wo?.id ?? woId) as number | string
       if (await savePaymentConditions(savedId)) {
-        message.success(submitForApproval ? 'ส่งอนุมัติสำเร็จ' : 'บันทึกร่างสำเร็จ')
+        message.success(
+          isEditApproved ? 'ส่งอนุมัติอีกครั้งสำเร็จ'
+            : submitForApproval ? 'ส่งอนุมัติสำเร็จ'
+              : loadedStatus === 'PENDING_APPROVAL' ? 'บันทึกการแก้ไขสำเร็จ'
+                : 'บันทึกร่างสำเร็จ',
+        )
       }
       navigate(`/work-order/${savedId}`)
     } catch (err: any) {
@@ -636,6 +722,7 @@ const WorkOrderCreatePage: React.FC = () => {
               disc: item.disc ?? 0,
               disc_type: item.disc_type ?? discType,
               wht_rate: useWht ? (item.wht_rate ?? defaultWhtRate) : null,
+              remarks: item.remark?.trim() || null, // printed under the item name
             })),
           })}
         />
@@ -655,7 +742,18 @@ const WorkOrderCreatePage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: isEdit ? 'แก้ไข' : 'สร้าง' }]}
       />
 
+      {isEditApproved && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          message={loadedStatus === 'PENDING_REAPPROVAL' ? 'กำลังแก้ไขหนังสือสั่งจ้างที่รออนุมัติอีกครั้ง' : 'กำลังแก้ไขหนังสือสั่งจ้างที่อนุมัติแล้ว'}
+          description={`เหตุผลในการแก้ไข: ${editApprovedReason}`}
+        />
+      )}
+
       <Tabs
+        className="erp-tabs-lg"
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'header' | 'items')}
         items={[
@@ -691,7 +789,31 @@ const WorkOrderCreatePage: React.FC = () => {
                         <DatePicker style={fieldStyle} format="DD/MM/YYYY" />
                       </Form.Item>
                     </Col>
+                    <Col {...FIELD_SPAN_WIDE}>
+                      <Form.Item
+                        label={<span style={labelStyle}>PR อ้างอิง</span>}
+                        extra="ดึงโครงการ งานระบบ และรายการ จาก PR ที่อนุมัติแล้ว (ประเภทเอกสาร PO/WO หรือ WO)"
+                        style={{ marginBottom: 0 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Button onClick={openPrPicker}>{selectedPr ? 'เปลี่ยน PR' : 'ดึงข้อมูลจาก PR'}</Button>
+                          {selectedPr && (
+                            <Tag color="blue" closable onClose={(e) => { e.preventDefault(); setSelectedPr(null) }} style={{ margin: 0, fontSize: 13 }}>
+                              {selectedPr.no}
+                            </Tag>
+                          )}
+                        </div>
+                      </Form.Item>
+                    </Col>
                   </Row>
+                  <WOPRPickerModal
+                    open={prPickerOpen}
+                    loading={availablePRsLoading}
+                    prs={availablePRs}
+                    selectedPrId={selectedPr?.id ?? null}
+                    onClose={() => setPrPickerOpen(false)}
+                    onPick={handlePickPr}
+                  />
                 </Card>
 
                 {/* 1. เจ้าของโครงการ — 12 + 12 */}
@@ -971,10 +1093,14 @@ const WorkOrderCreatePage: React.FC = () => {
                       </Radio.Group>
                     </Form.Item>
                   </Card>
-                  <Card title="8.2 ประกันผลงาน 1 ปี" size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
-                    <Form.Item name="warranty_note" style={{ marginBottom: 0 }}>
-                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 2 }} maxLength={2000} />
-                    </Form.Item>
+                  <Card size="small" style={{ ...subCardStyle, marginBottom: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600 }}>8.2 ประกันผลงาน</span>
+                      <Form.Item name="warranty_years" noStyle>
+                        <InputNumber style={{ ...fieldStyle, width: 100 }} min={0} max={99} precision={0} />
+                      </Form.Item>
+                      <span style={{ fontWeight: 600 }}>ปี</span>
+                    </div>
                   </Card>
                 </Card>
 
@@ -998,6 +1124,13 @@ const WorkOrderCreatePage: React.FC = () => {
                       </Form.Item>
                     </Col>
                   </Row>
+                </Card>
+
+                {/* 11. ไฟล์แนบ — bottom of the page. Files can be picked before the first save (they wait, tagged "รอบันทึก",
+                    and are uploaded when บันทึกและไปต่อ creates the work order); once saved they upload at once. The finance-side
+                    contractor log shows these files read-only on its "แนบไฟล์" tab. */}
+                <Card className="wo-block" title="11. ไฟล์แนบ (PDF / JPEG)" style={cardStyle}>
+                  <WOAttachmentPanel ref={attachRef} woId={woId} />
                   {/* Action bar — footer of this card: print on the left; cancel / continue on the right. */}
                   <div style={barStyle}>
                     <div style={groupStyle}>{printTrigger}</div>
@@ -1034,7 +1167,12 @@ const WorkOrderCreatePage: React.FC = () => {
                   reused exactly rather than rebuilt. Lives outside the antd <Form autoComplete="off">
                   since `items` is plain React state, same pattern as POCreatePage. */}
               <Card
-                title={<span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>รายการ Cost Code</span>}
+                title={
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>
+                    รายการ Cost Code
+                    {selectedPr && <Tag color="blue" style={{ marginLeft: 8, fontWeight: 400 }}>ดึงจาก {selectedPr.no}</Tag>}
+                  </span>
+                }
                 style={cardStyle}
                 styles={{ body: { padding: 0 } }}
               >
@@ -1106,30 +1244,50 @@ const WorkOrderCreatePage: React.FC = () => {
                     <Button icon={<ArrowLeftOutlined />} style={{ borderRadius: 8 }} onClick={() => setActiveTab('header')}>
                       ย้อนกลับ
                     </Button>
-                    {!isEditApproved && (
+                    {/* Same rules as PO: a document still waiting for approval is just saved in place ("บันทึก",
+                        status unchanged — a "draft" button would wrongly suggest demoting it); a DRAFT / REJECTED
+                        one has save-draft + submit; an approved one is always sent back for approval again. */}
+                    {isEdit && loadedStatus === 'PENDING_APPROVAL' && !isEditApproved ? (
                       <PermissionButton
                         menuCode={MENU_CODE}
                         action="write"
+                        type="primary"
                         icon={<SaveOutlined />}
                         loading={saving}
                         disabled={advanceExceeds}
                         onClick={() => handleSaveWithLines(false)}
+                        style={primaryStyle}
                       >
-                        บันทึกร่าง
+                        บันทึก
                       </PermissionButton>
+                    ) : (
+                      <>
+                        {!isEditApproved && (
+                          <PermissionButton
+                            menuCode={MENU_CODE}
+                            action="write"
+                            icon={<SaveOutlined />}
+                            loading={saving}
+                            disabled={advanceExceeds}
+                            onClick={() => handleSaveWithLines(false)}
+                          >
+                            บันทึกร่าง
+                          </PermissionButton>
+                        )}
+                        <PermissionButton
+                          menuCode={MENU_CODE}
+                          action="write"
+                          type="primary"
+                          icon={<SendOutlined />}
+                          loading={saving}
+                          disabled={advanceExceeds}
+                          onClick={() => handleSaveWithLines(true)}
+                          style={primaryStyle}
+                        >
+                          {isEditApproved ? 'ส่งอนุมัติอีกครั้ง' : 'ส่งอนุมัติ'}
+                        </PermissionButton>
+                      </>
                     )}
-                    <PermissionButton
-                      menuCode={MENU_CODE}
-                      action="write"
-                      type="primary"
-                      icon={<SendOutlined />}
-                      loading={saving}
-                      disabled={advanceExceeds}
-                      onClick={() => handleSaveWithLines(true)}
-                      style={primaryStyle}
-                    >
-                      ส่งอนุมัติ
-                    </PermissionButton>
                   </div>
                 </div>
               </Card>
