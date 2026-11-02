@@ -84,6 +84,8 @@ export interface POData {
   // Only populated when the PO's status is APPROVED (backend rule, resolvePOApprovalSignature).
   // null/absent renders the "Authorized Signature" box exactly as it was before.
   approval_signature?: POUserSignature | null
+  // GET /po/:id/print-data created_by_username — printed in the first signature box (Supply Chain Department).
+  created_by_username?: string | null
 }
 
 // Dev-only fixture — use for isolated preview/testing only, never as a silent
@@ -447,12 +449,15 @@ const POFooter = ({data}:{data:POData}) => {
         <div className="po-box" style={{display:'flex',flex:1}}>
           {AUTH_COLS.map((col,i)=>{
             const sig = col.label === 'Authorized Signature' ? data.approval_signature : null
+            const creator = i === 0 ? data.created_by_username?.trim() : ''
             return (
               <div key={i} className="auth-col">
-                <div className="auth-head">
+                <div className="auth-head" style={creator && !sig?.signature_data_url && !sig?.full_name ? {position:'relative'} : undefined}>
                   {sig?.signature_data_url
                     ? <SignatureImg src={sig.signature_data_url} alt={col.label} />
-                    : sig?.full_name && <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>}
+                    : sig?.full_name
+                      ? <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>
+                      : creator && <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',lineHeight:1,fontSize:`${signerNameFontPt(creator,48)}pt`}}>{creator}</div>}
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>
