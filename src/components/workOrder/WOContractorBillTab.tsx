@@ -105,6 +105,7 @@ interface InvoiceHistoryRow {
   delivery_date: string | null
   bill_date: string | null
   pay_date: string | null
+  description?: string | null
   invoice_amount: number | null
 }
 
@@ -161,7 +162,7 @@ interface BillForm {
 }
 
 const WOContractorBillTab: React.FC<Props> = ({
-  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, paymentBase, defaultAdvPct, defaultRetentionPct,
+  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, paymentBase, defaultAdvPct,
 }) => {
   const installmentBase = paymentBase && paymentBase > 0 ? paymentBase : contractAmount
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
@@ -192,12 +193,12 @@ const WOContractorBillTab: React.FC<Props> = ({
     adv_pct: defaultAdvPct ?? 0,
     adv_deduct_pct: 0,
     vat_pct: 7,
-    retention_pct: defaultRetentionPct ?? 0,
+    retention_pct: 0, // retention is only deducted once the user types a % / amount (not pre-filled from the WO terms)
     retention_amount: null,
     wht_type: WHT_TYPE_OPTIONS[0].value,
     wht_pct: WHT_TYPE_OPTIONS[0].rate,
     other_amount: 0,
-  }), [supplierName, creditTermDays, defaultAdvPct, defaultRetentionPct])
+  }), [supplierName, creditTermDays, defaultAdvPct])
 
   const [bills, setBills] = useState<BillListItem[]>([])
   const [billId, setBillId] = useState<number | null>(null)
@@ -693,7 +694,7 @@ const WOContractorBillTab: React.FC<Props> = ({
           size="small"
           pagination={false}
           dataSource={invoiceHistory}
-          scroll={{ x: 1170 }}
+          scroll={{ x: 1280 }}
           locale={{ emptyText: 'ยังไม่มีรายการที่บันทึก' }}
           summary={() => (
             <Table.Summary.Row>
@@ -704,7 +705,7 @@ const WOContractorBillTab: React.FC<Props> = ({
           )}
           rowClassName={(r) => (r.bill_id === billId ? 'ant-table-row-selected' : '')}
           columns={[
-            { title: 'ครั้งที่จ่าย', dataIndex: 'bill_no', width: 100, align: 'center' as const },
+            { title: 'ลำดับ', dataIndex: 'bill_no', width: 100, align: 'center' as const },
             { title: 'ประเภท', dataIndex: 'bill_type', width: 150, render: (v: BillType) => BILL_TYPE_LABEL[v] ?? v },
             { title: 'ใบกำกับภาษี / INVOICE NO.', dataIndex: 'invoice_no', render: (v: string | null) => v || '—' },
             { title: 'INVOICE DATE', dataIndex: 'invoice_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
@@ -715,10 +716,7 @@ const WOContractorBillTab: React.FC<Props> = ({
             { title: 'วันที่ส่งมอบงาน', dataIndex: 'delivery_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
             { title: 'วันที่วางบิล', dataIndex: 'bill_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
             { title: 'วันที่จ่าย', dataIndex: 'pay_date', width: 130, render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY') : '—') },
-            {
-              title: 'สถานะ', dataIndex: 'status', width: 90,
-              render: (v: BillStatus) => <Tag color={v === 'SAVED' ? 'green' : 'default'}>{v === 'SAVED' ? 'SAVE' : 'DRAFT'}</Tag>,
-            },
+            { title: 'หมายเหตุ', dataIndex: 'description', width: 200, render: (v: string | null) => v || '—' },
             {
               title: '', width: 120,
               render: (_: unknown, r: InvoiceHistoryRow) => (
