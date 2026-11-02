@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
-import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select } from 'antd'
+import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select, Input } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined, WarningOutlined } from '@ant-design/icons'
 import { poLinkedTooltip } from '@/constants/prEdit'
 import { mapLinkedPos, linkedPoNoText, type LinkedPo } from '@/components/pr/LinkedPoLinks'
@@ -154,6 +154,8 @@ const PRHistoryPage: React.FC = () => {
     label: [p.project_code, p.project_name].filter(Boolean).join(' '),
   })), [projectRows])
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
+  // Search by PR no. or the no. of a linked PO; applied on Enter / the search button.
+  const [searchText, setSearchText] = useState('')
 
   // Resizable widths — all columns, same pattern as POStatusPage.tsx / PRStatusPage.tsx,
   // not persisted (resets on refresh).
@@ -200,7 +202,7 @@ const PRHistoryPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/pr`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        params: { page: p, limit: l, order_type: orderTypeFilter },
+        params: { page: p, limit: l, order_type: orderTypeFilter, search: searchText || undefined },
       })
       const d = res.data?.data ?? res.data
       const raw = Array.isArray(d) ? d : d?.items ?? []
@@ -232,7 +234,7 @@ const PRHistoryPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter])
+  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter, searchText])
 
   const handleDelete = async (id: number) => {
     try {
@@ -436,14 +438,22 @@ const PRHistoryPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: 'ประวัติ' }]}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Select
-          allowClear
-          placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
-          style={{ width: 220, marginBottom: 12 }}
-          value={orderTypeFilter}
-          options={ORDER_TYPE_OPTIONS}
-          onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
-        />
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Select
+            allowClear
+            placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
+            style={{ width: 220 }}
+            value={orderTypeFilter}
+            options={ORDER_TYPE_OPTIONS}
+            onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
+          />
+          <Input.Search
+            allowClear
+            placeholder="ค้นหาเลข PR / เลข PO"
+            style={{ width: 280 }}
+            onSearch={(v) => { setSearchText(v.trim()); setPage(1) }}
+          />
+        </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} />
         <Table
           rowKey="id"

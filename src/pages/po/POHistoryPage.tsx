@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm, Select } from 'antd'
+import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm, Select, Input } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
@@ -113,6 +113,8 @@ const POHistoryPage: React.FC = () => {
   const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(false)
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
+  // Search by PO no. or the no. of a linked PR; applied on Enter / the search button.
+  const [searchText, setSearchText] = useState('')
 
   // Resizable widths for "โครงการ" / "ผู้ขาย" — same pattern as POStatusPage.tsx,
   // not persisted (resets on refresh).
@@ -161,7 +163,7 @@ const POHistoryPage: React.FC = () => {
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
     try {
-      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, order_type: orderTypeFilter })
+      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, order_type: orderTypeFilter, search: searchText || undefined })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
@@ -174,7 +176,7 @@ const POHistoryPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter])
+  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter, searchText])
 
   const handleDelete = async (poId: number) => {
     try {
@@ -452,14 +454,22 @@ const POHistoryPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบสั่งซื้อ' }, { title: 'ประวัติ' }]}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Select
-          allowClear
-          placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
-          style={{ width: 220, marginBottom: 12 }}
-          value={orderTypeFilter}
-          options={ORDER_TYPE_OPTIONS}
-          onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
-        />
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Select
+            allowClear
+            placeholder="ประเภทการสั่งซื้อ: ทั้งหมด"
+            style={{ width: 220 }}
+            value={orderTypeFilter}
+            options={ORDER_TYPE_OPTIONS}
+            onChange={(v) => { setOrderTypeFilter(v); setPage(1) }}
+          />
+          <Input.Search
+            allowClear
+            placeholder="ค้นหาเลข PO / เลข PR"
+            style={{ width: 280 }}
+            onSearch={(v) => { setSearchText(v.trim()); setPage(1) }}
+          />
+        </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} />
         <Table
           rowKey="po_id"

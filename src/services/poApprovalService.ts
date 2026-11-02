@@ -31,6 +31,8 @@ export const poApprovalService = {
       supplier?: string
       created_by_name?: string
       order_type?: string
+      // Matches po_no or the pr_no of any linked PR (ILIKE).
+      search?: string
     } = {},
   ) =>
     axios.get<POListResponse>(`${BASE_URL}/po`, {
