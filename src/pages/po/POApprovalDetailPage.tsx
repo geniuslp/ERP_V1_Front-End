@@ -452,6 +452,9 @@ const POApprovalDetailPage: React.FC = () => {
               ? `${po.project_code ?? ''}${po.project_code && po.project_name ? ' ' : ''}${po.project_name ?? ''}`
               : '-'}
           </Descriptions.Item>
+          <Descriptions.Item label="แผนก">
+            {po.dept_code ? `${po.dept_code}${po.dept_name ? ` — ${po.dept_name}` : ''}` : '-'}
+          </Descriptions.Item>
           <Descriptions.Item label="Job">
             {po.job_code ? (JOB_TYPES.find((jt) => jt.code === po.job_code)?.label ?? po.job_code) : '-'}
           </Descriptions.Item>

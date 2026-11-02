@@ -59,6 +59,9 @@ export interface POListItem {
   // Nullable — backend LEFT JOINs project table; null when project_code has
   // no matching row. Fall back to project_code for display when absent.
   project_name?: string | null
+  // purchase_order.dept_code + departments.dept_name (both nullable) — filled from the linked PR's department.
+  dept_code?: string | null
+  dept_name?: string | null
   // NOT confirmed present on GET /po (list) as of 2026-08-07 — only seen on
   // PODetail so far. Used defensively for the "Amount (after-discount)"
   // column; verify the list SQL/handler actually selects this before relying
@@ -211,6 +214,8 @@ export interface PODetail {
   // project display is wanted here. Kept optional so it renders once added.
   project_code?: string
   project_name?: string
+  dept_code?: string | null
+  dept_name?: string | null
   // purchase_order.job_code — header-level "ประเภท Job", shares the 12-code
   // JOB_TYPES constant (constants/jobTypes.ts) with PR's job_code. Replaces
   // the old work_type column (single-letter P/E/S/F/G/H, 6 values, renamed

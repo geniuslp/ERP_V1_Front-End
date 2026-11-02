@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
+import DepartmentSelect from '@/components/common/DepartmentSelect'
 import axios from 'axios'
 import { formatApproverOption } from '@/utils/formatApproverOption'
 import dayjs from 'dayjs'
@@ -198,6 +199,10 @@ const POCreatePage: React.FC = () => {
   const [items, setItems] = useState<POLineItem[]>([])
   const [selectedPrId, setSelectedPrId] = useState<number | null>(null)
   const [prDetailLoading, setPrDetailLoading] = useState(false)
+  // Department of the linked PR: when it has one the PO's แผนก follows it (locked, backend takes it from the PR too);
+  // a PR without a department leaves the field free. savedDeptName names a saved dept_code that is no longer active.
+  const [prDeptCode, setPrDeptCode] = useState<string | null>(null)
+  const [savedDeptName, setSavedDeptName] = useState<string | null>(null)
   // Fields use `null` (never `undefined`) to mean "no value" — Ant Design's
   // form.setFieldsValue silently ignores `undefined` keys (treats them as
   // "leave unchanged"), so an undefined here would leave the previous PR's
@@ -441,6 +446,7 @@ const POCreatePage: React.FC = () => {
           receiver_phone: raw.receiver_phone ?? undefined,
           warehouse_code: raw.warehouse_code ?? undefined,
           project_code: raw.project_code ?? undefined,
+          dept_code: raw.dept_code ?? undefined,
           order_type: raw.order_type ?? 'stock',
           job_code: raw.job_code ?? undefined,
           approver: raw.approver_id != null ? Number(raw.approver_id) : null,
@@ -479,6 +485,7 @@ const POCreatePage: React.FC = () => {
           approverId: raw.approver_id != null ? Number(raw.approver_id) : null,
         })
         setSelectedProjectCode(raw.project_code ?? null)
+        setSavedDeptName(raw.dept_name ?? null)
 
         // pr_id links this PO back to the PR it was created from — select it in
         // the PR Order dropdown. That dropdown's options are filtered to
@@ -565,6 +572,7 @@ const POCreatePage: React.FC = () => {
   // affects the persisted record, not what the user sees while still editing).
   useEffect(() => {
     if (!selectedPrId) {
+      setPrDeptCode(null)
       // PR cleared (the trigger chip's Clear button) — drop its carried-
       // over pr/memo attachment groups so a removed PR's files don't linger
       // in the grouped attachments UI. The PO's own `po` group is untouched.
@@ -582,6 +590,8 @@ const POCreatePage: React.FC = () => {
         })
         const raw = res.data?.data ?? res.data
         if (cancelled || !raw) return
+
+        setPrDeptCode(raw.dept_code ? String(raw.dept_code) : null)
 
         // Show this PR's (and its linked Memo's) attachments in the grouped
         // attachments UI immediately — before the PO itself is ever saved.
@@ -630,6 +640,8 @@ const POCreatePage: React.FC = () => {
           requestedBy: requestedById,
           warehouse_code: warehouseCode,
           project_code: projectCode,
+          // null (not undefined) so a PR without a department clears the previous PR's value.
+          dept_code: raw.dept_code ?? null,
           deliveryLocation: deliveryLocation,
           // Auto-filled from the source PR's job_code, but the Select stays
           // enabled — user can still change it before submitting.
@@ -949,6 +961,7 @@ const POCreatePage: React.FC = () => {
           // warehouse_code via the prAutoFill effect above.
           warehouse_code: selectedPrId ? (values.warehouse_code || undefined) : undefined,
           project_code: values.project_code || undefined,
+          dept_code: values.dept_code || undefined,
           order_type: values.order_type || undefined,
           job_code: values.job_code || undefined,
           requested_by: values.requestedBy ?? undefined,
@@ -1366,6 +1379,19 @@ const POCreatePage: React.FC = () => {
                             ระบบจะกำหนดคลังสินค้าให้อัตโนมัติตามโครงการที่เลือก
                           </div>
                         )}
+                    </Col>
+
+                    {/* แผนก — optional; follows the linked PR's department (locked) when that PR has one */}
+                    <Col xs={24}>
+                      <Form.Item label={<span style={labelStyle}>แผนก</span>} name="dept_code">
+                        <DepartmentSelect
+                          placeholder="- เลือกแผนก -"
+                          style={{ width: '100%' }}
+                          allowClear
+                          disabled={Boolean(selectedPrId && prDeptCode)}
+                          fallbackName={savedDeptName}
+                        />
+                      </Form.Item>
                     </Col>
 
                     {/* ผู้ขอซื้อ */}

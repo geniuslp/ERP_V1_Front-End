@@ -254,6 +254,17 @@ const POHistoryPage: React.FC = () => {
       },
     },
     {
+      title: 'แผนก',
+      dataIndex: 'dept_code',
+      key: 'dept_code',
+      width: 160,
+      ellipsis: true,
+      render: (_: unknown, r) => {
+        const label = [r.dept_code, r.dept_name].filter(Boolean).join(' ')
+        return label ? <Tooltip title={label}><span>{label}</span></Tooltip> : '-'
+      },
+    },
+    {
       // Confirmed against the live API response: GET /po (list) returns the
       // job classification as `job_code` (e.g. "MS"), not `job_names` — the
       // previous job_names-based render always showed "-" because that field
