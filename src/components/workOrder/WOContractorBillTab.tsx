@@ -348,7 +348,8 @@ const WOContractorBillTab: React.FC<Props> = ({
   // ── Summary (สรุปรายการเบิก), all AUTO from the percentages / typed amounts ──
   const calc = useMemo(() => {
     const adv = f.bill_type === 'ADV' ? round2(contractAmount * f.adv_pct / 100) : 0
-    const progress = f.progress_amount
+    // An Advance bill has no installment (เงินงวดนี้): whatever sits in those fields is ignored, so it never reaches Contract.
+    const progress = f.bill_type === 'ADV' ? 0 : f.progress_amount
     const base = adv + progress
     const advDeduct = round2(base * f.adv_deduct_pct / 100)
     const afterDeduct = base - advDeduct
@@ -498,6 +499,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       pct: pctInput(
         f.progress_pct,
         (v) => patch({ progress_pct: v, progress_amount: round2((installmentBase * v) / 100) }),
+        isAdv,
       ),
       amount: (
         <InputNumber<number>
@@ -507,7 +509,8 @@ const WOContractorBillTab: React.FC<Props> = ({
           formatter={moneyFormatter}
           parser={moneyParser}
           controls={false}
-          value={f.progress_amount}
+          disabled={isAdv}
+          value={isAdv ? 0 : f.progress_amount}
           onChange={(v) => patch({ progress_amount: v ?? 0, progress_pct: pctOfContract(v ?? 0) })}
         />
       ),
@@ -606,7 +609,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     status,
     lines: [
       { line_code: 'ADV', percent: f.adv_pct, amount: calc.adv },
-      { line_code: 'PROGRESS', percent: f.progress_pct, amount: calc.progress },
+      { line_code: 'PROGRESS', percent: isAdv ? 0 : f.progress_pct, amount: calc.progress },
       { line_code: 'ADV_DEDUCT', percent: f.adv_deduct_pct, amount: calc.advDeduct },
       { line_code: 'VAT', percent: f.vat_pct, amount: calc.vat },
       { line_code: 'RETENTION', percent: calc.retentionPct, amount: calc.retention },
@@ -764,7 +767,7 @@ const WOContractorBillTab: React.FC<Props> = ({
               style={fieldStyle}
               value={f.bill_type}
               options={BILL_TYPE_OPTIONS}
-              onChange={(v: BillType) => patch({ bill_type: v })}
+              onChange={(v: BillType) => patch(v === 'ADV' ? { bill_type: v, progress_amount: 0, progress_pct: 0 } : { bill_type: v })}
             />
           </Col>
           <Col {...FIELD_SPAN}>

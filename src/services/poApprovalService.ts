@@ -48,7 +48,8 @@ export const poApprovalService = {
     }),
 
   approve: (token: string, id: number | string) =>
-    axios.put(`${BASE_URL}/po/${id}/approve`, {}, {
+    // Generic engine: also writes po_status_log + approval_request (the legacy PUT /po/:id/approve only flipped the status).
+    axios.put(`${BASE_URL}/approval/PO/${id}/approve`, {}, {
       headers: authHeader(token),
     }),
 
