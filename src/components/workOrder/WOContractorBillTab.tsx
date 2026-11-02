@@ -128,6 +128,13 @@ const DETAIL_LINES: { code: string; label: string }[] = [
   { code: 'NET', label: 'จ่ายสุทธิ' },
 ]
 
+// Lines that are always listed for each bill type in the popup (others only when they carry an amount).
+const DETAIL_RELEVANT: Record<BillType, string[]> = {
+  ADV: ['ADV', 'VAT', 'WHT'],
+  PROGRESS: ['PROGRESS', 'ADV_DEDUCT', 'VAT', 'RETENTION', 'WHT'],
+  RETENTION: ['PROGRESS', 'VAT', 'WHT'],
+}
+
 interface BillForm {
   bill_type: BillType
   installment_no: number | null
@@ -256,12 +263,17 @@ const WOContractorBillTab: React.FC<Props> = ({
   const detailRows = useMemo(() => {
     if (!detail) return []
     const byCode = new Map(detail.lines.map((l) => [l.line_code, l]))
+    const relevant = DETAIL_RELEVANT[detail.bill_type] ?? []
     return DETAIL_LINES.map((d) => {
       if (d.code === 'SUBTOTAL') return { ...d, percent: null, amount: Number(detail.subtotal), strong: true }
       if (d.code === 'NET') return { ...d, percent: null, amount: Number(detail.net_amount), strong: true }
       const l = byCode.get(d.code)
       return { ...d, percent: l?.percent ?? null, amount: Number(l?.amount ?? 0), strong: false }
-    })
+    }).filter((r) =>
+      // Only what happened in this kind of payment: its own lines, the tax lines that were applied, and the totals.
+      // A line that does not belong to the type is still shown when it carries an amount, so the totals stay explainable.
+      r.strong || relevant.includes(r.code) || r.amount !== 0,
+    )
   }, [detail])
 
   const startNew = () => {

@@ -177,7 +177,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       if (!d) return
       // The paid-vs-contract comparison outside this panel uses the full contract value, not the post-advance base.
       onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract_total ?? d.contract?.amount ?? 0))
-      setPaymentBase(Number(d.contract?.amount ?? 0))
+      setPaymentBase(Number(d.payment_base ?? d.contract?.amount ?? 0))
       // Credit term comes from the supplier even before the log record exists; keep a value already loaded from the record.
       setWoCtx((prev) => ({ ...prev, credit: prev.credit ?? d.credit_term_days ?? null }))
       // Tab 2's defaults (advance / retention %) come from the WO even while the table below stays empty.
