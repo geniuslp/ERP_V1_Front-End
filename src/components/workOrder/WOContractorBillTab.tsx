@@ -333,8 +333,8 @@ const WOContractorBillTab: React.FC<Props> = ({
         bill_date: r.bill_date,
         pay_date: r.pay_date,
         amount: r.invoice_amount ?? null,
-        // a lone invoice that equals the bill's รวมเป็นเงิน (1) keeps following it; anything else was typed by hand
-        manual: !(loadedInvoices.length === 1 && r.invoice_amount != null && Math.abs(Number(r.invoice_amount) - Number(d.subtotal ?? 0)) <= 0.005),
+        // a lone invoice that equals the bill's amount before VAT keeps following it; anything else was typed by hand
+        manual: !(loadedInvoices.length === 1 && r.invoice_amount != null && Math.abs(Number(r.invoice_amount) - (Number(d.subtotal ?? 0) - Number(line('VAT')?.amount ?? 0))) <= 0.005),
       })))
     } catch (e) {
       message.error(errText(e, 'โหลดข้อมูลไม่สำเร็จ'))
@@ -360,18 +360,18 @@ const WOContractorBillTab: React.FC<Props> = ({
       : f.retention_pct
     const wht = round2(afterDeduct * f.wht_pct / 100)
     const net = round2(subtotal - retention - wht - f.other_amount)
-    return { adv, progress, advDeduct, vat, subtotal, retention, retentionPct, wht, net }
+    return { adv, progress, advDeduct, beforeVat: round2(afterDeduct), vat, subtotal, retention, retentionPct, wht, net }
   }, [f, contractAmount])
 
   const invoiceTotal = useMemo(() => round2(invoices.reduce((s, r) => s + (r.amount ?? 0), 0)), [invoices])
-  // "มูลค่า/INV ที่เบิก" follows รวมเป็นเงิน (1) of the summary while there is a single invoice nobody typed an amount into.
+  // "มูลค่า/INV ที่เบิก" follows the summary amount BEFORE VAT while there is a single invoice nobody typed an amount into.
   useEffect(() => {
     setInvoices((prev) => (
-      prev.length === 1 && !prev[0].manual && prev[0].amount !== calc.subtotal
-        ? [{ ...prev[0], amount: calc.subtotal }]
+      prev.length === 1 && !prev[0].manual && prev[0].amount !== calc.beforeVat
+        ? [{ ...prev[0], amount: calc.beforeVat }]
         : prev
     ))
-  }, [calc.subtotal, invoices.length])
+  }, [calc.beforeVat, invoices.length])
 
   const historyTotal = useMemo(() => round2(invoiceHistory.reduce((s, r) => s + (r.invoice_amount ?? 0), 0)), [invoiceHistory])
 
@@ -841,7 +841,7 @@ const WOContractorBillTab: React.FC<Props> = ({
             icon={<PlusOutlined />}
             onClick={() => setInvoices((p) => [...p, {
               key: ++keySeq.current, invoice_no: '', invoice_date: null, delivery_date: null, bill_date: null, pay_date: null,
-              amount: p.length === 0 ? calc.subtotal : null, manual: false,
+              amount: p.length === 0 ? calc.beforeVat : null, manual: false,
             }])}
           >
             เพิ่มใบกำกับภาษี
