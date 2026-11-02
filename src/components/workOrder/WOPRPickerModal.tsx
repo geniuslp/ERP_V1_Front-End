@@ -40,7 +40,7 @@ const WOPRPickerModal: React.FC<Props> = ({ open, loading, prs, selectedPrId, on
       destroyOnClose
     >
       <div style={{ marginBottom: 8, fontSize: 13, color: '#6b7280' }}>
-        แสดงเฉพาะ PR ที่อนุมัติแล้ว และประเภทเอกสารเป็น PO/WO หรือ WO ที่ยังไม่ถูกใช้ในหนังสือสั่งจ้างอื่น
+        แสดงเฉพาะ PR ที่อนุมัติแล้ว และประเภทเอกสารเป็น PO/WO หรือ WO ที่ยังไม่ถูกใช้ในหนังสือสั่งจ้างอื่นหรือใบสั่งซื้อ
       </div>
       <Input
         prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
