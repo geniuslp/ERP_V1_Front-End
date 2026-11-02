@@ -48,6 +48,7 @@ export interface PettyCashPrintData {
   netAmount: number
   requester: string
   approver: string
+  approvedAt?: string // DD/MM/YYYY or ''
 }
 
 const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -80,6 +81,7 @@ export const buildPettyCashPrintData = (pc: PettyCashRequisition): PettyCashPrin
   netAmount: pc.net_amount ?? 0,
   requester: pc.requested_by_username || pc.requested_by_name || '',
   approver: pc.approver_name ?? '',
+  approvedAt: dmy(pc.approved_at),
 })
 
 export const buildPettyCashPrintLines = (lines: NonNullable<PettyCashRequisition['lines']>): PettyCashPrintLine[] =>
@@ -278,7 +280,7 @@ const Footer = ({ data }: { data: PettyCashPrintData }) => (
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้อนุมัติ / Approver</div>
       </div>
-      <div className="pcp-auth-date">(-)</div>
+      <div className="pcp-auth-date">({data.approvedAt || '-'})</div>
     </div>
   </div>
 )

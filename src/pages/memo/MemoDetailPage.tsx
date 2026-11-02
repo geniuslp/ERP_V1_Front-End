@@ -28,10 +28,10 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 // is a plain varchar with no backing lookup table, so there's no API to fetch
 // the full label from.
 const DEPARTMENT_OPTIONS = [
-  { value: 'HO', label: 'HO — สำนักงานใหญ่' },
+  { value: 'HO', label: 'HO — สำนักงานใหญ่ (บางแค)' },
   { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
   { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
-  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
+  { value: 'FAC-B', label: 'FAC-B — บางบ่อ' },
 ]
 
 const cardStyle: React.CSSProperties = {

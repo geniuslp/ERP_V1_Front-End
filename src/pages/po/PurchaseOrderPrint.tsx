@@ -1,3 +1,4 @@
+import { jobTypeLabel } from '@/constants/jobTypes'
 import { signerNameFontPt } from '@/utils/signerName'
 import { paginateRows } from '@/utils/printPagination'
 import FormattedNote from '@/components/common/FormattedNote'
@@ -362,7 +363,7 @@ const POInfoBox = ({data}:{data:POData}) => (
         <b>Project Name :</b>&nbsp;{data.projectName || data.project}
       </div>
       <div style={{display:'flex',gap:8}}>
-        <b>Job Type :</b>&nbsp;{data.job}
+        <b>Job Type :</b>&nbsp;{jobTypeLabel(data.job) || data.job}
       </div>
     </div>
   </div>

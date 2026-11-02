@@ -29,10 +29,10 @@ const LOCKED_STATUSES = ['APPROVED', 'CANCELLED']
 // short code is stored (matching the code/name display pattern used elsewhere
 // in this codebase, e.g. job_code), not the full Thai label.
 const DEPARTMENT_OPTIONS = [
-  { value: 'HO', label: 'HO — สำนักงานใหญ่' },
+  { value: 'HO', label: 'HO — สำนักงานใหญ่ (บางแค)' },
   { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
   { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
-  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
+  { value: 'FAC-B', label: 'FAC-B — บางบ่อ' },
 ]
 
 const cardStyle: React.CSSProperties = {

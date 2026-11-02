@@ -141,6 +141,15 @@ const PettyCashLineModal: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial, open])
 
+  // The form instance (and its store) outlives the modal, so antd would keep the previous line's
+  // values and ignore `initialValues` on re-open. Re-seed the store every time the modal opens.
+  useEffect(() => {
+    if (!open) return
+    form.resetFields()
+    form.setFieldsValue(initialValues)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial])
+
   useEffect(() => {
     if (!bodyEl) return
     const update = () => {

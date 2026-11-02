@@ -42,10 +42,10 @@ const DOC_TYPE_OPTIONS = [{ value: 'PETTY_CASH', label: 'เบิกเงิ�
 // the branch dropdown elsewhere (WO employer_branch: HO/FAC-S/FAC-P/BO). Swap this for a fetch
 // when a real branch source exists — branch_code is varchar(20) server-side.
 const BRANCH_OPTIONS = [
-  { value: 'HO', label: 'HO — สำนักงานใหญ่' },
+  { value: 'HO', label: 'HO — สำนักงานใหญ่ (บางแค)' },
   { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
   { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
-  { value: 'BO', label: 'BO — สำนักงานบางบ่อ' },
+  { value: 'FAC-B', label: 'FAC-B — บางบ่อ' },
 ]
 
 interface LookupOption { value: string; label: string; name: string }
@@ -498,7 +498,7 @@ const PettyCashCreatePage: React.FC = () => {
         docNo: saved.pcNo,
         docTypeLabel: DOC_TYPE_OPTIONS.find((o) => o.value === (v.doc_type ?? 'PETTY_CASH'))?.label ?? v.doc_type ?? '',
         docDate: dayjs(pcDate).format('DD/MM/YYYY'),
-        projectCode: v.project_code ?? '',
+        projectCode: [v.project_code, v.project_name].filter(Boolean).join(' '),
         orderTypeLabel: v.order_type ? getOrderTypeLabel(v.order_type) : '',
         deptLabel: dept,
         netAmount: PETTY_CASH_MOCK_SAVE ? netAmount : serverNetAmount ?? netAmount,

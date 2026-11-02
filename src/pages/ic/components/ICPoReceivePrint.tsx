@@ -1,3 +1,4 @@
+import { jobTypeLabel } from '@/constants/jobTypes'
 import React from 'react'
 import ICPrintLayout, { icInfoGridStyle, icInfoCellStyle, icInfoLeftCellStyle, type ICPrintItem } from './ICPrintLayout'
 
@@ -61,7 +62,7 @@ const ICReceiveInfoBox = ({ data }: { data: ICReceivePrintData }) => {
       <div style={icInfoCellStyle}>
         <div style={{ fontSize: '14pt', fontWeight: 700 }}><b>เลขที่ใบรับสินค้า :</b>&nbsp;{data.receiveNo}</div>
         <div><b>วันที่รับ :</b>&nbsp;{data.receivedDate}</div>
-        <div><b>ระบบงาน :</b>&nbsp;{data.jobCode || '-'}</div>
+        <div><b>ระบบงาน :</b>&nbsp;{jobTypeLabel(data.jobCode) || '-'}</div>
         <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           <b>หมายเหตุ :</b>&nbsp;{data.remarks?.trim() || '-'}
         </div>

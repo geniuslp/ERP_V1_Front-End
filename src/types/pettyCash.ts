@@ -115,6 +115,7 @@ export interface PettyCashRequisition {
   requested_by_name?: string | null
   requested_by_username?: string | null // printed under the requester signature
   approver_name?: string | null
+  approved_at?: string | null // latest approval date (GET /petty-cash/:id)
   lines?: PettyCashLine[]
   attachments?: PettyCashAttachment[]
 }

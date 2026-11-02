@@ -59,3 +59,10 @@ export const JOB_TYPES: JobTypeOption[] = [
   { code: 'RE', label: 'RE - Return Project', filterSubjectCodes: null, filterJobCode: null },
   { code: 'G', label: 'G - General Code', filterSubjectCodes: ['OH'], filterJobCode: 'G' },
 ]
+
+// "MS - Metal Structure" for a job code; an unknown/legacy code is shown as-is, empty → ''.
+export const jobTypeLabel = (code?: string | null): string => {
+  const c = (code ?? '').trim()
+  if (!c) return ''
+  return JOB_TYPES.find((jt) => jt.code === c)?.label ?? c
+}

@@ -44,6 +44,9 @@ const WHT_TYPE_OPTIONS = [
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100
 const money = (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Thousands separators while typing (precision={2} keeps the two decimals).
+const moneyFormatter = (v?: string | number) => (v == null || v === '' ? '' : `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
+const moneyParser = (v?: string) => Number((v ?? '').replace(/,/g, ''))
 const errText = (e: any, fallback: string) =>
   e?.response?.data?.message || e?.response?.data?.error || fallback
 
@@ -55,6 +58,7 @@ interface InvoiceRow {
   bill_date: string | null
   pay_date: string | null
   amount: number | null
+  manual?: boolean // amount typed by hand; otherwise a lone invoice follows รวมเป็นเงิน (1)
 }
 
 interface BillListItem {
@@ -204,6 +208,8 @@ const WOContractorBillTab: React.FC<Props> = ({
   // Invoices of every payment (bill) of this contract, shown under the invoice table being filled in.
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryRow[]>([])
   const [saving, setSaving] = useState(false)
+  // Set after a failed SAVE so the empty required fields are outlined.
+  const [tried, setTried] = useState(false)
   // Popup with what a past payment (bill) paid: every summary line with its % and amount.
   const [detail, setDetail] = useState<BillDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -277,6 +283,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   }, [detail])
 
   const startNew = () => {
+    setTried(false)
     setBillId(null)
     setBillStatus('DRAFT')
     setInvoices([])
@@ -317,7 +324,8 @@ const WOContractorBillTab: React.FC<Props> = ({
         wht_pct: Number(line('WHT')?.percent ?? 0),
         other_amount: Number(line('OTHER')?.amount ?? 0),
       })
-      setInvoices((d.invoices ?? []).map((r: any) => ({
+      const loadedInvoices: any[] = d.invoices ?? []
+      setInvoices(loadedInvoices.map((r: any) => ({
         key: ++keySeq.current,
         invoice_no: r.invoice_no ?? '',
         invoice_date: r.invoice_date,
@@ -325,6 +333,8 @@ const WOContractorBillTab: React.FC<Props> = ({
         bill_date: r.bill_date,
         pay_date: r.pay_date,
         amount: r.invoice_amount ?? null,
+        // a lone invoice that equals the bill's รวมเป็นเงิน (1) keeps following it; anything else was typed by hand
+        manual: !(loadedInvoices.length === 1 && r.invoice_amount != null && Math.abs(Number(r.invoice_amount) - Number(d.subtotal ?? 0)) <= 0.005),
       })))
     } catch (e) {
       message.error(errText(e, 'โหลดข้อมูลไม่สำเร็จ'))
@@ -354,6 +364,15 @@ const WOContractorBillTab: React.FC<Props> = ({
   }, [f, contractAmount])
 
   const invoiceTotal = useMemo(() => round2(invoices.reduce((s, r) => s + (r.amount ?? 0), 0)), [invoices])
+  // "มูลค่า/INV ที่เบิก" follows รวมเป็นเงิน (1) of the summary while there is a single invoice nobody typed an amount into.
+  useEffect(() => {
+    setInvoices((prev) => (
+      prev.length === 1 && !prev[0].manual && prev[0].amount !== calc.subtotal
+        ? [{ ...prev[0], amount: calc.subtotal }]
+        : prev
+    ))
+  }, [calc.subtotal, invoices.length])
+
   const historyTotal = useMemo(() => round2(invoiceHistory.reduce((s, r) => s + (r.invoice_amount ?? 0), 0)), [invoiceHistory])
 
   // "งวดที่" (top) and the installment of "2. เงินงวดนี้" are one value: changing either one changes both, and a number
@@ -379,6 +398,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     <DatePicker
       style={{ width: '100%' }}
       format="DD/MM/YYYY"
+      status={tried && !v ? 'error' : undefined}
       value={v ? dayjs(v) : null}
       onChange={(d) => setInvoice(key, { [field]: d ? d.format('YYYY-MM-DD') : null })}
     />
@@ -387,7 +407,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   const invoiceColumns: ColumnsType<InvoiceRow> = [
     {
       title: 'ใบกำกับภาษี / INVOICE NO.', dataIndex: 'invoice_no', width: 220,
-      render: (v: string, r) => <Input value={v} onChange={(e) => setInvoice(r.key, { invoice_no: e.target.value })} />,
+      render: (v: string, r) => <Input status={tried && !v.trim() ? 'error' : undefined} value={v} onChange={(e) => setInvoice(r.key, { invoice_no: e.target.value })} />,
     },
     { title: 'INVOICE DATE', dataIndex: 'invoice_date', width: 160, render: (v, r) => dateCell(r.key, 'invoice_date', v) },
     {
@@ -397,10 +417,13 @@ const WOContractorBillTab: React.FC<Props> = ({
           style={{ width: '100%' }}
           min={0}
           precision={2}
+          formatter={moneyFormatter}
+          parser={moneyParser}
           controls={false}
           placeholder="0.00"
+          status={tried && !(v && v > 0) ? 'error' : undefined}
           value={v ?? undefined}
-          onChange={(val) => setInvoice(r.key, { amount: val ?? null })}
+          onChange={(val) => setInvoice(r.key, { amount: val ?? null, manual: true })}
         />
       ),
     },
@@ -480,6 +503,8 @@ const WOContractorBillTab: React.FC<Props> = ({
           style={{ width: 180 }}
           min={0}
           precision={2}
+          formatter={moneyFormatter}
+          parser={moneyParser}
           controls={false}
           value={f.progress_amount}
           onChange={(v) => patch({ progress_amount: v ?? 0, progress_pct: pctOfContract(v ?? 0) })}
@@ -508,6 +533,8 @@ const WOContractorBillTab: React.FC<Props> = ({
           style={{ width: 180 }}
           min={0}
           precision={2}
+          formatter={moneyFormatter}
+          parser={moneyParser}
           controls={false}
           value={calc.retention}
           onChange={(v) => patch({ retention_amount: v ?? 0 })}
@@ -542,6 +569,8 @@ const WOContractorBillTab: React.FC<Props> = ({
           style={{ width: 180 }}
           min={0}
           precision={2}
+          formatter={moneyFormatter}
+          parser={moneyParser}
           controls={false}
           value={f.other_amount}
           onChange={(v) => patch({ other_amount: v ?? 0 })}
@@ -594,6 +623,29 @@ const WOContractorBillTab: React.FC<Props> = ({
   })
 
   const handleSave = async (status: BillStatus) => {
+    // A saved (not draft) payment needs the AP voucher and at least one invoice with every field filled in.
+    if (status === 'SAVED') {
+      const problems: string[] = []
+      if (!f.ap_voucher_no.trim()) problems.push('AP Voucher No.')
+      if (invoices.length === 0) {
+        problems.push('ใบกำกับภาษี / INVOICE NO. (อย่างน้อย 1 รายการ)')
+      } else {
+        const cols: [string, (r: InvoiceRow) => boolean][] = [
+          ['ใบกำกับภาษี / INVOICE NO.', (r) => !r.invoice_no.trim()],
+          ['INVOICE DATE', (r) => !r.invoice_date],
+          ['มูลค่า/INV ที่เบิก', (r) => !(r.amount && r.amount > 0)],
+          ['วันที่ส่งมอบงาน', (r) => !r.delivery_date],
+          ['วันที่วางบิล', (r) => !r.bill_date],
+          ['วันที่จ่าย', (r) => !r.pay_date],
+        ]
+        cols.forEach(([label, isEmpty]) => { if (invoices.some(isEmpty)) problems.push(label) })
+      }
+      if (problems.length > 0) {
+        setTried(true)
+        message.warning(`กรุณากรอกให้ครบ: ${problems.join(', ')}`)
+        return
+      }
+    }
     setSaving(true)
     try {
       // tab 1's data is saved first (this tab is the only place that saves)
@@ -610,7 +662,10 @@ const WOContractorBillTab: React.FC<Props> = ({
       message.success(status === 'DRAFT' ? 'บันทึกฉบับร่างเรียบร้อยแล้ว' : 'บันทึกข้อมูลเรียบร้อยแล้ว')
       await loadBills()
       onBillSaved?.(recordId)
-      // The saved values stay on screen (clearing them looked like nothing was saved); "สร้างรายการใหม่" starts the next bill.
+      // A saved payment is closed: the next save starts a new payment (the next installment) instead of overwriting this one.
+      // Re-open it from the history to change it. A draft stays open so it can be saved again.
+      if (status === 'SAVED') startNew()
+      else setTried(false)
     } catch (e) {
       message.error(errText(e, 'บันทึกข้อมูลไม่สำเร็จ'))
     } finally {
@@ -632,96 +687,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   return (
     <div>
       <div style={subCardStyle}>
-        <Row gutter={[16, 12]}>
-          <Col {...FIELD_SPAN}>
-            <div style={labelStyle}>ประเภทรับวางบิล</div>
-            <Select
-              style={fieldStyle}
-              value={f.bill_type}
-              options={BILL_TYPE_OPTIONS}
-              onChange={(v: BillType) => patch({ bill_type: v })}
-            />
-          </Col>
-          <Col {...FIELD_SPAN}>
-            <div style={labelStyle}>งวดที่</div>
-            <InputNumber<number>
-              style={fieldStyle}
-              min={1}
-              precision={0}
-              value={f.installment_no ?? undefined}
-              onChange={(v) => setInstallmentNo(v ?? null)}
-            />
-          </Col>
-          <Col {...FIELD_SPAN}>
-            <Tooltip title="ฝ่ายบัญชีเป็นผู้กรอก">
-              <div style={labelStyle}>AP Voucher No.*</div>
-              <Input
-                style={{ ...fieldStyle, background: '#fef9c3' }}
-                value={f.ap_voucher_no}
-                onChange={(e) => patch({ ap_voucher_no: e.target.value })}
-              />
-            </Tooltip>
-          </Col>
-          <Col {...FIELD_SPAN}>
-            <div style={labelStyle}>PAY TO (ชื่อผู้รับเงิน)</div>
-            <Input style={fieldStyle} value={f.pay_to} onChange={(e) => patch({ pay_to: e.target.value })} />
-          </Col>
-          <Col {...FIELD_SPAN}>
-            <div style={labelStyle}>Credit Term</div>
-            <InputNumber<number>
-              style={fieldStyle}
-              min={0}
-              precision={0}
-              addonAfter="วัน"
-              placeholder="AUTO"
-              value={f.credit_term_days ?? undefined}
-              onChange={(v) => patch({ credit_term_days: v ?? null })}
-            />
-          </Col>
-          <Col xs={24} md={18}>
-            <div style={labelStyle}>รายละเอียด</div>
-            <Input.TextArea
-              style={fieldStyle}
-              autoSize={{ minRows: 2 }}
-              value={f.description}
-              onChange={(e) => patch({ description: e.target.value })}
-            />
-          </Col>
-        </Row>
-      </div>
-
-      <div style={subCardStyle}>
-        <Table<InvoiceRow>
-          rowKey="key"
-          size="small"
-          pagination={false}
-          dataSource={invoices}
-          columns={invoiceColumns}
-          scroll={{ x: 1070 }}
-          locale={{ emptyText: 'ยังไม่มีใบกำกับภาษี' }}
-          summary={() => (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={2} align="right"><strong>รวมมูลค่า/INV ที่เบิก</strong></Table.Summary.Cell>
-              <Table.Summary.Cell index={2} align="right"><strong>{money(invoiceTotal)}</strong></Table.Summary.Cell>
-              <Table.Summary.Cell index={3} colSpan={4} />
-            </Table.Summary.Row>
-          )}
-        />
-        <div style={{ marginTop: 12 }}>
-          <Button
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => setInvoices((p) => [...p, {
-              key: ++keySeq.current, invoice_no: '', invoice_date: null, delivery_date: null, bill_date: null, pay_date: null, amount: null,
-            }])}
-          >
-            เพิ่มใบกำกับภาษี
-          </Button>
-        </div>
-      </div>
-
-      <div style={subCardStyle}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>ใบกำกับภาษีของทุกครั้งที่จ่าย</div>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>ประวัติการเบิกจ่ายหนังสือสั่งจ้าง</div>
         <Table<InvoiceHistoryRow>
           rowKey={(r) => `${r.bill_id}-${r.invoice_no ?? ''}-${r.invoice_date ?? ''}-${r.pay_date ?? ''}`}
           size="small"
@@ -790,6 +756,97 @@ const WOContractorBillTab: React.FC<Props> = ({
             ]}
           />
         </Modal>
+      </div>
+
+      <div style={subCardStyle}>
+        <Row gutter={[16, 12]}>
+          <Col {...FIELD_SPAN}>
+            <div style={labelStyle}>ประเภทรับวางบิล</div>
+            <Select
+              style={fieldStyle}
+              value={f.bill_type}
+              options={BILL_TYPE_OPTIONS}
+              onChange={(v: BillType) => patch({ bill_type: v })}
+            />
+          </Col>
+          <Col {...FIELD_SPAN}>
+            <div style={labelStyle}>งวดที่</div>
+            <InputNumber<number>
+              style={fieldStyle}
+              min={1}
+              precision={0}
+              value={f.installment_no ?? undefined}
+              onChange={(v) => setInstallmentNo(v ?? null)}
+            />
+          </Col>
+          <Col {...FIELD_SPAN}>
+            <Tooltip title="ฝ่ายบัญชีเป็นผู้กรอก">
+              <div style={labelStyle}>AP Voucher No.*</div>
+              <Input
+                style={{ ...fieldStyle, background: '#fef9c3' }}
+                status={tried && !f.ap_voucher_no.trim() ? 'error' : undefined}
+                value={f.ap_voucher_no}
+                onChange={(e) => patch({ ap_voucher_no: e.target.value })}
+              />
+            </Tooltip>
+          </Col>
+          <Col {...FIELD_SPAN}>
+            <div style={labelStyle}>PAY TO (ชื่อผู้รับเงิน)</div>
+            <Input style={fieldStyle} value={f.pay_to} onChange={(e) => patch({ pay_to: e.target.value })} />
+          </Col>
+          <Col {...FIELD_SPAN}>
+            <div style={labelStyle}>Credit Term</div>
+            <InputNumber<number>
+              style={fieldStyle}
+              min={0}
+              precision={0}
+              addonAfter="วัน"
+              placeholder="AUTO"
+              value={f.credit_term_days ?? undefined}
+              onChange={(v) => patch({ credit_term_days: v ?? null })}
+            />
+          </Col>
+          <Col xs={24} md={18}>
+            <div style={labelStyle}>รายละเอียด</div>
+            <Input.TextArea
+              style={fieldStyle}
+              autoSize={{ minRows: 2 }}
+              value={f.description}
+              onChange={(e) => patch({ description: e.target.value })}
+            />
+          </Col>
+        </Row>
+      </div>
+
+      <div style={subCardStyle}>
+        <Table<InvoiceRow>
+          rowKey="key"
+          size="small"
+          pagination={false}
+          dataSource={invoices}
+          columns={invoiceColumns}
+          scroll={{ x: 1070 }}
+          locale={{ emptyText: 'ยังไม่มีใบกำกับภาษี' }}
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={2} align="right"><strong>รวมมูลค่า/INV ที่เบิก</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={2} align="right"><strong>{money(invoiceTotal)}</strong></Table.Summary.Cell>
+              <Table.Summary.Cell index={3} colSpan={4} />
+            </Table.Summary.Row>
+          )}
+        />
+        <div style={{ marginTop: 12 }}>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => setInvoices((p) => [...p, {
+              key: ++keySeq.current, invoice_no: '', invoice_date: null, delivery_date: null, bill_date: null, pay_date: null,
+              amount: p.length === 0 ? calc.subtotal : null, manual: false,
+            }])}
+          >
+            เพิ่มใบกำกับภาษี
+          </Button>
+        </div>
       </div>
 
       <div style={subCardStyle}>
