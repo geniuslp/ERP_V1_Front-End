@@ -80,6 +80,8 @@ const FinancePaymentDetailPage: React.FC = () => {
   const [billPaid, setBillPaid] = useState(0)
   // WO: the contract value (ex VAT) is the base for "remaining"; the document's own net_amount can differ from it.
   const [woContractValue, setWoContractValue] = useState(0)
+  // WO retention (เงินประกัน) — held back, so it is not part of what is still payable.
+  const [woRetention, setWoRetention] = useState(0)
 
   // Auto-fill with the selected sum (capped at the remaining balance) whenever the selection
   // or a selected row's amount changes; the user can still overtype until the next change.
@@ -158,7 +160,7 @@ const FinancePaymentDetailPage: React.FC = () => {
   const paidAmount = loggedPaid + billPaid
   const baseAmount = docType === 'WO' && woContractValue > 0 ? woContractValue : (docItem?.net_amount ?? 0)
   const remaining = docType === 'WO' && woContractValue > 0
-    ? Math.max(baseAmount - paidAmount, 0)
+    ? Math.max(baseAmount - woRetention - paidAmount, 0)
     : Math.max((docItem?.remaining_to_pay ?? Math.max(baseAmount - loggedPaid, 0)) - billPaid, 0)
   // Remaining is only trustworthy once the document itself has loaded.
   const fullyPaid = !!docItem && remaining <= 0
@@ -369,7 +371,9 @@ const FinancePaymentDetailPage: React.FC = () => {
       <Card style={{ ...cardStyle, marginBottom: 20 }} loading={docLoading}>
         <Descriptions column={4} bordered size="small">
           <Descriptions.Item label="เลขที่เอกสาร">
-            {docItem?.doc_no ?? '—'}
+            {docType === 'WO' && docId && docItem?.doc_no
+              ? <a onClick={() => navigate(`/work-order/${docId}`)}>{docItem.doc_no}</a>
+              : (docItem?.doc_no ?? '—')}
             {docType === 'PC' && docItem && (
               <a style={{ marginLeft: 8 }} onClick={() => navigate(`/petty-cash/${docItem.id}`)}>เปิดเอกสาร</a>
             )}
@@ -395,13 +399,16 @@ const FinancePaymentDetailPage: React.FC = () => {
           <div style={{ flex: 1, padding: 16, background: remaining > 0 ? '#fffbeb' : '#f0fdf4', borderRadius: 10 }}>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>คงเหลือต้องจ่าย</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: remaining > 0 ? '#d97706' : '#16a34a' }}>{thb(remaining)} บาท</div>
+            {docType === 'WO' && woRetention > 0 && (
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{`ไม่รวมเงินประกัน ${thb(woRetention)} บาท`}</div>
+            )}
           </div>
         </div>
       </Card>
 
       {docType === 'WO' && docId && (
         <Card title="บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" style={{ ...cardStyle, marginBottom: 20 }}>
-          <WOContractorLogPanel woId={Number(docId)} onBillsPaidChange={(paid, contract) => { setBillPaid(paid); setWoContractValue(contract) }} />
+          <WOContractorLogPanel woId={Number(docId)} onBillsPaidChange={(paid, contract, retention) => { setBillPaid(paid); setWoContractValue(contract); setWoRetention(retention) }} />
         </Card>
       )}
 

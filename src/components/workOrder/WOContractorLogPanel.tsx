@@ -67,7 +67,8 @@ const errText = (e: any, fallback: string) =>
 interface Props {
   woId: number
   // Called with the contract money paid through all SAVED bills (ex VAT / WHT) and the WO contract value (on load and after every save).
-  onBillsPaidChange?: (paid: number, contractAmount: number) => void
+  // retentionAmount = the WO's total retention (เงินประกัน, contract value × retention %), held back and not payable yet.
+  onBillsPaidChange?: (paid: number, contractAmount: number, retentionAmount: number) => void
 }
 
 /**
@@ -176,7 +177,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       const d = res.data?.data
       if (!d) return
       // The paid-vs-contract comparison outside this panel uses the full contract value, not the post-advance base.
-      onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract_total ?? d.contract?.amount ?? 0))
+      onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract_total ?? d.contract?.amount ?? 0), Number(d.retention?.amount ?? 0))
       setPaymentBase(Number(d.payment_base ?? d.contract?.amount ?? 0))
       // Credit term comes from the supplier even before the log record exists; keep a value already loaded from the record.
       setWoCtx((prev) => ({ ...prev, credit: prev.credit ?? d.credit_term_days ?? null }))
