@@ -266,7 +266,7 @@ const ItemRow = ({ row, rowRef }: { row: PRItem; rowRef?: React.Ref<HTMLTableRow
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {cleanItemName(row.desc)}{row.spec ? ` ${row.spec}` : ''}
       {row.remark && (
-        <div style={{ fontSize: '10.5pt', color: '#333' }}><FormattedNote value={row.remark} /></div>
+        <div><FormattedNote value={row.remark} /></div>
       )}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>

@@ -286,7 +286,7 @@ const ItemRow = ({row,rowRef}:{row:WOPOItem;rowRef?:React.Ref<HTMLTableRowElemen
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
       <div>{row.desc}</div>
-      {row.subDesc&&<div style={{color:'#555',marginTop:'1px',whiteSpace:'pre-line'}}>{row.subDesc}</div>}
+      {row.subDesc&&<div style={{marginTop:'1px',whiteSpace:'pre-line'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
     <td style={{textAlign:'right'}}>{row.pricePerUnit?thb(row.pricePerUnit):''}</td>

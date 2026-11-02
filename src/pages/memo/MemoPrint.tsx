@@ -227,7 +227,7 @@ const ItemRow = ({ row, rowRef }: { row: MemoItem; rowRef?: React.Ref<HTMLTableR
     <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
       {row.desc}
       {row.remark && (
-        <div style={{ fontSize: '10.5pt', color: '#333' }}><FormattedNote value={row.remark} /></div>
+        <div><FormattedNote value={row.remark} /></div>
       )}
     </td>
     <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>

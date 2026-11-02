@@ -374,7 +374,7 @@ const ItemRow = ({row,rowRef}:{row:POItem;rowRef?:React.Ref<HTMLTableRowElement>
     <td style={{color:'#444',textAlign:'center',whiteSpace:'nowrap'}}>{row.code}</td>
     <td style={{whiteSpace:'normal',wordBreak:'break-word',overflowWrap:'anywhere'}}>
       <div>{formatItemLabel(row.desc, row.spec, row.brand)}</div>
-      {row.subDesc&&<div style={{color:'#555',marginTop:'1px',whiteSpace:'pre-line'}}>{row.subDesc}</div>}
+      {row.subDesc&&<div style={{marginTop:'1px',whiteSpace:'pre-line'}}>{row.subDesc}</div>}
     </td>
     <td style={{textAlign:'center'}}>{row.qty||''}</td>
     <td style={{textAlign:'center'}}>{row.unit}</td>
