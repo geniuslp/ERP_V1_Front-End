@@ -1,7 +1,8 @@
 import FormattedNote from '@/components/common/FormattedNote'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
+import { formatNote, type NoteLine } from '@/utils/formatNote'
 import logo from '@/components/asset/Genius Logo-01.jpg'
 import { numberToThaiText } from '@/utils/thaiBahtText'
 import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
@@ -33,33 +34,30 @@ const CSS = `
     body>*:not(.wo-std-portal){display:none !important;}
     .wo-std-portal{position:static !important;visibility:visible !important;}
     @page{size:A4 portrait;margin:0;}
+    .wo-std-page{page-break-after:always;}
+    .wo-std-page:last-child{page-break-after:avoid;}
   }
   .wo-std-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
     font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Sarabun',sans-serif;}
 
-  /* Header — logo box + red-bordered "หนังสือสั่งจ้าง" title, matching the paper form. */
-  .wo-std-head{display:grid;grid-template-columns:190px 1fr 190px;align-items:flex-start;border-bottom:1px solid #000;}
-  .wo-std-logo-block{display:flex;flex-direction:column;align-items:flex-start;gap:2px;}
-  .wo-std-doc-title-wrap{display:flex;justify-content:center;align-items:center;}
-  .wo-std-doc-title{text-align:center;font-family:'Sarabun',sans-serif;font-weight:700;font-size:20px;
-    border:2px solid #b91c1c;color:#b91c1c;padding:4px 22px;display:inline-block;}
-  .wo-std-doc-meta{width:100%;padding-right:10mm;text-align:right;font-size:12.5px;font-family:'Cordia New',sans-serif;}
-  .wo-std-doc-meta div{margin-bottom:2px;}
+  /* Header — PO-print style (logo + company block left, WORK ORDER / หนังสือสั่งจ้าง right), no line under it. */
+  .wo-std-head{display:flex;align-items:flex-start;}
 
   /* Party line — plain text, single thin black bottom border only, tight
      spacing between it and the section label above. */
   .wo-std-section-label{font-family:'Cordia New',sans-serif;font-weight:700;font-size:12.5pt;margin:6px 0 1px 0;}
-  .wo-std-party-line{font-family:'Cordia New',sans-serif;font-size:12.5pt;line-height:1.5;
+  .wo-std-party-line{font-family:'Cordia New',sans-serif;font-size:12.5pt;font-weight:700;line-height:1.5;
     border-bottom:1px solid #000;padding-bottom:4px;}
 
   /* Numbered fields 1–10 — label/value table, matching work_order_print_reference.html. */
-  table.wo-table{width:100%;border-collapse:collapse;font-family:'Cordia New',sans-serif;}
+  /* Fixed column widths (see WO_COLS) so every table on every page — items 1–9 and item 10 chunks — shares the same value
+     column width; the pagination measures the item 10 lines with exactly this width. */
+  table.wo-table{width:100%;border-collapse:collapse;table-layout:fixed;font-family:'Cordia New',sans-serif;}
   table.wo-table td{vertical-align:top;padding:5px 4px;font-size:12pt;}
-  td.wo-no{width:26px;font-weight:700;}
-  td.wo-label{width:190px;font-weight:600;white-space:nowrap;}
-  td.wo-colon{width:14px;}
+  td.wo-no{font-weight:700;}
+  td.wo-label{font-weight:600;white-space:nowrap;}
   td.wo-value{}
   .sub{padding-left:20px;font-size:11.5pt;color:#333;}
   .wo-std-underline{border-bottom:1px solid #000;padding:0 2px;min-width:60px;display:inline-block;}
@@ -80,15 +78,33 @@ const CSS = `
 // with WO_STANDARD's own Thai labels.
 const AUTH_COLS = ['ผู้จัดทำ/ผู้กรอกเอกสาร', 'ส่วนหัวงาน', 'ผู้มีอำนาจลงนาม', 'ผู้รับเหมาช่วง']
 
-const Header = ({ data }: { data: WOPrintDataLite }) => (
-  <div className="wo-std-head" style={{ minHeight: '26mm', padding: '4px 0' }}>
-    <div className="wo-std-logo-block">
-      <img src={logo} alt="Logo" width={4248} height={1844} style={{ height: '20mm', width: 'auto', objectFit: 'contain' }} />
+// Same header as the PO print (PurchaseOrderPrint.tsx's POHeader) minus the logo: company block on the left,
+// "WORK ORDER" / "หนังสือสั่งจ้าง" on the right with the document number and date under it.
+const Header = ({ data, pageNum, totalPages, divider = false }: { data: WOPrintDataLite; pageNum: number; totalPages: number; divider?: boolean }) => (
+  // divider: continuation pages (2, 3 ...) get a rule under the header; page 1 has none.
+  <div className="wo-std-head" style={{ minHeight: '26mm', padding: '4px 0', ...(divider ? { borderBottom: '1px solid #000', marginBottom: '4px' } : {}) }}>
+    <div style={{ width: 'auto', flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <img src={logo} alt="Logo" width={4248} height={1844} style={{ marginTop: '1px', height: '22mm', width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div style={{ fontSize: '14.5pt', color: '#02276e', lineHeight: 1, marginLeft: '3px', fontFamily: 'Cordia New', whiteSpace: 'nowrap' }}>บริษัท จีเนียส เอนจิเนียริง จำกัด (สำนักงานใหญ่)</div>
+        <div style={{ fontSize: '13.5pt', color: '#02276e', lineHeight: 1, borderBottom: '0.1px solid #000', marginLeft: '3px', paddingBottom: '1px', marginBottom: '3px', fontFamily: 'Cordia New', whiteSpace: 'nowrap' }}>Genius Engineering Co., Ltd. (Head Office)</div>
+        <div style={{ fontSize: '11pt', color: '#02276e', lineHeight: 1.05, fontFamily: 'Cordia New', marginLeft: '3px' }}>
+          <div style={{ whiteSpace: 'nowrap' }}>1467 ถนนกาญจนาภิเษก แขวงบางแคเหนือ เขตบางแค กรุงเทพฯ 10160</div>
+          <div style={{ whiteSpace: 'nowrap' }}>1467 Kanjanapisek Rd., Bangkaenua, Bangkae, Bangkok 10160</div>
+          <div style={{ whiteSpace: 'nowrap' }}>Tel. (66)2 805 6820&nbsp;&nbsp;TaxID.&nbsp;0105554142442&nbsp;&nbsp;www.geniuslp.com</div>
+        </div>
+      </div>
     </div>
-    <div className="wo-std-doc-title-wrap"><span className="wo-std-doc-title">หนังสือสั่งจ้าง</span></div>
-    <div className="wo-std-doc-meta">
-      <div>เลขที่ : <b>{formatPoNoWithRevision(data.wo_no ?? '', data.revision_round)}</b></div>
-      <div>วันที่ : <b>{fmtDate(data.wo_date)}</b></div>
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '2px 8px 4px 8px' }}>
+      <div style={{ fontSize: '7.5pt', color: '#444' }}>Page {pageNum}/{totalPages}</div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontSize: '18pt', fontWeight: 700, lineHeight: 1.1, marginTop: '4px', fontFamily: "'Cordia New',sans-serif" }}>WORK ORDER</div>
+        <div style={{ fontSize: '13pt', fontWeight: 600, marginTop: '6px', fontFamily: "'Cordia New',sans-serif" }}>หนังสือสั่งจ้าง</div>
+        <div style={{ fontSize: '12pt', marginTop: '6px', fontFamily: "'Cordia New',sans-serif" }}>
+          <div>เลขที่ : <b>{formatPoNoWithRevision(data.wo_no ?? '', data.revision_round)}</b></div>
+          <div>วันที่ : <b>{fmtDate(data.wo_date)}</b></div>
+        </div>
+      </div>
     </div>
   </div>
 )
@@ -118,8 +134,16 @@ const NumberedFields = ({ data }: { data: WOPrintDataLite }) => {
   return <NumberedFieldsInner data={data} jobNames={jobNames} />
 }
 
+const WO_COLS = (
+  <colgroup>
+    <col style={{ width: '26px' }} /><col style={{ width: '220px' }} /><col style={{ width: '14px' }} /><col />
+  </colgroup>
+)
+
+// Items 1–9. Item 10 (เงื่อนไขอื่นๆ) is paginated separately — see OtherTermsTable.
 const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNames: Record<string, string> }) => (
   <table className="wo-table">
+    {WO_COLS}
     <tbody>
       <tr>
         <td className="wo-no">1.</td>
@@ -189,8 +213,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td className="wo-label">มูลค่าสัญญา (ไม่รวม VAT)</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">
-          {thb(data.contract_amount)} บาท &nbsp;&nbsp;VAT {data.vat_rate ?? 0}% &nbsp;&nbsp;หัก ณ ที่จ่าย {data.wht_rate ?? 0}%
-          <div className="sub">( {data.contract_amount ? numberToThaiText(data.contract_amount) : ''} )</div>
+          {thb(data.contract_amount)} บาท{data.contract_amount ? ` (${numberToThaiText(data.contract_amount)})` : ''} &nbsp;&nbsp;VAT {data.vat_rate ?? 0}% &nbsp;&nbsp;หัก ณ ที่จ่าย {data.wht_rate ?? 0}%
         </td>
       </tr>
 
@@ -252,11 +275,35 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td className="wo-colon">:</td>
         <td className="wo-value">{val(data.ref_no)}</td>
       </tr>
+    </tbody>
+  </table>
+)
+
+// Item 10 as one table: a chunk of the note's lines. Every page after the first one that carries part of the note
+// is labelled "… (ต่อ)". lineRef is only used by the hidden measuring pass.
+const OtherTermsTable = ({ lines, cont, lineRef }: { lines: NoteLine[]; cont: boolean; lineRef?: (i: number, el: HTMLDivElement | null) => void }) => (
+  <table className="wo-table">
+    {WO_COLS}
+    <tbody>
       <tr>
         <td className="wo-no">10.</td>
-        <td className="wo-label">เงื่อนไขอื่นๆ ระบุเพิ่มเติม</td>
+        <td className="wo-label">เงื่อนไขอื่นๆ ระบุเพิ่มเติม{cont ? ' (ต่อ)' : ''}</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{noteVal(data.other_terms)}</td>
+        <td className="wo-value">
+          {lines.length === 0 ? val('') : (
+            <div style={{ overflowWrap: 'anywhere' }}>
+              {lines.map((l, i) => (
+                <div
+                  key={i}
+                  ref={lineRef ? (el) => lineRef(i, el) : undefined}
+                  style={{ minHeight: l.text === '' ? '0.8em' : undefined, paddingLeft: l.indent ? '1.4em' : undefined }}
+                >
+                  {l.text}
+                </div>
+              ))}
+            </div>
+          )}
+        </td>
       </tr>
     </tbody>
   </table>
@@ -278,11 +325,52 @@ const AuthBlock = ({ data }: { data: WOPrintDataLite }) => (
 
 interface Props { data: Partial<WorkOrder>; onReady?: () => void }
 
-// Single fixed-length A4 page — no pagination/measurement machinery, unlike
-// PO_HEADER's multi-page item table. Renders straight from the raw
-// GET /work-order/:id response (not PO's WOPOData mapping), since the
-// numbered-fields layout needs WO's own fields (contract_type, retention_pct,
-// advance_pct, dates, etc.) that the PO-shaped mapper doesn't carry.
+const MM_TO_PX = 96 / 25.4
+// Room for header + content + footer on one page: A4 297mm minus the 6mm top / 12mm bottom padding, minus a safety margin.
+const PAGE_INNER_MM = 273
+
+// Item 10 is split at the big numbers: a group starts at every "1." "2." ... line (a leading unnumbered paragraph is a
+// group of its own) and holds the "-" bullets under it. A group is never cut between pages.
+const NUMBER_START = /^\d{1,2}\./
+const groupNoteLines = (lines: NoteLine[]): number[][] => {
+  const groups: number[][] = []
+  lines.forEach((l, i) => {
+    if (groups.length === 0 || (l.indent === 0 && NUMBER_START.test(l.text))) groups.push([i])
+    else groups[groups.length - 1].push(i)
+  })
+  return groups
+}
+
+// Packs whole groups onto pages (page 1 has less room: items 1–9 sit above). A group that is taller than a whole
+// continuation page cannot be kept together, so only then it is split line by line. Page 1 may end up with no
+// group at all (item 10 then starts on page 2).
+const packNote = (heights: number[], groups: number[][], avail1: number, availC: number): number[][] => {
+  const units: { idx: number[]; h: number }[] = []
+  groups.forEach((g) => {
+    const h = g.reduce((a, i) => a + heights[i], 0)
+    if (h <= availC) units.push({ idx: g, h })
+    else g.forEach((i) => units.push({ idx: [i], h: heights[i] }))
+  })
+  const pages: number[][] = [[]]
+  let used = 0
+  let avail = avail1
+  units.forEach((u) => {
+    const cur = pages[pages.length - 1]
+    if (used + u.h > avail && (cur.length > 0 || pages.length === 1)) {
+      pages.push([])
+      used = 0
+      avail = availC
+    }
+    pages[pages.length - 1].push(...u.idx)
+    used += u.h
+  })
+  return pages
+}
+
+// Renders straight from the raw GET /work-order/:id response (not PO's WOPOData mapping), since the numbered-fields
+// layout needs WO's own fields (contract_type, retention_pct, advance_pct, dates, etc.) that the PO-shaped mapper
+// doesn't carry. Header and the signature footer are on EVERY page; the long item 10 (เงื่อนไขอื่นๆ) flows onto
+// further pages, each continuation labelled "10. เงื่อนไขอื่นๆ ระบุเพิ่มเติม (ต่อ)".
 const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
   useEffect(() => {
     const s = document.createElement('style')
@@ -291,8 +379,13 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
     return () => { document.getElementById('wo-std-style')?.remove() }
   }, [])
 
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+  const noteLines = useMemo(() => formatNote(data.other_terms), [data.other_terms])
+  const refHeader = useRef<HTMLDivElement>(null)
+  const refMain = useRef<HTMLDivElement>(null)
+  const refTable = useRef<HTMLDivElement>(null)
+  const refFooter = useRef<HTMLDivElement>(null)
+  const refLines = useRef<(HTMLDivElement | null)[]>([])
+  const [pages, setPages] = useState<NoteLine[][] | null>(null)
 
   // Preload the logo so onReady (and window.print()) never fires before the
   // browser has actually finished loading/decoding the image — the source of
@@ -305,17 +398,65 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
     img.src = logo
   }, [])
 
-  useEffect(() => { if (mounted && logoReady) onReady?.() }, [mounted, logoReady])
+  // Measuring pass: item 10 is laid out once, hidden, at its real width; every line's real height decides the pages.
+  useEffect(() => {
+    if (pages !== null) return
+    if (!refHeader.current || !refMain.current || !refTable.current || !refFooter.current) return
+    const lineEls = noteLines.map((_, i) => refLines.current[i])
+    if (lineEls.some((el) => !el)) return
+    const mm = (el: HTMLElement) => el.getBoundingClientRect().height / MM_TO_PX
+    const heights = lineEls.map((el) => mm(el as HTMLElement))
+    const overhead = Math.max(mm(refTable.current) - heights.reduce((a, b) => a + b, 0), 0) // cell padding of the item 10 row
+    const hdr = mm(refHeader.current)
+    const ftr = mm(refFooter.current)
+    const avail1 = PAGE_INNER_MM - hdr - mm(refMain.current) - ftr - overhead
+    const availC = PAGE_INNER_MM - hdr - ftr - overhead
+    const packed = packNote(heights, groupNoteLines(noteLines), avail1, availC)
+    setPages(packed.map((ids) => ids.map((i) => noteLines[i])))
+  })
 
+  useEffect(() => { if (pages !== null && logoReady) onReady?.() }, [pages, logoReady])
+
+  if (pages === null) {
+    return ReactDOM.createPortal(
+      <div className="wo-std-portal">
+        <div className="wo-std-page" style={{ height: 'auto', visibility: 'hidden' }}>
+          <div ref={refHeader}><Header data={data} pageNum={1} totalPages={1} /></div>
+          <div ref={refMain}>
+            <PartyLine data={data} />
+            <NumberedFields data={data} />
+          </div>
+          <div ref={refTable}>
+            <OtherTermsTable lines={noteLines} cont lineRef={(i, el) => { refLines.current[i] = el }} />
+          </div>
+          <div ref={refFooter}><AuthBlock data={data} /></div>
+        </div>
+      </div>, document.body
+    )
+  }
+
+  const totalPages = pages.length
   return ReactDOM.createPortal(
     <div className="wo-std-portal">
-      <div className="wo-std-page">
-        {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
-        <Header data={data} />
-        <PartyLine data={data} />
-        <NumberedFields data={data} />
-        <AuthBlock data={data} />
-      </div>
+      {pages.map((chunk, pi) => {
+        // Page 1 shows item 10 even when blank (no note at all); later pages only when they carry lines.
+        const showTerms = chunk.length > 0 || noteLines.length === 0
+        const cont = pi > 0 && pages.slice(0, pi).some((c) => c.length > 0)
+        return (
+          <div key={pi} className="wo-std-page">
+            {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
+            <Header data={data} pageNum={pi + 1} totalPages={totalPages} divider={pi > 0} />
+            {pi === 0 && (
+              <>
+                <PartyLine data={data} />
+                <NumberedFields data={data} />
+              </>
+            )}
+            {showTerms && <OtherTermsTable lines={chunk} cont={cont} />}
+            <AuthBlock data={data} />
+          </div>
+        )
+      })}
     </div>, document.body
   )
 }
