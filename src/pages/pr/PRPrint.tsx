@@ -48,6 +48,8 @@ export interface PRData {
   prDate: string
   // Header fields (independent field set from PO's header):
   projectDept: string   // purchase_request.project_code
+  // purchase_request.dept_code (+ name), printed right after the project on the same line; optional for older callers.
+  dept?: string
   vendor: string         // no data source yet — always rendered blank
   deliveryDate: string   // purchase_request.required_date (กำหนดส่งของ)
   deliveryTo: string     // purchase_request.location_text (สถานที่ส่งของ)
@@ -227,7 +229,7 @@ const PRHeader = ({ data, pageNum, totalPages }: { data: PRData; pageNum: number
 
 const PRInfoBox = ({ data }: { data: PRData }) => (
   <div className="pr-box" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', padding: '3px 8px', fontSize: '12pt', fontFamily: "'Cordia New',sans-serif", lineHeight: '1.2' }}>
-    <div><b>โครงการ :</b>&nbsp;{data.projectDept}</div>
+    <div><b>โครงการ :</b>&nbsp;{data.projectDept}&nbsp;&nbsp;&nbsp;&nbsp;<b>แผนก :</b>&nbsp;{data.dept ?? ''}</div>
     <div><b>วันที่ :</b>&nbsp;{data.prDate}</div>
     <div><b>ประเภทการซื้อ :</b>&nbsp;{data.orderType ? (PRINT_ORDER_TYPE_LABEL[data.orderType] ?? data.orderType) : ''}</div>
     <div><b>กำหนดส่งของ :</b>&nbsp;{data.deliveryDate}</div>

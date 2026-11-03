@@ -51,6 +51,8 @@ export interface POData {
   // po.project_code (internal/handlers/po.go PrintData) — empty string when
   // the PO has no project_code or it doesn't match any project row.
   projectName: string
+  // purchase_order.dept_code + departments.dept_name (PrintData's deptCode / deptName) — empty when the PO has no department.
+  deptCode?: string; deptName?: string
   deliveryPlace: string; job: string
   quotationNo: string; tel: string
   // purchase_order.receiver_name/receiver_phone — added to PrintData's
@@ -365,7 +367,9 @@ const POInfoBox = ({data}:{data:POData}) => (
         <b>Project Name :</b>&nbsp;{data.projectName || data.project}
       </div>
       <div style={{display:'flex',gap:8}}>
-        <b>Job Type :</b>&nbsp;{jobTypeLabel(data.job) || data.job}
+        <span><b>Job Type :</b>&nbsp;{jobTypeLabel(data.job) || data.job}</span>
+        {/* Department on the same line, right after the job type. */}
+        <span><b>Department :</b>&nbsp;{data.deptCode ? `${data.deptCode}${data.deptName ? ` — ${data.deptName}` : ''}` : ''}</span>
       </div>
     </div>
   </div>

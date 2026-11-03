@@ -400,6 +400,7 @@ const PRDetailPage: React.FC = () => {
       prNo: pr.prNo,
       prDate: pr.prDate ? dayjs(pr.prDate).format('DD/MM/YYYY') : '',
       projectDept: (pr.projectCode && (projects.find((p) => p.value === pr.projectCode)?.label ?? pr.projectCode)) || '',
+      dept: pr.deptCode ? `${pr.deptCode}${pr.deptName ? ` — ${pr.deptName}` : ''}` : '',
       vendor: '',
       deliveryDate: pr.requiredDate ? dayjs(pr.requiredDate).format('DD/MM/YYYY') : '',
       deliveryTo: pr.locationText ?? '',
