@@ -7,8 +7,8 @@ import { workOrderService } from '@/services/workOrderService'
 import WorkOrderPrintView, { type WOPrintTemplate, type WOPrintData } from '@/pages/workOrder/WorkOrderPrintView'
 
 const TEMPLATE_OPTIONS: { value: WOPrintTemplate; label: string }[] = [
-  { value: 'WO_STANDARD', label: 'แบบฟอร์มหนังสือสั่งจ้าง (มาตรฐาน)' },
-  { value: 'PO_HEADER', label: 'แบบฟอร์มหัวกระดาษแบบ PO' },
+  { value: 'WO_STANDARD', label: 'แบบฟอร์มสัญญาสั่งจ้าง' },
+  { value: 'PO_HEADER', label: 'แบบฟอร์มรายละเอียดสัญญาจ้าง' },
 ]
 
 interface Props {
@@ -49,7 +49,13 @@ const WorkOrderPrintTrigger: React.FC<Props> = ({ id, getFormData, buttonProps, 
         // Same data source for both templates — GET /work-order/:id — only the
         // rendered layout differs.
         const wo = await workOrderService.get(accessToken, id)
-        setPrintData(wo)
+        // The retention remark (7.3) lives in the payment conditions, not on the WO itself. A failed load only drops the remark.
+        let retentionRemarks: string | null = null
+        try {
+          const pc = await workOrderService.getPaymentConditions(accessToken, id)
+          retentionRemarks = pc.retentions.map((r) => (r.remarks ?? '').trim()).filter(Boolean).join(', ') || null
+        } catch { /* print without the remark */ }
+        setPrintData({ ...wo, retention_remarks: retentionRemarks })
         setPickerOpen(false)
       } catch (err: any) {
         message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลสำหรับพิมพ์ไม่สำเร็จ')

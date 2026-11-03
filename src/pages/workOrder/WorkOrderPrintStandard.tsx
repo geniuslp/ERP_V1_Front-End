@@ -57,9 +57,10 @@ const CSS = `
   table.wo-table{width:100%;border-collapse:collapse;table-layout:fixed;font-family:'Cordia New',sans-serif;}
   table.wo-table td{vertical-align:top;padding:5px 4px;font-size:12pt;}
   td.wo-no{font-weight:700;}
+  td.wo-value{font-weight:700;}
   td.wo-label{font-weight:600;white-space:nowrap;}
   td.wo-value{}
-  .sub{padding-left:20px;font-size:11.5pt;color:#333;}
+  .sub{padding-left:20px;font-size:11.5pt;color:#000;font-weight:700;}
   .wo-std-underline{border-bottom:1px solid #000;padding:0 2px;min-width:60px;display:inline-block;}
 
   /* Cost Code line — simple text display, not a full item table. */
@@ -76,13 +77,13 @@ const CSS = `
 // The signature block's 4 columns per the finalized spec — replaces PO's
 // English placeholder labels ("Supply Chain Department"/"Section Head"/etc.)
 // with WO_STANDARD's own Thai labels.
-const AUTH_COLS = ['ผู้จัดทำ/ผู้กรอกเอกสาร', 'ส่วนหัวงาน', 'ผู้มีอำนาจลงนาม', 'ผู้รับเหมาช่วง']
+const AUTH_COLS = ['ผู้จัดทำ / ผู้ตรวจสอบ', 'หัวหน้าส่วน', 'ผู้มีอำนาจลงนามอนุมัติ', 'ผู้รับเหมาช่วง']
 
 // Same header as the PO print (PurchaseOrderPrint.tsx's POHeader) minus the logo: company block on the left,
 // "WORK ORDER" / "หนังสือสั่งจ้าง" on the right with the document number and date under it.
-const Header = ({ data, pageNum, totalPages, divider = false }: { data: WOPrintDataLite; pageNum: number; totalPages: number; divider?: boolean }) => (
+const Header = ({ data, pageNum, totalPages, divider = false, agreement = false }: { data: WOPrintDataLite; pageNum: number; totalPages: number; divider?: boolean; agreement?: boolean }) => (
   // divider: continuation pages (2, 3 ...) get a rule under the header; page 1 has none.
-  <div className="wo-std-head" style={{ minHeight: '26mm', padding: '4px 0', ...(divider ? { borderBottom: '1px solid #000', marginBottom: '4px' } : {}) }}>
+  <div className="wo-std-head" style={{ minHeight: '26mm', padding: '4px 0', position: 'relative', ...(divider ? { borderBottom: '1px solid #000', marginBottom: '4px' } : {}) }}>
     <div style={{ width: 'auto', flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
       <img src={logo} alt="Logo" width={4248} height={1844} style={{ marginTop: '1px', height: '22mm', width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -98,22 +99,29 @@ const Header = ({ data, pageNum, totalPages, divider = false }: { data: WOPrintD
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '2px 8px 4px 8px' }}>
       <div style={{ fontSize: '7.5pt', color: '#444' }}>Page {pageNum}/{totalPages}</div>
       <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: '18pt', fontWeight: 700, lineHeight: 1.1, marginTop: '4px', fontFamily: "'Cordia New',sans-serif" }}>WORK ORDER</div>
-        <div style={{ fontSize: '13pt', fontWeight: 600, marginTop: '6px', fontFamily: "'Cordia New',sans-serif" }}>หนังสือสั่งจ้าง</div>
+        {/* Same size / weight / font (inherited Sarabun) as "PURCHASE ORDER" / "ใบสั่งซื้อ" in the PO print. */}
+        <div style={{ fontSize: '18pt', fontWeight: 700, lineHeight: 1.1, marginTop: '4px' }}>WORK ORDER</div>
+        <div style={{ fontSize: '13pt', fontWeight: 600, marginTop: '6px' }}>หนังสือสั่งจ้าง</div>
         <div style={{ fontSize: '12pt', marginTop: '6px', fontFamily: "'Cordia New',sans-serif" }}>
           <div>เลขที่ : <b>{formatPoNoWithRevision(data.wo_no ?? '', data.revision_round)}</b></div>
           <div>วันที่ : <b>{fmtDate(data.wo_date)}</b></div>
         </div>
       </div>
     </div>
+    {/* Page 1: "ข้อตกลงในสัญญา" sits in the header, on the same line as the date (bottom left). */}
+    {agreement && <div className="wo-std-section-label" style={{ position: 'absolute', left: 3, bottom: 8, margin: 0 }}>ข้อตกลงในสัญญา</div>}
   </div>
 )
 
 const PartyLine = ({ data }: { data: WOPrintDataLite }) => (
   <>
-    <div className="wo-std-section-label">ข้อตกลงในสัญญา</div>
-    <div className="wo-std-party-line">
-      ผู้รับจ้าง สัญญาว่าจะทำตามรายละเอียดที่ระบุไว้ต่อไปนี้ทั้งหมด บริษัท {val(data.employer_name)} ผู้ว่าจ้าง
+    {/* Text before the company is left-aligned; "บริษัท … ผู้ว่าจ้าง" sits flush right on the same line (wraps below, still right-aligned, when too long).
+        employer_name is stored with "บริษัท" already in it, so the word is added only when it is missing (no "บริษัท บริษัท"). */}
+    <div className="wo-std-party-line" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12 }}>
+      <span>ผู้รับจ้าง สัญญาว่าจะทำตามรายละเอียดที่ระบุไว้ต่อไปนี้ทั้งหมด</span>
+      <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
+        {data.employer_name?.trim().startsWith('บริษัท') ? data.employer_name.trim() : <>บริษัท {val(data.employer_name)}</>} ผู้ว่าจ้าง
+      </span>
     </div>
   </>
 )
@@ -129,6 +137,22 @@ const val = (v: React.ReactNode) =>
 const noteVal = (v?: string | null, inline = false) =>
   val(v ? <FormattedNote value={v} style={inline ? { display: 'inline-block', verticalAlign: 'top' } : undefined} /> : v)
 
+// 7.2: the first line stays right after "7.2 เงินงวดสัญญา :"; the lines under it (7.2.1, 7.2.2 ...) start on their own
+// line, indented by ONE tab only (not pushed under the label's text).
+const InstallmentNote = ({ value }: { value?: string | null }) => {
+  const lines = formatNote(value)
+  if (lines.length === 0) return val('')
+  const [first, ...rest] = lines
+  return (
+    <span style={{ overflowWrap: 'anywhere', fontWeight: 700 }}>
+      {first.text}
+      {rest.map((l, i) => (
+        <div key={i} style={{ paddingLeft: l.indent ? '3.4em' : '2em', minHeight: l.text === '' ? '0.8em' : undefined }}>{l.text}</div>
+      ))}
+    </span>
+  )
+}
+
 const NumberedFields = ({ data }: { data: WOPrintDataLite }) => {
   const jobNames = useJobTypeNames()
   return <NumberedFieldsInner data={data} jobNames={jobNames} />
@@ -136,7 +160,7 @@ const NumberedFields = ({ data }: { data: WOPrintDataLite }) => {
 
 const WO_COLS = (
   <colgroup>
-    <col style={{ width: '26px' }} /><col style={{ width: '220px' }} /><col style={{ width: '14px' }} /><col />
+    <col style={{ width: '26px' }} /><col style={{ width: '165px' }} /><col style={{ width: '14px' }} /><col />
   </colgroup>
 )
 
@@ -166,19 +190,19 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       </tr>
       <tr>
         <td />
-        <td className="wo-label">ผู้ควบคุมงาน</td>
+        <td className="wo-label">&nbsp;&nbsp;ผู้ลงลายมือชื่อ</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">{val(data.contact_person)}</td>
       </tr>
       <tr>
         <td />
-        <td className="wo-label">ที่อยู่ตามหนังสือรับรอง</td>
+        <td className="wo-label">&nbsp;&nbsp;ที่อยู่ตามหนังสือรับรอง</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">{val(data.supplier_address)}</td>
       </tr>
       <tr>
         <td />
-        <td className="wo-label">โทรศัพท์ติดต่อได้ที่</td>
+        <td className="wo-label">&nbsp;&nbsp;โทรศัพท์ติดต่อได้ที่</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">{val(data.supplier_phone)}</td>
       </tr>
@@ -231,12 +255,12 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.2 เงินงวดสัญญา : {noteVal(data.progress_payment_note, true)}</td>
+        <td className="sub">7.2 เงินงวดสัญญา : <InstallmentNote value={data.progress_payment_note} /></td>
       </tr>
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.3 หักเงินประกันผลงาน {data.retention_pct ?? 0}%</td>
+        <td className="sub">7.3 หักเงินประกันผลงาน {data.retention_pct ?? 0}%{data.retention_remarks ? ` ${data.retention_remarks}` : ''}</td>
       </tr>
       <tr>
         <td />
@@ -246,7 +270,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.5 หักอื่นๆ : {noteVal(data.other_deduction_note, true)}</td>
+        <td className="sub">7.5 หักอื่นๆ : <span style={{ fontWeight: 700 }}>{noteVal(data.other_deduction_note, true)}</span></td>
       </tr>
 
       <tr>
@@ -421,7 +445,7 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
     return ReactDOM.createPortal(
       <div className="wo-std-portal">
         <div className="wo-std-page" style={{ height: 'auto', visibility: 'hidden' }}>
-          <div ref={refHeader}><Header data={data} pageNum={1} totalPages={1} /></div>
+          <div ref={refHeader}><Header data={data} pageNum={1} totalPages={1} agreement /></div>
           <div ref={refMain}>
             <PartyLine data={data} />
             <NumberedFields data={data} />
@@ -445,7 +469,7 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
         return (
           <div key={pi} className="wo-std-page">
             {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
-            <Header data={data} pageNum={pi + 1} totalPages={totalPages} divider={pi > 0} />
+            <Header data={data} pageNum={pi + 1} totalPages={totalPages} divider={pi > 0} agreement={pi === 0} />
             {pi === 0 && (
               <>
                 <PartyLine data={data} />

@@ -117,8 +117,8 @@ const WorkOrderDetailPage: React.FC = () => {
         extra={
           <Space>
             <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
-            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="พิมพ์หนังสือสั่งจ้าง" />
-            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="พิมพ์แบบ PO" />
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="แบบฟอร์มสัญญาสั่งจ้าง" />
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="แบบฟอร์มรายละเอียดสัญญาจ้าง" />
             {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(wo.status) && (
               <PermissionButton menuCode="MENU_WO_CREATE" action="write" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${wo.id}/edit`)}>
                 แก้ไข

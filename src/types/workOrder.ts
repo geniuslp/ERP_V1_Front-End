@@ -134,6 +134,8 @@ export interface WorkOrder {
   advance_amount?: number
   progress_payment_note?: string
   retention_pct?: number
+  // Print only (not on GET /work-order/:id): the remarks of the retention rows (payment conditions 7.3), joined; filled by WorkOrderPrintTrigger.
+  retention_remarks?: string | null
   advance_deduct_pct?: number
   advance_deduct_amount?: number
   other_deduction_note?: string

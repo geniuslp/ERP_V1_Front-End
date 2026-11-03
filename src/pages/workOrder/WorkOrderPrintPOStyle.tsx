@@ -1,5 +1,4 @@
 import { paginateRows } from '@/utils/printPagination'
-import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import logo from '../../components/asset/Genius Logo-01.jpg'
@@ -180,12 +179,17 @@ const CSS = `
 
   .sum-row{display:flex;align-items:center;height:6mm;}
   .sum-l{flex:1;padding:0 5px;font-family:'Cordia New',sans-serif;font-size:12pt;display:flex;align-items:center;}
-  .sum-v{width:28mm;padding:0 5px;font-family:'Cordia New',sans-serif;font-size:12pt;border-left:1px solid #000;height:100%;display:flex;align-items:center;justify-content:flex-end;}
+  .sum-v{width:28mm;padding:0 5px;font-family:'Cordia New',sans-serif;font-size:12pt;height:100%;display:flex;align-items:center;justify-content:flex-end;}
   .sum-bold{border-top:1px solid #000;border-bottom:1px solid #000;}
   .sum-bold .sum-l,.sum-bold .sum-v{font-weight:700;}
   .sum-net{border-bottom:1px solid #000;}
   .sum-net .sum-l,.sum-net .sum-v{font-weight:700;color:#1F4E79;}
 
+  .wo-po-auth{border:1px solid #000;border-top:none;display:flex;height:26mm;}
+  .wo-po-auth-col{flex:1;border-right:1px solid #000;display:flex;flex-direction:column;}
+  .wo-po-auth-col:last-child{border-right:none;}
+  .wo-po-auth-sign{flex:1;}
+  .wo-po-auth-label{border-top:1px solid #000;text-align:center;font-family:'Cordia New',sans-serif;font-size:11.5pt;line-height:1.3;padding:3px 4px;}
   .auth-col{flex:1;border-right:1px solid #000;display:flex;flex-direction:column;}
   .auth-col:last-child{border-right:none;}
   .auth-body{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -196,14 +200,11 @@ const CSS = `
 `
 
 const AUTH_COLS = [
-  {label:'Supply Chain Department',sublabel:'Supply Chain Department'},
-  {label:'Section Head',sublabel:'Section Head'},
-  {label:'Authorized Signature',sublabel:'Authorized Signature'},
-  // Only this 4th column's label changed — WO has "ผู้รับเหมาช่วง" (subcontractor),
-  // which PO's own 4-column signature row doesn't have. Rest of AUTH_COLS and
-  // all of the surrounding auth-col/auth-head/auth-body/auth-date structure
-  // below is untouched.
-  {label:'ผู้รับเหมาช่วง (Subcontractor)',sublabel:'ผู้รับเหมาช่วง (Subcontractor)'},
+  // Same four signature labels as the WO contract form (WorkOrderPrintStandard.tsx's AUTH_COLS).
+  {label:'ผู้จัดทำ / ผู้ตรวจสอบ',sublabel:'ผู้จัดทำ / ผู้ตรวจสอบ'},
+  {label:'หัวหน้าส่วน',sublabel:'หัวหน้าส่วน'},
+  {label:'ผู้มีอำนาจลงนามอนุมัติ',sublabel:'ผู้มีอำนาจลงนามอนุมัติ'},
+  {label:'ผู้รับเหมาช่วง',sublabel:'ผู้รับเหมาช่วง'},
 ]
 
 const FillerTr = () => (
@@ -302,10 +303,8 @@ const POFooter = ({data}:{data:WOPOData}) => {
     <>
       <div className="po-box" style={{display:'flex',flexDirection:'column'}}>
         <div style={{display:'flex',borderBottom:'1px solid #000'}}>
-          <div style={{flex:1,padding:'4px 8px',borderRight:'1px solid #000',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
-            <div style={{fontWeight:700,marginBottom:2}}>หมายเหตุ / Remark</div>
-            <FormattedNote value={data.remark} lineHeight="1.2" />
-          </div>
+          {/* The "หมายเหตุ / Remark" block (and the line between it and the totals) is not printed on the WO form. */}
+          <div style={{flex:1}} />
           <div style={{width:'69.50mm',display:'flex',flexDirection:'column',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row"><span className="sum-l">Subtotal</span><span className="sum-v">{thb(s.subtotal)}</span></div>
             <div className="sum-row"><span className="sum-l">Special Discount</span><span className="sum-v">-{thb(s.disc)}</span></div>
@@ -315,13 +314,13 @@ const POFooter = ({data}:{data:WOPOData}) => {
             {(whtPcts.length>0?whtPcts:[0]).map(w=><div key={w} className="sum-row"><span className="sum-l">Withholding Tax {w}%</span><span className="sum-v">-{thb(s.totalWht)}</span></div>)}
             <div style={{flex:1,display:'flex'}}>
               <span style={{flex:1}}/>
-              <span style={{width:'28mm',borderLeft:'1px solid #000'}}/>
+              <span style={{width:'28mm'}}/>
             </div>
           </div>
         </div>
         <div style={{display:'flex'}}>
-          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'6px 8px',borderRight:'1px solid #000',fontSize:'12pt',fontWeight:600,fontFamily:"'Cordia New',sans-serif"}}>
-            ( {thaiBahtText(s.grand)} )
+          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'6px 8px',fontSize:'12pt',fontWeight:600,fontFamily:"'Cordia New',sans-serif"}}>
+            ( {thaiBahtText(s.netPay)} ){/* the Net Amount shown on the right, i.e. after withholding tax (grand is before it) */}
           </div>
           <div style={{width:'69.50mm',display:'flex',alignItems:'center',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row" style={{width:'100%'}}>
@@ -331,20 +330,18 @@ const POFooter = ({data}:{data:WOPOData}) => {
           </div>
         </div>
       </div>
-      <div style={{height:'28mm',display:'flex',flexDirection:'column'}}>
-        <div className="po-box" style={{display:'flex',flex:1}}>
-          {AUTH_COLS.map((col,i)=>(
-            <div key={i} className="auth-col">
-              <div className="auth-head">
-                
-              </div>
-              <div className="auth-body">
-                <div style={{fontWeight:600}}>{col.label}</div>
-              </div>
-              <div className="auth-date">({data.poDate})</div>
+      {/* Same signature block as the WO contract form (WorkOrderPrintStandard.tsx's AuthBlock): sign space on top,
+          label + date under a rule, 26mm high. No top border — the totals box above already closes with one. */}
+      <div className="wo-po-auth">
+        {AUTH_COLS.map((col,i)=>(
+          <div key={i} className="wo-po-auth-col">
+            <div className="wo-po-auth-sign" />
+            <div className="wo-po-auth-label">
+              <div>{col.label}</div>
+              <div>({data.poDate})</div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </>
   )
@@ -461,8 +458,13 @@ const WorkOrderPrintPOStyle: React.FC<Props> = ({ data: rawData, onReady }) => {
               </>
             ):(
               <div style={{flex:1,display:'flex',flexDirection:'column'}}>
+                {/* Rows keep their own height (no stretching of every row to fill the page); the filler row takes the leftover
+                    space so the column lines still run to the bottom of the page. */}
                 <table className="po-tbl" style={{flex:1,height:'100%'}}>{TABLE_COLS}{TABLE_HEAD}
-                  <tbody className="stretch">{rows.map((row,i)=><ItemRow key={i} row={row}/>)}</tbody>
+                  <tbody>
+                    {rows.map((row,i)=><ItemRow key={i} row={row}/>)}
+                    <FillerTr/>
+                  </tbody>
                 </table>
               </div>
             )}

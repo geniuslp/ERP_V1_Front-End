@@ -90,6 +90,9 @@ interface PRDetail {
   rejectReason: string | null
   locationText: string
   projectCode: string | null
+  // The department typed on the PR itself (dept_code + the departments.dept_name GET /pr/:id joins); null when none was chosen.
+  deptCode: string | null
+  deptName: string | null
   orderType: PROrderType | null
   jobCode: string | null
   remarks: string | null
@@ -124,6 +127,8 @@ const mapPR = (raw: any): PRDetail => ({
   rejectReason: raw.reject_reason  ?? null,
   locationText: raw.location_text  ?? '—',
   projectCode:  raw.project_code   ?? null,
+  deptCode:     raw.dept_code      ?? null,
+  deptName:     raw.dept_name      ?? null,
   orderType:    raw.order_type     ?? null,
   jobCode:      raw.job_code       ?? null,
   remarks:      raw.remarks        ?? null,
@@ -567,6 +572,9 @@ const PRDetailPage: React.FC = () => {
           </Descriptions.Item>
           <Descriptions.Item label="ผู้ขอซื้อ">{pr.requestedBy}</Descriptions.Item>
           <Descriptions.Item label="ผู้อนุมัติ">{pr.approverName || '—'}</Descriptions.Item>
+          <Descriptions.Item label="แผนก">
+            {pr.deptCode ? `${pr.deptCode}${pr.deptName ? ` — ${pr.deptName}` : ''}` : '—'}
+          </Descriptions.Item>
           <Descriptions.Item label="สถานที่ส่งของ">{pr.locationText}</Descriptions.Item>
           <Descriptions.Item label="รหัสงาน">
             {(pr.projectCode && (projects.find((p) => p.value === pr.projectCode)?.label ?? pr.projectCode)) || '—'}
