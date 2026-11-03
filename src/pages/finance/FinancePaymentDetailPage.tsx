@@ -399,10 +399,14 @@ const FinancePaymentDetailPage: React.FC = () => {
           <div style={{ flex: 1, padding: 16, background: remaining > 0 ? '#fffbeb' : '#f0fdf4', borderRadius: 10 }}>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>คงเหลือต้องจ่าย</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: remaining > 0 ? '#d97706' : '#16a34a' }}>{thb(remaining)} บาท</div>
-            {docType === 'WO' && woRetention > 0 && (
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{`ไม่รวมเงินประกัน ${thb(woRetention)} บาท`}</div>
-            )}
           </div>
+          {/* WO only: the retention (เงินประกันผลงาน) held back from the bills; it is not part of "คงเหลือต้องจ่าย". */}
+          {docType === 'WO' && (
+            <div style={{ flex: 1, padding: 16, background: '#fff1f2', borderRadius: 10 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>เงินประกันผลงาน</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#e11d48' }}>{thb(woRetention)} บาท</div>
+            </div>
+          )}
         </div>
       </Card>
 

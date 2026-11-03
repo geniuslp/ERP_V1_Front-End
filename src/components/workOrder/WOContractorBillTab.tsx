@@ -154,8 +154,11 @@ interface BillForm {
   adv_pct: number
   adv_deduct_pct: number
   vat_pct: number
+  // Row 5 (เงินประกันผลงาน): EVERY = retention_pct of this bill's amount; ONCE = contract value x retention_pct split evenly over
+  // every installment of the contract (installments of the WO + the advance). retention_pct is the typed %, in both modes.
+  retention_mode: 'EVERY' | 'ONCE'
   retention_pct: number
-  retention_amount: number | null // set once the amount is typed by hand; null = follows retention_pct
+  retention_amount: number | null // set once the amount is typed by hand; null = follows the mode's formula
   wht_type: string
   wht_pct: number
   other_amount: number
@@ -193,6 +196,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     adv_pct: defaultAdvPct ?? 0,
     adv_deduct_pct: 0,
     vat_pct: 7,
+    retention_mode: 'EVERY',
     retention_pct: 0, // retention is only deducted once the user types a % / amount (not pre-filled from the WO terms)
     retention_amount: null,
     wht_type: WHT_TYPE_OPTIONS[0].value,
@@ -206,6 +210,11 @@ const WOContractorBillTab: React.FC<Props> = ({
   const [f, setF] = useState<BillForm>(newForm())
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [installments, setInstallments] = useState<WoInstallment[]>([])
+  // "คิดทีเดียว" splits the retention over every installment of the contract: the WO's installments (งวดงาน) plus the advance.
+  const installmentCount = Math.max(installments.length + (Number(defaultAdvPct ?? 0) > 0 || bills.some((b) => b.bill_type === 'ADV') ? 1 : 0), 1)
+  // The retention a bill gets from the formula of its mode, before any hand-typed amount.
+  const formulaRetention = (mode: 'EVERY' | 'ONCE', pct: number, base: number) =>
+    mode === 'ONCE' ? round2(round2((contractAmount * pct) / 100) / installmentCount) : round2((base * pct) / 100)
   // Invoices of every payment (bill) of this contract, shown under the invoice table being filled in.
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryRow[]>([])
   const [saving, setSaving] = useState(false)
@@ -314,12 +323,14 @@ const WOContractorBillTab: React.FC<Props> = ({
         adv_pct: Number(line('ADV')?.percent ?? 0),
         adv_deduct_pct: Number(line('ADV_DEDUCT')?.percent ?? 0),
         vat_pct: Number(line('VAT')?.percent ?? 0),
+        retention_mode: d.retention_mode === 'ONCE' ? 'ONCE' : 'EVERY',
         retention_pct: Number(line('RETENTION')?.percent ?? 0),
-        // A saved amount that doesn't follow its % was typed by hand: keep it as typed.
+        // A saved amount that doesn't follow its mode's formula was typed by hand: keep it as typed.
         retention_amount: (() => {
           const amt = Number(line('RETENTION')?.amount ?? 0)
           const base = Number(line('ADV')?.amount ?? 0) + Number(line('PROGRESS')?.amount ?? 0)
-          return Math.abs(amt - round2((base * Number(line('RETENTION')?.percent ?? 0)) / 100)) > 0.01 ? amt : null
+          const mode = d.retention_mode === 'ONCE' ? 'ONCE' : 'EVERY'
+          return Math.abs(amt - formulaRetention(mode, Number(line('RETENTION')?.percent ?? 0), base)) > 0.01 ? amt : null
         })(),
         wht_type: d.wht_type ?? WHT_TYPE_OPTIONS[0].value,
         wht_pct: Number(line('WHT')?.percent ?? 0),
@@ -356,14 +367,17 @@ const WOContractorBillTab: React.FC<Props> = ({
     const vat = round2(afterDeduct * f.vat_pct / 100)
     const subtotal = round2(afterDeduct + vat)
     // 5. retention: the % and the amount are both typeable; the one typed last wins and the other follows.
-    const retention = f.retention_amount ?? round2(base * f.retention_pct / 100)
-    const retentionPct = f.retention_amount != null
-      ? (base > 0 ? round2((f.retention_amount / base) * 100) : 0)
-      : f.retention_pct
+    const retention = f.retention_amount ?? formulaRetention(f.retention_mode, f.retention_pct, base)
+    // EVERY: the % of this bill (follows a typed amount). ONCE: the typed % of the whole contract, kept as typed.
+    const retentionPct = f.retention_mode === 'ONCE'
+      ? f.retention_pct
+      : f.retention_amount != null
+        ? (base > 0 ? round2((f.retention_amount / base) * 100) : 0)
+        : f.retention_pct
     const wht = round2(afterDeduct * f.wht_pct / 100)
     const net = round2(subtotal - retention - wht - f.other_amount)
     return { adv, progress, advDeduct, beforeVat: round2(afterDeduct), vat, subtotal, retention, retentionPct, wht, net }
-  }, [f, contractAmount])
+  }, [f, contractAmount, installmentCount])
 
   const invoiceTotal = useMemo(() => round2(invoices.reduce((s, r) => s + (r.amount ?? 0), 0)), [invoices])
   // "มูลค่า/INV ที่เบิก" follows the summary amount BEFORE VAT while there is a single invoice nobody typed an amount into.
@@ -530,8 +544,26 @@ const WOContractorBillTab: React.FC<Props> = ({
     { key: 'subtotal', label: 'รวมเป็นเงิน (1)', amount: amountText(calc.subtotal), strong: true },
     {
       key: 'retention',
-      label: '5. หักเงินประกันผลงาน',
-      pct: pctInput(calc.retentionPct, (v) => patch({ retention_pct: v, retention_amount: null })),
+      label: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Space wrap>
+            <span>5. หักเงินประกันผลงาน</span>
+            <Select<'EVERY' | 'ONCE'>
+              size="small"
+              style={{ width: 130 }}
+              value={f.retention_mode}
+              options={[{ value: 'EVERY', label: 'ทุกงวด' }, { value: 'ONCE', label: 'คิดทีเดียว' }]}
+              onChange={(v) => patch({ retention_mode: v, retention_amount: null })}
+            />
+          </Space>
+          {f.retention_mode === 'ONCE' && (
+            <span style={{ fontSize: 12, color: '#6b7280' }}>
+              สัญญา {money(contractAmount)} × {f.retention_pct}% = {money(round2((contractAmount * f.retention_pct) / 100))} ÷ {installmentCount} งวด (รวม Advance)
+            </span>
+          )}
+        </div>
+      ),
+      pct: pctInput(f.retention_mode === 'ONCE' ? f.retention_pct : calc.retentionPct, (v) => patch({ retention_pct: v, retention_amount: null })),
       amount: (
         <InputNumber<number>
           style={{ width: 180 }}
@@ -606,6 +638,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     progress_installment_no: f.progress_installment_no,
     progress_note: f.progress_note.trim() || null,
     wht_type: f.wht_type,
+    retention_mode: f.retention_mode,
     status,
     lines: [
       { line_code: 'ADV', percent: f.adv_pct, amount: calc.adv },

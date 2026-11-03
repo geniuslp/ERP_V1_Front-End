@@ -448,3 +448,71 @@ body {
 .ant-card:not(.ant-card-small):not(.ant-modal *):not(.ant-drawer *):not(.erp-no-block *) > .ant-card-head .ant-card-head-title,
 .wo-block > .ant-card-head .ant-card-head-title { color: #0f2d5e; font-weight: 700; }
 .ant-card .ant-card.ant-card-small > .ant-card-head { background: #f6f9ff; border-bottom: 1px solid #dbe6f5; }
+
+/* ── Action button colours, whole system: print = blue, edit = yellow, cancel = red ──────────────────────────
+   Print / edit buttons are recognised by their icon (.anticon-printer / .anticon-edit); cancel buttons by the
+   .btn-cancel-red class that src/utils/actionButtonTint.ts puts on every button whose label starts with "ยกเลิก".
+   Solid fill for normal buttons; type="text" / "link" (icon-only table actions) only get a coloured icon. */
+:root {
+  --btn-print: #1d4ed8;
+  --btn-print-hover: #1e40af;
+  --btn-edit: #facc15;
+  --btn-edit-hover: #eab308;
+  --btn-edit-text: #1f2937;
+  --btn-edit-icon: #ca8a04;
+  --btn-cancel: #dc2626;
+  --btn-cancel-hover: #b91c1c;
+}
+
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):has(.anticon-printer) {
+  background: var(--btn-print); background-image: none; border-color: var(--btn-print); color: #fff;
+}
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):has(.anticon-printer):hover {
+  background: var(--btn-print-hover) !important; background-image: none !important; border-color: var(--btn-print-hover) !important; color: #fff !important;
+}
+.ant-btn.ant-btn-text:not(:disabled):has(.anticon-printer),
+.ant-btn.ant-btn-link:not(:disabled):has(.anticon-printer) { color: var(--btn-print); }
+
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):has(.anticon-edit) {
+  background: var(--btn-edit); background-image: none; border-color: var(--btn-edit); color: var(--btn-edit-text);
+}
+.ant-btn:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):has(.anticon-edit):hover {
+  background: var(--btn-edit-hover) !important; background-image: none !important; border-color: var(--btn-edit-hover) !important; color: var(--btn-edit-text) !important;
+}
+.ant-btn.ant-btn-text:not(:disabled):has(.anticon-edit),
+.ant-btn.ant-btn-link:not(:disabled):has(.anticon-edit) { color: var(--btn-edit-icon); }
+.ant-btn.ant-btn-text:not(:disabled):has(.anticon-edit) .anticon,
+.ant-btn.ant-btn-link:not(:disabled):has(.anticon-edit) .anticon { color: var(--btn-edit-icon) !important; }
+
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled) {
+  background: var(--btn-cancel); background-image: none; border-color: var(--btn-cancel); color: #fff;
+}
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):hover {
+  background: var(--btn-cancel-hover) !important; background-image: none !important; border-color: var(--btn-cancel-hover) !important; color: #fff !important;
+}
+.ant-btn.btn-cancel-red.ant-btn-text:not(:disabled),
+.ant-btn.btn-cancel-red.ant-btn-link:not(:disabled) { color: var(--btn-cancel); }
+
+/* type="primary" buttons get their gradient from the global rule above (with !important): edit / cancel must beat it. */
+.ant-btn.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):has(.anticon-edit) {
+  background: var(--btn-edit) !important; border-color: var(--btn-edit) !important; color: var(--btn-edit-text) !important;
+}
+.ant-btn.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):has(.anticon-edit):hover {
+  background: var(--btn-edit-hover) !important; border-color: var(--btn-edit-hover) !important;
+}
+.ant-btn.ant-btn-primary.btn-cancel-red:not(:disabled):not(.ant-btn-disabled) {
+  background: var(--btn-cancel) !important; border-color: var(--btn-cancel) !important; color: #fff !important;
+}
+.ant-btn.ant-btn-primary.btn-cancel-red:not(:disabled):not(.ant-btn-disabled):hover {
+  background: var(--btn-cancel-hover) !important; border-color: var(--btn-cancel-hover) !important;
+}
+
+/* Red cancel buttons: the label and any icon inside are always pure white, in every state (rest, hover, focus, active). */
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled),
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled):hover,
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled):focus,
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled):active,
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled) > span,
+.ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled) .anticon {
+  color: #ffffff !important;
+}

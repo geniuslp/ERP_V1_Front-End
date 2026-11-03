@@ -117,8 +117,9 @@ const PartyLine = ({ data }: { data: WOPrintDataLite }) => (
   <>
     {/* Text before the company is left-aligned; "บริษัท … ผู้ว่าจ้าง" sits flush right on the same line (wraps below, still right-aligned, when too long).
         employer_name is stored with "บริษัท" already in it, so the word is added only when it is missing (no "บริษัท บริษัท"). */}
-    <div className="wo-std-party-line" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12 }}>
-      <span>ผู้รับจ้าง สัญญาว่าจะทำตามรายละเอียดที่ระบุไว้ต่อไปนี้ทั้งหมด</span>
+    {/* marginTop pulls the line up toward the "ข้อตกลงในสัญญา" label in the header (which stays level with the date). */}
+    <div className="wo-std-party-line" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12, marginTop: -6 }}>
+      <span>ผู้รับจ้าง สัญญาว่าจะทำตามรายละเอียดที่ระบุไว้ต่อไปนี้ทั้งหมด โดยรับผิดชอบต่อ</span>
       <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {data.employer_name?.trim().startsWith('บริษัท') ? data.employer_name.trim() : <>บริษัท {val(data.employer_name)}</>} ผู้ว่าจ้าง
       </span>
