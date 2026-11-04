@@ -9,12 +9,14 @@ export interface RowTintLegendItem {
 
 interface Props {
   items: RowTintLegendItem[]
+  /** Extra style for the legend row, e.g. { marginLeft: 16 } to shift it right. */
+  style?: React.CSSProperties
 }
 
 // Color legend shown above list/history tables (MemoListPage, PRHistoryPage).
 // Swatch colors come from ROW_TINT_SWATCH in src/constants/rowTint.ts.
-const RowTintLegend: React.FC<Props> = ({ items }) => (
-  <Space size={16} style={{ marginBottom: 12 }}>
+const RowTintLegend: React.FC<Props> = ({ items, style }) => (
+  <Space size={16} style={{ marginBottom: 12, ...style }}>
     {items.map((it) => (
       <Space size={6} key={it.label}>
         <span

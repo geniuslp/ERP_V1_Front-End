@@ -115,6 +115,8 @@ const POHistoryPage: React.FC = () => {
   const [orderTypeFilter, setOrderTypeFilter] = useState<string | undefined>(undefined)
   // Search by PO no. or the no. of a linked PR; applied on Enter / the search button.
   const [searchText, setSearchText] = useState('')
+  // Search by supplier (ร้านค้า) name — part of the name, applied on Enter / the search button.
+  const [supplierText, setSupplierText] = useState('')
 
   // Resizable widths for "โครงการ" / "ผู้ขาย" — same pattern as POStatusPage.tsx,
   // not persisted (resets on refresh).
@@ -163,7 +165,7 @@ const POHistoryPage: React.FC = () => {
   const fetchData = async (p = page, l = limit) => {
     setLoading(true)
     try {
-      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, order_type: orderTypeFilter, search: searchText || undefined })
+      const res = await poApprovalService.getList(accessToken, { page: p, page_size: l, order_type: orderTypeFilter, search: searchText || undefined, supplier: supplierText || undefined })
       const data = res.data.data
       setItems(Array.isArray(data.data) ? data.data : [])
       setTotal(data.total ?? 0)
@@ -176,7 +178,7 @@ const POHistoryPage: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter, searchText])
+  useEffect(() => { fetchData(page, limit) }, [page, limit, orderTypeFilter, searchText, supplierText])
 
   const handleDelete = async (poId: number) => {
     try {
@@ -480,8 +482,14 @@ const POHistoryPage: React.FC = () => {
             style={{ width: 280 }}
             onSearch={(v) => { setSearchText(v.trim()); setPage(1) }}
           />
+          <Input.Search
+            allowClear
+            placeholder="ค้นหาร้านค้า"
+            style={{ width: 240 }}
+            onSearch={(v) => { setSupplierText(v.trim()); setPage(1) }}
+          />
         </Space>
-        <RowTintLegend items={ROW_TINT_LEGEND} />
+        <RowTintLegend items={ROW_TINT_LEGEND} style={{ marginLeft: 16 }} />
         <Table
           rowKey="po_id"
           loading={loading}
