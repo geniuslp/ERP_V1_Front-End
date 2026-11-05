@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Select, Input, Button, Space, Badge, message } from 'antd'
+import { Card, Table, Select, Input, Button, Space, Badge, Grid, Pagination, Spin, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -10,6 +10,8 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { WOListItem } from '@/types/workOrder'
+
+const { useBreakpoint } = Grid
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -33,6 +35,8 @@ const statusOptions = [
 const WorkOrderApprovalListPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
 
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<WOListItem[]>([])
@@ -102,7 +106,7 @@ const WorkOrderApprovalListPage: React.FC = () => {
       <Card style={cardStyle}>
         <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <Select
-            style={{ width: 160 }}
+            style={{ width: isMobile ? '100%' : 160 }}
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1) }}
             options={statusOptions}
@@ -110,7 +114,7 @@ const WorkOrderApprovalListPage: React.FC = () => {
           <Input
             placeholder="ค้นหา เลข WO / ผู้รับจ้าง"
             prefix={<SearchOutlined />}
-            style={{ width: 240 }}
+            style={{ width: isMobile ? '100%' : 240 }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             allowClear
@@ -121,30 +125,71 @@ const WorkOrderApprovalListPage: React.FC = () => {
               <span style={{ fontSize: 13, color: '#666' }}>รออนุมัติ</span>
             </Space>
           )}
-          <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading}>โหลดใหม่</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading} block={isMobile}>โหลดใหม่</Button>
         </div>
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={filtered}
-          columns={columns}
-          pagination={{
-            current: page,
-            pageSize: 20,
-            total,
-            onChange: (p) => setPage(p),
-            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
-            showSizeChanger: false,
-          }}
-          onRow={(record) => ({
-            onClick: () => navigate(`/work-order/${record.id}?${FOR_APPROVAL_QUERY}`),
-            style: { cursor: 'pointer' },
-          })}
-          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
-          scroll={{ x: 900 }}
-          size="small"
-        />
+        {isMobile ? (
+          // Phone: one tappable card per WO instead of a 900px wide table.
+          <Spin spinning={loading}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {filtered.length === 0 && !loading && (
+                <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>{APPROVAL_EMPTY_TEXT}</div>
+              )}
+              {filtered.map((r) => (
+                <div
+                  key={r.id}
+                  role="button"
+                  onClick={() => navigate(`/work-order/${r.id}?${FOR_APPROVAL_QUERY}`)}
+                  style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, cursor: 'pointer', background: '#fff' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ fontWeight: 700, color: '#1e3a8a', overflowWrap: 'anywhere' }}>
+                      {formatPoNoWithRevision(r.wo_no, r.revision_round)}
+                    </span>
+                    <span style={{ flexShrink: 0 }}><WOStatusBadge status={r.status} /></span>
+                  </div>
+                  <div style={{ marginTop: 6, overflowWrap: 'anywhere' }}>{r.supplier_name || '-'}</div>
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>มูลค่าสัญญา</span>
+                    <span style={{ fontWeight: 700, color: '#1e40af' }}>
+                      {(r.contract_amount ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: '#64748b' }}>
+                    <span>วันที่ {r.wo_date?.slice(0, 10) ?? '-'}</span>
+                    <span>ผู้ว่าจ้าง {r.employer_name || '-'}</span>
+                    <span>ผู้สร้าง {r.created_by_name || '-'}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <Pagination simple current={page} pageSize={20} total={total} showSizeChanger={false} onChange={(p) => setPage(p)} />
+              </div>
+            </div>
+          </Spin>
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            dataSource={filtered}
+            columns={columns}
+            pagination={{
+              current: page,
+              pageSize: 20,
+              total,
+              onChange: (p) => setPage(p),
+              showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+              showSizeChanger: false,
+            }}
+            onRow={(record) => ({
+              onClick: () => navigate(`/work-order/${record.id}?${FOR_APPROVAL_QUERY}`),
+              style: { cursor: 'pointer' },
+            })}
+            locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
+            scroll={{ x: 900 }}
+            size="small"
+          />
+        )}
       </Card>
     </div>
   )

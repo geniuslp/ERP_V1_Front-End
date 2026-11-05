@@ -2,7 +2,7 @@ import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal, Form, Input } from 'antd'
+import { Card, Descriptions, Table, Tag, Space, Button, Spin, Empty, Typography, message, Alert, Modal, Form, Input, Grid } from 'antd'
 import { ArrowLeftOutlined, PaperClipOutlined, EditOutlined, WarningOutlined, PrinterOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -21,6 +21,7 @@ import { formatItemLabel } from '@/utils/itemLabel'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 
 const { Text } = Typography
+const { useBreakpoint } = Grid
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -163,8 +164,12 @@ const mapPR = (raw: any): PRDetail => ({
 const formatSize = (b: number) =>
   b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
 
-const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: boolean }> = ({ title, items, last }) => (
-  <Card style={last ? cardStyle : { ...cardStyle, marginBottom: 16 }} title={<span style={cardTitleStyle}>{title}</span>}>
+const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: boolean; compact?: boolean }> = ({ title, items, last, compact }) => (
+  <Card
+    style={last ? cardStyle : { ...cardStyle, marginBottom: 16 }}
+    styles={compact ? { body: { padding: 12 } } : undefined}
+    title={<span style={cardTitleStyle}>{title}</span>}
+  >
     {items.length === 0 ? (
       <Text type="secondary" style={{ fontSize: 13 }}>ไม่มีไฟล์แนบ</Text>
     ) : (
@@ -180,13 +185,13 @@ const AttachmentCard: React.FC<{ title: string; items: PRAttachment[]; last?: bo
               borderRadius: 8,
             }}
           >
-            <Space>
+            <Space wrap style={{ minWidth: 0 }}>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
                 href={resolveFileUrl(a.filePath)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#1e40af' }}
+                style={{ fontSize: 13, color: '#1e40af', overflowWrap: 'anywhere' }}
                 className="attachment-filename-link"
               >
                 {a.fileName}
@@ -240,6 +245,8 @@ const MENU_PR_APPROVAL = 'MENU_PR_APPROVAL'
 
 const PRDetailPage: React.FC = () => {
   const navigate = useNavigate()
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
   const { id } = useParams<{ id: string }>()
   // Set only by the approval list's links (?for_approval=true); other entry points open this page without it.
   const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
@@ -476,7 +483,7 @@ const PRDetailPage: React.FC = () => {
         subtitle="รายละเอียดใบขอซื้อ (มุมมองอ่านอย่างเดียว)"
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบขอซื้อ' }, { title: pr.prNo }]}
         extra={
-          <Space>
+          <Space wrap>
             <Button icon={<PrinterOutlined />} onClick={handlePrint}>
               พิมพ์
             </Button>
@@ -562,8 +569,18 @@ const PRDetailPage: React.FC = () => {
         />
       )}
 
-      <Card style={{ ...cardStyle, marginBottom: 16 }} title={<span style={cardTitleStyle}>ข้อมูลใบขอซื้อ</span>}>
-        <Descriptions column={{ xs: 1, sm: 2 }} size="middle">
+      <Card
+        style={{ ...cardStyle, marginBottom: 16 }}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
+        title={<span style={cardTitleStyle}>ข้อมูลใบขอซื้อ</span>}
+      >
+        <Descriptions
+          column={isMobile ? 1 : 2}
+          size={isMobile ? 'small' : 'middle'}
+          bordered={isMobile}
+          labelStyle={isMobile ? { fontWeight: 600, width: 104, padding: '6px 8px', fontSize: 13 } : undefined}
+          contentStyle={{ overflowWrap: 'anywhere' }}
+        >
           <Descriptions.Item label="เลขที่ PR">{pr.prNo}</Descriptions.Item>
           <Descriptions.Item label="สถานะ">
             <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
@@ -586,27 +603,60 @@ const PRDetailPage: React.FC = () => {
           <Descriptions.Item label="ประเภท Job">
             {pr.jobCode ? (JOB_TYPES.find((jt) => jt.code === pr.jobCode)?.label ?? pr.jobCode) : '—'}
           </Descriptions.Item>
-          <Descriptions.Item label="หมายเหตุ" span={2}><FormattedNote value={pr.remarks} empty="—" /></Descriptions.Item>
+          <Descriptions.Item label="หมายเหตุ" span={isMobile ? 1 : 2}><FormattedNote value={pr.remarks} empty="—" /></Descriptions.Item>
         </Descriptions>
       </Card>
 
-      <Card style={{ ...cardStyle, marginBottom: 16 }} title={<span style={cardTitleStyle}>รายการวัสดุ</span>}>
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={pr.lines}
-          columns={lineColumns}
-          pagination={false}
-          locale={{ emptyText: 'ไม่มีรายการ' }}
-          scroll={{ x: 920 }}
-        />
+      <Card
+        style={{ ...cardStyle, marginBottom: 16 }}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
+        title={<span style={cardTitleStyle}>รายการวัสดุ</span>}
+      >
+        {isMobile ? (
+          // Phone: one card per line instead of a 920px wide table.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pr.lines.length === 0 && <Text type="secondary" style={{ fontSize: 13 }}>ไม่มีรายการ</Text>}
+            {pr.lines.map((r) => (
+              <div key={r.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: '#64748b' }}>
+                  <span>ลำดับ {r.lineNo}</span>
+                  <span>{r.costCode ? formatCostCodeDisplay(r.costCode) : '-'}</span>
+                </div>
+                <div style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 4 }}>{r.matCode}</div>
+                <div style={{ fontWeight: 600, marginTop: 2, overflowWrap: 'anywhere' }}>
+                  {formatItemLabel(r.matName, r.specName, r.brandName) || '—'}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 13 }}>ขอ {r.qtyRequested} {r.unitName ?? ''}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', marginTop: 2, fontSize: 12, color: '#64748b' }}>
+                  <span>สั่งซื้อ {r.qtyToOrder ?? 0}</span>
+                  <span>ตัดจาก Stock {r.qtyReserved ?? 0}</span>
+                </div>
+                {r.remarks && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>
+                    <FormattedNote value={r.remarks} empty="—" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={pr.lines}
+            columns={lineColumns}
+            pagination={false}
+            locale={{ emptyText: 'ไม่มีรายการ' }}
+            scroll={{ x: 920 }}
+          />
+        )}
       </Card>
 
       {pr.attachments.memo !== undefined && (
-        <AttachmentCard title="ไฟล์แนบจาก Memo" items={pr.attachments.memo} />
+        <AttachmentCard title="ไฟล์แนบจาก Memo" items={pr.attachments.memo} compact={isMobile} />
       )}
 
-      <AttachmentCard title="ไฟล์แนบ PR" items={pr.attachments.pr} last />
+      <AttachmentCard title="ไฟล์แนบ PR" items={pr.attachments.pr} last compact={isMobile} />
 
       <Modal
         open={!!blockModalPOs}

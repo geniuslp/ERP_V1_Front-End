@@ -516,3 +516,12 @@ body {
 .ant-btn.btn-cancel-red:not(.ant-btn-text):not(.ant-btn-link):not(:disabled):not(.ant-btn-disabled) .anticon {
   color: #ffffff !important;
 }
+
+/* WO detail page action bar: wraps like <Space wrap> on desktop; on phones the two print buttons get a full row each
+   and the remaining buttons (back / edit / approve / reject) sit in two even columns. */
+.wo-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 767px) {
+  .wo-detail-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .wo-detail-actions > .ant-btn { width: 100%; }
+  .wo-detail-actions > .wo-span-2 { grid-column: 1 / -1; order: -1; }
+}

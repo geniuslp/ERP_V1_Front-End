@@ -1,6 +1,6 @@
 import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useState } from 'react'
-import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin, Table } from 'antd'
+import { Card, Descriptions, Button, Modal, Form, Input, Space, message, Spin, Table, Grid } from 'antd'
 import { EditOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { handleApprovalForbidden } from '@/utils/approvalAccess'
@@ -20,6 +20,8 @@ import { calcDisc } from '@/utils/poCalc'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 import DateTimeText from '@/components/common/DateTimeText'
 
+const { useBreakpoint } = Grid
+
 const MENU_CODE = 'MENU_WO_APPROVAL'
 
 const cardStyle: React.CSSProperties = {
@@ -35,6 +37,15 @@ const dateFmt = (v?: string) => (v ? dayjs(v).format('DD/MM/YYYY') : '—')
 const WorkOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
+  const cols = isMobile ? 1 : 2
+  const descProps = {
+    labelStyle: isMobile ? { fontWeight: 600, width: 104, padding: '6px 8px', fontSize: 13 } : undefined,
+    contentStyle: { overflowWrap: 'anywhere' as const },
+  }
+  const pageCard: React.CSSProperties = isMobile ? { ...cardStyle, marginBottom: 12 } : cardStyle
+  const cardBody = isMobile ? { body: { padding: 12 } } : undefined
   // Set only by the approval list's links; other entry points open this page without it.
   const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
@@ -100,6 +111,56 @@ const WorkOrderDetailPage: React.FC = () => {
     }
   }
 
+  const calcTotals = (w: WorkOrder) => {
+    let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
+    ;(w.lines ?? []).forEach((r) => {
+      const rowDiscType = r.disc_type ?? 'pct'
+      const lineAmt = r.qty * r.unit_price
+      subtotal += lineAmt
+      const d = w.use_discount ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
+      const af = lineAmt - d
+      totalDisc += d
+      totalVat += w.use_vat ? af * 0.07 : 0
+      totalWht += w.use_wht ? af * ((r.wht_rate ?? 3) / 100) : 0
+    })
+    return { subtotal, totalDisc, totalVat, totalWht, net: subtotal - totalDisc + totalVat - totalWht }
+  }
+
+  const renderTotals = (w: WorkOrder) => {
+    const { subtotal, totalDisc, totalVat, totalWht, net } = calcTotals(w)
+    const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', width: '100%', gap: isMobile ? 16 : 48 }
+    return (
+      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: isMobile ? 0 : 240, width: isMobile ? '100%' : undefined }}>
+        <div style={rowStyle}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>ยอดรวมก่อนลด</span>
+          <span style={{ fontSize: 12 }}>฿ {money(subtotal)}</span>
+        </div>
+        {w.use_discount && (
+          <div style={rowStyle}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
+            <span style={{ fontSize: 12, color: '#22c55e' }}>- ฿ {money(totalDisc)}</span>
+          </div>
+        )}
+        {w.use_vat && (
+          <div style={rowStyle}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>VAT 7%</span>
+            <span style={{ fontSize: 12, color: '#ca8a04' }}>+ ฿ {money(totalVat)}</span>
+          </div>
+        )}
+        {w.use_wht && (
+          <div style={rowStyle}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>WHT</span>
+            <span style={{ fontSize: 12, color: '#dc2626' }}>- ฿ {money(totalWht)}</span>
+          </div>
+        )}
+        <div style={{ borderTop: '0.5px solid #dbeafe', width: '100%', marginTop: 4, paddingTop: 6, display: 'flex', justifyContent: 'space-between', gap: isMobile ? 16 : 48 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>ยอดรวมสุทธิ</span>
+          <span style={{ fontSize: 15, fontWeight: 500, color: '#1e40af' }}>฿ {money(net)}</span>
+        </div>
+      </div>
+    )
+  }
+
   if (loading || !wo) {
     return (
       <Card style={cardStyle}>
@@ -115,10 +176,10 @@ const WorkOrderDetailPage: React.FC = () => {
         subtitle="รายละเอียดหนังสือสั่งจ้าง"
         breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: formatPoNoWithRevision(wo.wo_no, wo.revision_round) }]}
         extra={
-          <Space>
+          <div className="wo-detail-actions">
             <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
-            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="แบบฟอร์มสัญญาสั่งจ้าง" />
-            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="แบบฟอร์มรายละเอียดสัญญาจ้าง" />
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="แบบฟอร์มสัญญาสั่งจ้าง" buttonProps={{ className: 'wo-span-2' }} />
+            <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="แบบฟอร์มรายละเอียดสัญญาจ้าง" buttonProps={{ className: 'wo-span-2' }} />
             {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(wo.status) && (
               <PermissionButton menuCode="MENU_WO_CREATE" action="write" icon={<EditOutlined />} onClick={() => navigate(`/work-order/${wo.id}/edit`)}>
                 แก้ไข
@@ -152,12 +213,12 @@ const WorkOrderDetailPage: React.FC = () => {
                 </PermissionButton>
               </>
             )}
-          </Space>
+          </div>
         }
       />
 
-      <Card title="สถานะ" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
+      <Card title="สถานะ" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
           <Descriptions.Item label="สถานะ"><WOStatusBadge status={wo.status} /></Descriptions.Item>
           <Descriptions.Item label="ผู้สร้าง">{wo.created_by_name || '—'}</Descriptions.Item>
           {wo.status !== 'DRAFT' && (
@@ -165,20 +226,20 @@ const WorkOrderDetailPage: React.FC = () => {
               <Descriptions.Item label="ผู้อนุมัติ">{wo.approver_name || '—'}</Descriptions.Item>
               <Descriptions.Item label="วันที่อนุมัติ"><DateTimeText value={wo.approved_at} /></Descriptions.Item>
               {wo.status === 'REJECTED' && (
-                <Descriptions.Item label="เหตุผลที่ไม่อนุมัติ" span={2}>{wo.rejected_reason || '—'}</Descriptions.Item>
+                <Descriptions.Item label="เหตุผลที่ไม่อนุมัติ" span={cols}>{wo.rejected_reason || '—'}</Descriptions.Item>
               )}
             </>
           )}
         </Descriptions>
       </Card>
 
-      <Card title="เอกสาร / ผู้ว่าจ้าง / ผู้รับจ้าง" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
+      <Card title="เอกสาร / ผู้ว่าจ้าง / ผู้รับจ้าง" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
           <Descriptions.Item label="เลขที่ WO">{formatPoNoWithRevision(wo.wo_no, wo.revision_round)}</Descriptions.Item>
           <Descriptions.Item label="วันที่">{dateFmt(wo.wo_date)}</Descriptions.Item>
           <Descriptions.Item label="เลขที่อ้างอิง">{wo.ref_no || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้ว่าจ้าง">{wo.employer_name}</Descriptions.Item>
-          <Descriptions.Item label="ขอบเขตงาน / โครงการ" span={2}>{formatWOProject(wo) || '—'}</Descriptions.Item>
+          <Descriptions.Item label="ขอบเขตงาน / โครงการ" span={cols}>{formatWOProject(wo) || '—'}</Descriptions.Item>
           <Descriptions.Item label="ผู้รับจ้าง">{wo.supplier_name || wo.supplier_code}</Descriptions.Item>
           <Descriptions.Item label="ผู้ควบคุมงาน">{wo.contact_person || '—'}</Descriptions.Item>
           <Descriptions.Item label="ที่อยู่ผู้รับจ้าง">{wo.supplier_address || '—'}</Descriptions.Item>
@@ -186,29 +247,29 @@ const WorkOrderDetailPage: React.FC = () => {
         </Descriptions>
       </Card>
 
-      <Card title="ประเภทสัญญา / มูลค่า" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
+      <Card title="ประเภทสัญญา / มูลค่า" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
           <Descriptions.Item label="ลักษณะสัญญา">{WO_CONTRACT_TYPE_LABEL[wo.contract_type] ?? wo.contract_type}</Descriptions.Item>
           <Descriptions.Item label="งานระบบ">{formatWorkSystem(wo.work_system, jobNames) || '—'}</Descriptions.Item>
-          <Descriptions.Item label="รายละเอียดสัญญา" span={2}>{wo.contract_description ? (WO_CONTRACT_DESCRIPTION_LABEL[wo.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? wo.contract_description) : '—'}</Descriptions.Item>
+          <Descriptions.Item label="รายละเอียดสัญญา" span={cols}>{wo.contract_description ? (WO_CONTRACT_DESCRIPTION_LABEL[wo.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? wo.contract_description) : '—'}</Descriptions.Item>
           <Descriptions.Item label="มูลค่าสัญญา">{money(wo.contract_amount)} บาท</Descriptions.Item>
           <Descriptions.Item label="VAT / หัก ณ ที่จ่าย">{wo.vat_rate}% / {wo.wht_rate}%</Descriptions.Item>
         </Descriptions>
       </Card>
 
-      <Card title="เงื่อนไขการจ่ายเงิน" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
+      <Card title="เงื่อนไขการจ่ายเงิน" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
           <Descriptions.Item label="เงินล่วงหน้า">{wo.advance_pct != null ? `${wo.advance_pct}%` : '—'}</Descriptions.Item>
           <Descriptions.Item label="จำนวนเงินล่วงหน้า">{wo.advance_amount != null ? money(wo.advance_amount) : '—'}</Descriptions.Item>
           <Descriptions.Item label="เงินประกันผลงาน">{wo.retention_pct != null ? `${wo.retention_pct}%` : '—'}</Descriptions.Item>
           <Descriptions.Item label="หักคืนเงินล่วงหน้า">{wo.advance_deduct_pct != null ? `${wo.advance_deduct_pct}%` : '—'}</Descriptions.Item>
-          <Descriptions.Item label="หมายเหตุการจ่ายตามความคืบหน้า" span={2}>{wo.progress_payment_note || '—'}</Descriptions.Item>
-          <Descriptions.Item label="รายการหักอื่นๆ" span={2}>{wo.other_deduction_note || '—'}</Descriptions.Item>
+          <Descriptions.Item label="หมายเหตุการจ่ายตามความคืบหน้า" span={cols}>{wo.progress_payment_note || '—'}</Descriptions.Item>
+          <Descriptions.Item label="รายการหักอื่นๆ" span={cols}>{wo.other_deduction_note || '—'}</Descriptions.Item>
         </Descriptions>
       </Card>
 
-      <Card title="ระยะเวลาสัญญา" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
+      <Card title="ระยะเวลาสัญญา" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
           <Descriptions.Item label="วันที่เริ่มงาน">{dateFmt(wo.start_date)}</Descriptions.Item>
           <Descriptions.Item label="ระยะเวลา">{wo.duration_days != null ? `${wo.duration_days} วัน` : '—'}</Descriptions.Item>
           <Descriptions.Item label="วันที่สิ้นสุด">{dateFmt(wo.end_date)}</Descriptions.Item>
@@ -217,7 +278,29 @@ const WorkOrderDetailPage: React.FC = () => {
         </Descriptions>
       </Card>
 
-      <Card title="รายการ Cost Code" style={cardStyle}>
+      <Card title="รายการ Cost Code" style={pageCard} styles={cardBody}>
+        {isMobile ? (
+          // Phone: one card per line instead of a wide table, totals underneath.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {(wo.lines ?? []).length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>—</div>}
+            {(wo.lines ?? []).map((r, i) => (
+              <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: '#64748b' }}>
+                  <span>ลำดับ {i + 1}</span>
+                  <span style={{ fontFamily: 'monospace' }}>{formatCostCodeDisplay(r.cost_code)}</span>
+                </div>
+                <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: 'anywhere' }}>{r.description || '—'}</div>
+                {r.remarks ? <div style={{ color: '#6b7280', fontSize: 12, whiteSpace: 'pre-line' }}>{r.remarks}</div> : null}
+                <div style={{ marginTop: 6, fontSize: 13 }}>{r.qty} × {money(r.unit_price)}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 2, fontWeight: 600 }}>
+                  <span style={{ color: '#64748b', fontWeight: 400 }}>มูลค่า</span>
+                  <span>{money(r.qty * r.unit_price)}</span>
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 4 }}>{renderTotals(wo)}</div>
+          </div>
+        ) : (
         <Table
           rowKey={(_, i) => String(i)}
           dataSource={wo.lines ?? []}
@@ -240,62 +323,22 @@ const WorkOrderDetailPage: React.FC = () => {
             { title: 'ราคา/หน่วย', dataIndex: 'unit_price', width: 110, align: 'right' as const, render: (v: number) => money(v) },
             { title: 'มูลค่า', key: 'amount', width: 120, align: 'right' as const, render: (_: unknown, r: WorkOrderLine) => money(r.qty * r.unit_price) },
           ]}
-          summary={() => {
-            let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
-            ;(wo.lines ?? []).forEach((r) => {
-              const rowDiscType = r.disc_type ?? 'pct'
-              const lineAmt = r.qty * r.unit_price
-              subtotal += lineAmt
-              const d = wo.use_discount ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
-              const af = lineAmt - d
-              totalDisc += d
-              totalVat += wo.use_vat ? af * 0.07 : 0
-              totalWht += wo.use_wht ? af * ((r.wht_rate ?? 3) / 100) : 0
-            })
-            const net = subtotal - totalDisc + totalVat - totalWht
-            return (
-              <Table.Summary fixed="bottom">
-                <Table.Summary.Row>
-                  <Table.Summary.Cell index={0} colSpan={6} align="right">
-                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 240 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>ยอดรวมก่อนลด</span>
-                        <span style={{ fontSize: 12 }}>฿ {money(subtotal)}</span>
-                      </div>
-                      {wo.use_discount && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                          <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
-                          <span style={{ fontSize: 12, color: '#22c55e' }}>- ฿ {money(totalDisc)}</span>
-                        </div>
-                      )}
-                      {wo.use_vat && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                          <span style={{ fontSize: 12, color: '#64748b' }}>VAT 7%</span>
-                          <span style={{ fontSize: 12, color: '#ca8a04' }}>+ ฿ {money(totalVat)}</span>
-                        </div>
-                      )}
-                      {wo.use_wht && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                          <span style={{ fontSize: 12, color: '#64748b' }}>WHT</span>
-                          <span style={{ fontSize: 12, color: '#dc2626' }}>- ฿ {money(totalWht)}</span>
-                        </div>
-                      )}
-                      <div style={{ borderTop: '0.5px solid #dbeafe', width: '100%', marginTop: 4, paddingTop: 6, display: 'flex', justifyContent: 'space-between', gap: 48 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>ยอดรวมสุทธิ</span>
-                        <span style={{ fontSize: 15, fontWeight: 500, color: '#1e40af' }}>฿ {money(net)}</span>
-                      </div>
-                    </div>
-                  </Table.Summary.Cell>
-                </Table.Summary.Row>
-              </Table.Summary>
-            )
-          }}
+          summary={() => (
+            <Table.Summary fixed="bottom">
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={6} align="right">
+                  {renderTotals(wo)}
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            </Table.Summary>
+          )}
         />
+        )}
       </Card>
 
-      <Card title="อื่นๆ" style={cardStyle}>
-        <Descriptions bordered column={2} size="small">
-          <Descriptions.Item label="เงื่อนไขอื่นๆ" span={2}><FormattedNote value={wo.other_terms} empty="—" /></Descriptions.Item>
+      <Card title="อื่นๆ" style={pageCard} styles={cardBody}>
+        <Descriptions bordered column={cols} size="small" {...descProps}>
+          <Descriptions.Item label="เงื่อนไขอื่นๆ" span={cols}><FormattedNote value={wo.other_terms} empty="—" /></Descriptions.Item>
         </Descriptions>
       </Card>
 

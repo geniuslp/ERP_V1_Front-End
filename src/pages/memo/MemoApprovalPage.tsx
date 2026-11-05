@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
-  Card, Table, Button, Space, Tooltip, Modal, Input, message,
+  Card, Table, Button, Space, Tooltip, Modal, Input, Grid, Pagination, Spin, message,
 } from 'antd'
 import {
   CheckOutlined, CloseOutlined, EyeOutlined, ReloadOutlined,
@@ -17,6 +17,8 @@ import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
+const { useBreakpoint } = Grid
+
 interface MemoItem {
   id: string
   memoNo: string
@@ -32,6 +34,9 @@ const MemoApprovalPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const user = useAppSelector((s) => s.auth.user)
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
+  const [mobilePage, setMobilePage] = useState(1)
   const [data, setData] = useState<MemoItem[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -248,14 +253,77 @@ const MemoApprovalPage: React.FC = () => {
           </div>
         )}
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} items` }}
-          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
-        />
+        {isMobile ? (
+          // Phone: one card per memo (with its approve / reject buttons) instead of a wide table.
+          <Spin spinning={loading}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {data.length === 0 && !loading && (
+                <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>{APPROVAL_EMPTY_TEXT}</div>
+              )}
+              {data.slice((mobilePage - 1) * 10, mobilePage * 10).map((r) => (
+                <div key={r.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+                  <div
+                    role="button"
+                    onClick={() => navigate(`/memo/${r.id}/approval-detail`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div style={{ fontWeight: 700, color: '#1e3a8a', overflowWrap: 'anywhere' }}>{r.memoNo}</div>
+                    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: '#64748b' }}>
+                      <span>ผู้ขอ {r.requestedBy || '-'}</span>
+                      <span>แผนก {r.department || '-'}</span>
+                      <span>โครงการ {r.projectCode || '-'}</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                      ส่งเมื่อ <DateTimeText value={r.createdAt} />
+                    </div>
+                  </div>
+                  <Space wrap style={{ marginTop: 10 }}>
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/memo/${r.id}/approval-detail`)}>ดูรายละเอียด</Button>
+                    <PermissionButton
+                      action="approval"
+                      docType="MEMO"
+                      docId={r.id}
+                      approvalAction="reject"
+                      size="small"
+                      danger
+                      icon={<CloseOutlined />}
+                      loading={actionLoading === r.id}
+                      onClick={() => openRejectModal(r.id)}
+                    >
+                      ไม่อนุมัติ
+                    </PermissionButton>
+                    <PermissionButton
+                      action="approval"
+                      docType="MEMO"
+                      docId={r.id}
+                      approvalAction="approve"
+                      size="small"
+                      type="primary"
+                      icon={<CheckOutlined />}
+                      loading={actionLoading === r.id}
+                      onClick={() => handleApprove(r.id)}
+                      style={{ background: '#22c55e', borderColor: '#22c55e' }}
+                    >
+                      อนุมัติ
+                    </PermissionButton>
+                  </Space>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <Pagination simple current={mobilePage} pageSize={10} total={data.length} showSizeChanger={false} onChange={(p) => setMobilePage(p)} />
+              </div>
+            </div>
+          </Spin>
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={data}
+            pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} items` }}
+            locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
+          />
+        )}
       </Card>
 
       <Modal

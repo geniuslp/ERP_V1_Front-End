@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Table, Select, Input, Button, Space, Badge, Tag, message } from 'antd'
+import { Card, Table, Select, Input, Button, Space, Badge, Tag, Grid, Pagination, Spin, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
@@ -10,6 +10,8 @@ import { useAppSelector } from '@/store'
 import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+const { useBreakpoint } = Grid
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -49,6 +51,8 @@ const statusOptions = [
 const PRApprovalListPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
 
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<PRApprovalRow[]>([])
@@ -131,7 +135,7 @@ const PRApprovalListPage: React.FC = () => {
       <Card style={cardStyle}>
         <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <Select
-            style={{ width: 160 }}
+            style={{ width: isMobile ? '100%' : 160 }}
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1) }}
             options={statusOptions}
@@ -139,7 +143,7 @@ const PRApprovalListPage: React.FC = () => {
           <Input
             placeholder="ค้นหา เลข PR / หมายเหตุ"
             prefix={<SearchOutlined />}
-            style={{ width: 240 }}
+            style={{ width: isMobile ? '100%' : 240 }}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             allowClear
@@ -150,27 +154,68 @@ const PRApprovalListPage: React.FC = () => {
               <span style={{ fontSize: 13, color: '#666' }}>รออนุมัติ</span>
             </Space>
           )}
-          <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading}>โหลดใหม่</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading} block={isMobile}>โหลดใหม่</Button>
         </div>
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={items}
-          columns={columns}
-          pagination={{
-            current: page,
-            pageSize: 20,
-            total,
-            onChange: (p) => setPage(p),
-            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
-            showSizeChanger: false,
-          }}
-          onRow={(record) => ({ onClick: () => open(record.id), style: { cursor: 'pointer' } })}
-          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
-          scroll={{ x: 900 }}
-          size="small"
-        />
+        {isMobile ? (
+          // Phone: one tappable card per PR instead of a 900px wide table.
+          <Spin spinning={loading}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {items.length === 0 && !loading && (
+                <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>{APPROVAL_EMPTY_TEXT}</div>
+              )}
+              {items.map((r) => {
+                const t = STATUS_TAG[r.status] ?? { color: 'default', label: r.status }
+                return (
+                  <div
+                    key={r.id}
+                    role="button"
+                    onClick={() => open(r.id)}
+                    style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, cursor: 'pointer', background: '#fff' }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <span style={{ fontWeight: 700, color: '#1e3a8a', overflowWrap: 'anywhere' }}>{r.pr_no}</span>
+                      <Tag color={t.color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{t.label}</Tag>
+                    </div>
+                    <div style={{ marginTop: 6, overflowWrap: 'anywhere' }}>
+                      {r.project_code ? `${r.project_code} ${r.project_name ?? ''}`.trim() : '-'}
+                    </div>
+                    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: '#64748b' }}>
+                      <span>วันที่ {r.pr_date ? dayjs(r.pr_date).format('DD/MM/YYYY') : '-'}</span>
+                      <span>ผู้ขอซื้อ {r.requested_by || '-'}</span>
+                      <span>Job {r.job_code || '-'}</span>
+                    </div>
+                    {r.status === 'REJECTED' && r.reject_reason && (
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#dc2626', overflowWrap: 'anywhere' }}>{r.reject_reason}</div>
+                    )}
+                  </div>
+                )
+              })}
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <Pagination simple current={page} pageSize={20} total={total} showSizeChanger={false} onChange={(p) => setPage(p)} />
+              </div>
+            </div>
+          </Spin>
+        ) : (
+          <Table
+            rowKey="id"
+            loading={loading}
+            dataSource={items}
+            columns={columns}
+            pagination={{
+              current: page,
+              pageSize: 20,
+              total,
+              onChange: (p) => setPage(p),
+              showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+              showSizeChanger: false,
+            }}
+            onRow={(record) => ({ onClick: () => open(record.id), style: { cursor: 'pointer' } })}
+            locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
+            scroll={{ x: 900 }}
+            size="small"
+          />
+        )}
       </Card>
     </div>
   )

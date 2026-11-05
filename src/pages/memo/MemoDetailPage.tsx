@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input,
+  Card, Descriptions, Table, Button, Space, Alert, Empty, message, Modal, Input, Grid,
 } from 'antd'
 import {
   ArrowLeftOutlined, EditOutlined, StopOutlined,
@@ -23,6 +23,8 @@ import MemoPrint, { type MemoData } from './MemoPrint'
 import DateTimeText from '@/components/common/DateTimeText'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+const { useBreakpoint } = Grid
 
 // Kept in sync manually with MemoCreateEditPage.tsx's own copy — memo.department
 // is a plain varchar with no backing lookup table, so there's no API to fetch
@@ -102,8 +104,8 @@ const formatFileSize = (b: number) =>
 // Matches POApprovalDetailPage.tsx's local AttachmentSection style (plain-div
 // section, not a Card) — that component isn't exported/reusable across files,
 // so this is a local copy sized for Memo's flat attachments array.
-const AttachmentSection: React.FC<{ title: string; items: MemoAttachmentFile[] }> = ({ title, items }) => (
-  <div style={{ ...BLOCK_CARD_STYLE, padding: 24, marginBottom: 16, background: '#fff' }}>
+const AttachmentSection: React.FC<{ title: string; items: MemoAttachmentFile[]; compact?: boolean }> = ({ title, items, compact }) => (
+  <div style={{ ...BLOCK_CARD_STYLE, padding: compact ? 12 : 24, marginBottom: 16, background: '#fff' }}>
     <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
       {title}
     </div>
@@ -119,13 +121,13 @@ const AttachmentSection: React.FC<{ title: string; items: MemoAttachmentFile[] }
             borderRadius: 8,
           }}
         >
-          <Space>
+          <Space wrap style={{ minWidth: 0 }}>
             <PaperClipOutlined style={{ color: '#2563eb' }} />
             <a
               href={resolveFileUrl(a.file_path)}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: 13, color: '#1e40af' }}
+              style={{ fontSize: 13, color: '#1e40af', overflowWrap: 'anywhere' }}
               className="attachment-filename-link"
             >
               {a.file_name}
@@ -186,6 +188,8 @@ interface MemoDetailPageProps {
 
 const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = false }) => {
   const navigate = useNavigate()
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
   const { id } = useParams<{ id: string }>()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const user = useAppSelector((s) => s.auth.user)
@@ -407,7 +411,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         title={memo?.memoNo ?? '...'}
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: memo?.memoNo ?? '' }]}
         extra={
-          <Space>
+          <Space wrap>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
               กลับ
             </Button>
@@ -439,8 +443,19 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         <Alert type="error" showIcon message="ยกเลิกแล้ว" style={{ marginBottom: 16, borderRadius: 8 }} />
       )}
 
-      <Card title={<span style={cardTitleStyle}>ข้อมูลทั่วไป</span>} style={{ ...cardStyle, marginBottom: 16 }} loading={loading}>
-        <Descriptions column={2} size="small">
+      <Card
+        title={<span style={cardTitleStyle}>ข้อมูลทั่วไป</span>}
+        style={{ ...cardStyle, marginBottom: 16 }}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
+        loading={loading}
+      >
+        <Descriptions
+          column={isMobile ? 1 : 2}
+          size="small"
+          bordered={isMobile}
+          labelStyle={isMobile ? { fontWeight: 600, width: 104, padding: '6px 8px', fontSize: 13 } : undefined}
+          contentStyle={{ overflowWrap: 'anywhere' }}
+        >
           <Descriptions.Item label="เลขที่ใบบันทึกขอซื้อ (Memo)">
             <strong style={{ color: '#2563eb' }}>{memo?.memoNo}</strong>
           </Descriptions.Item>
@@ -465,14 +480,38 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         </Descriptions>
       </Card>
 
-      <Card title={<span style={cardTitleStyle}>รายการวัสดุ/บริการ</span>} style={{ ...cardStyle, marginBottom: 16 }} loading={loading}>
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={memo?.lines ?? []}
-          pagination={false}
-          scroll={{ x: 700 }}
-        />
+      <Card
+        title={<span style={cardTitleStyle}>รายการวัสดุ/บริการ</span>}
+        style={{ ...cardStyle, marginBottom: 16 }}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
+        loading={loading}
+      >
+        {isMobile ? (
+          // Phone: one card per line instead of a 700px wide table.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {(memo?.lines ?? []).length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>ไม่มีรายการ</div>}
+            {(memo?.lines ?? []).map((l, idx) => (
+              <div key={l.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>ลำดับ {idx + 1}</div>
+                <div style={{ fontWeight: 600, marginTop: 2, overflowWrap: 'anywhere' }}>{l.description}</div>
+                <div style={{ marginTop: 6, fontSize: 13 }}>{l.quantity} {l.unit}</div>
+                {l.remark && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>
+                    <FormattedNote value={l.remark} empty="—" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={memo?.lines ?? []}
+            pagination={false}
+            scroll={{ x: 700 }}
+          />
+        )}
 
         {memo?.note && (
           <div style={{
@@ -492,7 +531,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         )}
 
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-          <Space>
+          <Space wrap style={isMobile ? { width: '100%' } : undefined}>
             {(memo?.status === 'DRAFT' || memo?.status === 'draft' || memo?.status === 'pending_po') && isOwner && (
               <Button danger icon={<StopOutlined />} onClick={handleCancel}>
                 ยกเลิกใบบันทึกขอซื้อ (Memo)
@@ -537,7 +576,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       </Card>
 
       {memo?.attachments && memo.attachments.length > 0 && (
-        <AttachmentSection title="ไฟล์แนบ" items={memo.attachments} />
+        <AttachmentSection title="ไฟล์แนบ" items={memo.attachments} compact={isMobile} />
       )}
 
       {showApproveActions && (

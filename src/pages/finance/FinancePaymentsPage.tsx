@@ -35,6 +35,7 @@ const STATUS_OPTIONS = [
 ]
 
 const DOC_NO_COL_DEFAULT_WIDTH = 150
+const SUPPLIER_COL_DEFAULT_WIDTH = 240
 const PROJECT_COL_DEFAULT_WIDTH = 320
 const NET_AMOUNT_COL_DEFAULT_WIDTH = 170
 const RECEIVING_COL_DEFAULT_WIDTH = 130
@@ -102,6 +103,9 @@ const FinancePaymentsPage: React.FC = () => {
 
   // Resizable widths — not persisted, reset on refresh.
   const [docNoColWidth, setDocNoColWidth] = useState(DOC_NO_COL_DEFAULT_WIDTH)
+  const [supplierColWidth, setSupplierColWidth] = useState(SUPPLIER_COL_DEFAULT_WIDTH)
+  const [apColWidth, setApColWidth] = useState(160)
+  const [requesterColWidth, setRequesterColWidth] = useState(180)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COL_DEFAULT_WIDTH)
   const [netAmountColWidth, setNetAmountColWidth] = useState(NET_AMOUNT_COL_DEFAULT_WIDTH)
   const [receivingColWidth, setReceivingColWidth] = useState(RECEIVING_COL_DEFAULT_WIDTH)
@@ -190,6 +194,36 @@ const FinancePaymentsPage: React.FC = () => {
       onHeaderCell: () => ({ width: projectColWidth, onResize: handleResize(setProjectColWidth) }),
       render: (_: unknown, r) => <FinanceProjectsCell item={r} />,
     },
+    // ร้านค้า: PO and WO only — petty cash has no supplier.
+    ...(docType === 'PC' ? [] : [{
+      title: 'ร้านค้า',
+      dataIndex: 'supplier_name',
+      key: 'supplier_name',
+      width: supplierColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({ width: supplierColWidth, onResize: handleResize(setSupplierColWidth) }),
+      render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
+    }]),
+    // ผู้ขอเบิก: petty cash only.
+    ...(docType === 'PC' ? [{
+      title: 'ผู้ขอเบิก',
+      dataIndex: 'requested_by_name',
+      key: 'requested_by_name',
+      width: requesterColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({ width: requesterColWidth, onResize: handleResize(setRequesterColWidth) }),
+      render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
+    }] : []),
+    // AP Voucher No.: WO only — comma-joined from the WO's contractor-log bills.
+    ...(docType === 'WO' ? [{
+      title: 'AP (AP Voucher No.)',
+      dataIndex: 'ap_voucher_nos',
+      key: 'ap_voucher_nos',
+      width: apColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({ width: apColWidth, onResize: handleResize(setApColWidth) }),
+      render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
+    }] : []),
     {
       title: 'มูลค่าสุทธิ',
       dataIndex: 'net_amount',
@@ -309,7 +343,7 @@ const FinancePaymentsPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           scroll={{
             x:
-              docNoColWidth + projectColWidth + netAmountColWidth +
+              docNoColWidth + (docType === 'PC' ? 0 : supplierColWidth) + (docType === 'WO' ? apColWidth : 0) + (docType === 'PC' ? requesterColWidth : 0) + projectColWidth + netAmountColWidth +
               receivingColWidth + paidColWidth + remainingColWidth + ACTION_COL_WIDTH,
           }}
           dataSource={data}

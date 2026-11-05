@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Select, Input, Button, Space, Badge, message } from 'antd'
+import { Table, Select, Input, Button, Space, Badge, Grid, Pagination, Spin, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnsType } from 'antd/es/table'
@@ -15,6 +15,8 @@ import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 // const userDept = useAppSelector((s) => s.auth.user?.department)
 // const isManager = ['MANAGER', 'DIRECTOR', 'MD'].includes(userDept ?? '')
 
+const { useBreakpoint } = Grid
+
 const statusOptions = [
   { value: '', label: 'ทุกสถานะ' },
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
@@ -28,6 +30,8 @@ const statusOptions = [
 const POApprovalListPage: React.FC = () => {
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
+  // Same breakpoint rule as PageHeader / AppLayout: below 768px is the phone layout.
+  const isMobile = useBreakpoint().md === false
 
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<POListItem[]>([])
@@ -158,7 +162,7 @@ const POApprovalListPage: React.FC = () => {
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <Select
-          style={{ width: 160 }}
+          style={{ width: isMobile ? '100%' : 160 }}
           value={statusFilter}
           onChange={(v) => {
             setStatusFilter(v)
@@ -169,7 +173,7 @@ const POApprovalListPage: React.FC = () => {
         <Input
           placeholder="ค้นหา เลข PO / Supplier"
           prefix={<SearchOutlined />}
-          style={{ width: 240 }}
+          style={{ width: isMobile ? '100%' : 240 }}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           allowClear
@@ -180,34 +184,91 @@ const POApprovalListPage: React.FC = () => {
             <span style={{ fontSize: 13, color: '#666' }}>รออนุมัติ</span>
           </Space>
         )}
-        <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading}>
+        <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading} block={isMobile}>
           โหลดใหม่
         </Button>
       </div>
 
-      <Table
-        rowKey="po_id"
-        className="po-approval-table"
-        loading={loading}
-        dataSource={filtered}
-        columns={columns}
-        pagination={{
-          current: page,
-          pageSize: 20,
-          total,
-          onChange: (p) => setPage(p),
-          showTotal: (t) => `ทั้งหมด ${t} รายการ`,
-          showSizeChanger: false,
-        }}
-        onRow={(record) => ({
-          onClick: () => navigate(`/po/approval/${record.po_id}?${FOR_APPROVAL_QUERY}`),
-          style: { cursor: 'pointer' },
-        })}
-        locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
-        scroll={{ x: 900 }}
-        size="small"
-        style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}
-      />
+      {isMobile ? (
+        // Phone (iPhone Pro Max is 430px wide): one tappable card per PO instead of a 900px wide table.
+        <Spin spinning={loading}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.length === 0 && !loading && (
+              <div style={{ background: '#fff', borderRadius: 12, padding: 24, textAlign: 'center', color: '#9ca3af' }}>
+                {APPROVAL_EMPTY_TEXT}
+              </div>
+            )}
+            {filtered.map((r) => (
+              <div
+                key={r.po_id}
+                role="button"
+                onClick={() => navigate(`/po/approval/${r.po_id}?${FOR_APPROVAL_QUERY}`)}
+                style={{
+                  background: '#fff', borderRadius: 12, padding: 14, cursor: 'pointer',
+                  boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ fontWeight: 700, color: '#1e3a8a', overflowWrap: 'anywhere' }}>
+                    {formatPoNoWithRevision(r.po_no, r.revision_round)}
+                  </span>
+                  <span style={{ flexShrink: 0 }}>
+                    <POStatusBadges status={r.status} statusReceive={r.status_receive} orderType={r.order_type} />
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, overflowWrap: 'anywhere' }}>{r.supplier_name}</div>
+                <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>มูลค่า</span>
+                  <span style={{ fontWeight: 700, color: '#1e40af' }}>
+                    {r.net_amount == null
+                      ? '—'
+                      : `${Number(r.net_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${r.currency ?? ''}`.trim()}
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: '#64748b' }}>
+                  <span>วันที่ {r.po_date?.slice(0, 10) ?? '-'}</span>
+                  <span>ต้องการ {r.expected_date?.slice(0, 10) ?? '-'}</span>
+                  <span>ผู้สร้าง {r.created_by_name || '-'}</span>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Pagination
+                simple
+                current={page}
+                pageSize={20}
+                total={total}
+                showSizeChanger={false}
+                onChange={(p) => setPage(p)}
+              />
+            </div>
+          </div>
+        </Spin>
+      ) : (
+        <Table
+          rowKey="po_id"
+          className="po-approval-table"
+          loading={loading}
+          dataSource={filtered}
+          columns={columns}
+          pagination={{
+            current: page,
+            pageSize: 20,
+            total,
+            onChange: (p) => setPage(p),
+            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+            showSizeChanger: false,
+          }}
+          onRow={(record) => ({
+            onClick: () => navigate(`/po/approval/${record.po_id}?${FOR_APPROVAL_QUERY}`),
+            style: { cursor: 'pointer' },
+          })}
+          locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
+          scroll={{ x: 900 }}
+          size="small"
+          style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}
+        />
+      )}
     </div>
   )
 }

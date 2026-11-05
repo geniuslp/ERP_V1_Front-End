@@ -3,7 +3,7 @@ import FormattedNote from '@/components/common/FormattedNote'
 import React, { useState, useEffect } from 'react'
 import {
   Button, Descriptions, Table, Alert, Spin,
-  Modal, Form, Input, Popconfirm, message, Space,
+  Modal, Form, Input, Popconfirm, message, Space, Grid,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -34,6 +34,8 @@ import { PaperClipOutlined } from '@ant-design/icons'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 
 
+const { useBreakpoint } = Grid
+
 const MENU_CODE = 'MENU_PO_STATUS'
 
 // TODO: enable when permission system is ready
@@ -54,8 +56,8 @@ const formatSize = (b: number) =>
 // matches the page's existing plain-div section style (not an AntD Card,
 // unlike PRDetailPage), so it's local to this file rather than a new
 // cross-page component.
-const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({ title, items }) => (
-  <div style={cardStyle}>
+const AttachmentSection: React.FC<{ title: string; items: POAttachment[]; compact?: boolean }> = ({ title, items, compact }) => (
+  <div style={compact ? { ...cardStyle, padding: 12 } : cardStyle}>
     <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
       {title}
     </div>
@@ -74,13 +76,13 @@ const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({
               borderRadius: 8,
             }}
           >
-            <Space>
+            <Space style={{ minWidth: 0 }} wrap>
               <PaperClipOutlined style={{ color: '#2563eb' }} />
               <a
                 href={resolveFileUrl(a.file_path)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#1e40af' }}
+                style={{ fontSize: 13, color: '#1e40af', overflowWrap: 'anywhere' }}
                 className="attachment-filename-link"
               >
                 {a.file_name}
@@ -97,6 +99,9 @@ const AttachmentSection: React.FC<{ title: string; items: POAttachment[] }> = ({
 const POApprovalDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Phone layout (iPhone Pro Max is 430px wide): same breakpoint rule as PageHeader / AppLayout.
+  const isMobile = useBreakpoint().md === false
+  const pageCard: React.CSSProperties = isMobile ? { ...cardStyle, padding: 12 } : cardStyle
   // Set only by the approval list's links; requester/history/print entries open this page without it.
   const forApproval = new URLSearchParams(useLocation().search).get('for_approval') === 'true'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
@@ -347,7 +352,7 @@ const POApprovalDetailPage: React.FC = () => {
           gap: 8,
         }}
       >
-        <Space>
+        <Space wrap>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
             กลับ
           </Button>
@@ -357,7 +362,7 @@ const POApprovalDetailPage: React.FC = () => {
           <POStatusBadges status={po.status} statusReceive={po.status_receive} orderType={po.order_type} />
         </Space>
 
-        <Space>
+        <Space wrap style={isMobile ? { width: '100%' } : undefined}>
           <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>
             พิมพ์
           </Button>
@@ -440,12 +445,13 @@ const POApprovalDetailPage: React.FC = () => {
           in the top bar above instead; currency/gross/VAT/net/ส่วนลด/WHT/คลัง
           are intentionally dropped from this block per product decision — they
           still appear in full on the printed PO (see PurchaseOrderPrint). */}
-      <div style={cardStyle}>
+      <div style={pageCard}>
         <Descriptions
           bordered
           size="small"
-          column={3}
-          labelStyle={{ fontWeight: 600, width: 140 }}
+          column={isMobile ? 1 : 3}
+          labelStyle={isMobile ? { fontWeight: 600, width: 104, padding: '6px 8px', fontSize: 13 } : { fontWeight: 600, width: 140 }}
+          contentStyle={{ overflowWrap: 'anywhere' }}
         >
           <Descriptions.Item label="โครงการ">
             {po.project_code || po.project_name
@@ -462,7 +468,7 @@ const POApprovalDetailPage: React.FC = () => {
             {po.order_type ? (ORDER_TYPE_LABEL[po.order_type] ?? po.order_type) : '-'}
           </Descriptions.Item>
 
-          <Descriptions.Item label="ชื่อบริษัท" span={2}>{po.supplier_name}</Descriptions.Item>
+          <Descriptions.Item label="ชื่อบริษัท" span={isMobile ? 1 : 2}>{po.supplier_name}</Descriptions.Item>
           <Descriptions.Item label="เงื่อนไข">{po.payment_terms ?? '-'}</Descriptions.Item>
 
           <Descriptions.Item label="ผู้รับของ">{po.receiver_name ?? '-'}</Descriptions.Item>
@@ -470,7 +476,7 @@ const POApprovalDetailPage: React.FC = () => {
           <Descriptions.Item label="สถานที่ส่ง">{po.location_text ?? '-'}</Descriptions.Item>
 
           <Descriptions.Item label="วันที่ส่ง">{po.expected_date?.slice(0, 10) ?? '-'}</Descriptions.Item>
-          <Descriptions.Item label="มูลค่าหักส่วนลด ก่อนหักภาษี" span={2} contentStyle={{ textAlign: 'left' }}>
+          <Descriptions.Item label="มูลค่าหักส่วนลด ก่อนหักภาษี" span={isMobile ? 1 : 2} contentStyle={{ textAlign: 'left' }}>
             {(() => {
               // Header discount (po.use_discount/discount_amount) is only one
               // source — a line can carry its own amt-type discount instead
@@ -493,7 +499,7 @@ const POApprovalDetailPage: React.FC = () => {
 
           <Descriptions.Item
             label="หมายเหตุ"
-            span={3}
+            span={isMobile ? 1 : 3}
             contentStyle={po.status === 'REJECTED' ? { color: '#dc2626', fontWeight: 600 } : {}}
           >
             <FormattedNote value={po.remarks} empty="-" />
@@ -502,19 +508,56 @@ const POApprovalDetailPage: React.FC = () => {
       </div>
 
       {/* Line items */}
-      <div style={cardStyle}>
+      <div style={pageCard}>
         <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a8a', marginBottom: 12 }}>
           รายการสินค้า / วัสดุ
         </div>
-        <Table
-          rowKey="id"
-          dataSource={po.lines ?? []}
-          columns={lineColumns}
-          pagination={false}
-          size="small"
-          scroll={{ x: 900 }}
-          locale={{ emptyText: 'ไม่มีรายการ' }}
-        />
+        {isMobile ? (
+          // Phone: one card per line instead of a 900px wide table.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {(po.lines ?? []).length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>ไม่มีรายการ</div>}
+            {(po.lines ?? []).map((r) => {
+              const m2 = (v: number) => `${(v ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`
+              return (
+                <div key={r.line_no} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: '#64748b' }}>
+                    <span>ลำดับ {r.line_no}</span>
+                    <span>{r.cost_code ? formatCostCodeDisplay(r.cost_code) : '-'}</span>
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 4 }}>{r.mat_code}</div>
+                  <div style={{ fontWeight: 600, marginTop: 2, overflowWrap: 'anywhere' }}>
+                    {formatItemLabel(r.mat_name, r.spec, r.brand_name) || '—'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#888' }}>
+                    {[r.group_name, r.subgroup_name].filter(Boolean).join(' › ')}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 13 }}>
+                    {`${r.qty_ordered.toLocaleString()} ${r.unit_name ?? ''}`} × {m2(r.unit_price)}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 2, fontWeight: 600 }}>
+                    <span style={{ color: '#64748b', fontWeight: 400 }}>มูลค่า</span>
+                    <span>{m2(r.amount)}</span>
+                  </div>
+                  {(r.description ?? r.remarks) && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>
+                      <FormattedNote value={r.description ?? r.remarks} empty="—" />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <Table
+            rowKey="id"
+            dataSource={po.lines ?? []}
+            columns={lineColumns}
+            pagination={false}
+            size="small"
+            scroll={{ x: 900 }}
+            locale={{ emptyText: 'ไม่มีรายการ' }}
+          />
+        )}
 
         {/* Totals — same block as the line items, same rows as the PO create page's summary
             (ยอดรวมก่อนลด / ส่วนลด / VAT 7% / WHT / ยอดรวมสุทธิ). Uses the amounts stored on the PO. */}
@@ -525,10 +568,10 @@ const POApprovalDetailPage: React.FC = () => {
             (po.lines ?? []).map((l) => ({ discType: l.disc_type, disc: l.discount ?? 0, qty: l.qty_ordered, unitPrice: l.unit_price })),
           )
           const totalDisc = headerDisc + lineAmtDisc
-          const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }
+          const rowStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', width: '100%', gap: isMobile ? 16 : 48 }
           return (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 260 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: isMobile ? 0 : 260, width: isMobile ? '100%' : undefined }}>
                 <div style={rowStyle}>
                   <span style={{ fontSize: 12, color: '#64748b' }}>ยอดรวมก่อนลด</span>
                   <span style={{ fontSize: 12, fontWeight: 500 }}>{money(po.total_amount)}</span>
@@ -562,15 +605,15 @@ const POApprovalDetailPage: React.FC = () => {
       </div>
 
       {po.attachments && 'memo' in po.attachments && (
-        <AttachmentSection title="ไฟล์แนบจาก Memo" items={po.attachments.memo ?? []} />
+        <AttachmentSection title="ไฟล์แนบจาก Memo" items={po.attachments.memo ?? []} compact={isMobile} />
       )}
 
       {po.attachments && 'pr' in po.attachments && (
-        <AttachmentSection title="ไฟล์แนบจาก PR" items={po.attachments.pr ?? []} />
+        <AttachmentSection title="ไฟล์แนบจาก PR" items={po.attachments.pr ?? []} compact={isMobile} />
       )}
 
       {po.attachments && (
-        <AttachmentSection title="ไฟล์แนบ PO" items={po.attachments.po ?? []} />
+        <AttachmentSection title="ไฟล์แนบ PO" items={po.attachments.po ?? []} compact={isMobile} />
       )}
 
       {/* Reject modal */}

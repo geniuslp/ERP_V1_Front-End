@@ -21,6 +21,10 @@ export interface FinancePaymentListItem {
   doc_type: FinanceDocType
   project_code: string
   project_name?: string | null
+  // Supplier (ร้านค้า) of a PO / WO; null for petty cash.
+  supplier_name?: string | null
+  ap_voucher_nos?: string | null
+  requested_by_name?: string | null
   net_amount: number
   status: string
   // Document approval status shown on the finance list (filter param: status=PENDING_APPROVAL|APPROVED).

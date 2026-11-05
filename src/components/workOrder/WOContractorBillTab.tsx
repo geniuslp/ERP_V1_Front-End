@@ -128,16 +128,16 @@ const DETAIL_LINES: { code: string; label: string }[] = [
   { code: 'VAT', label: '4. ภาษีมูลค่าเพิ่ม (VAT)' },
   { code: 'SUBTOTAL', label: 'รวมเป็นเงิน (1)' },
   { code: 'RETENTION', label: '5. หักเงินประกันผลงาน' },
-  { code: 'WHT', label: '6. หัก ณ ที่จ่าย' },
-  { code: 'OTHER', label: '7. หักอื่นๆ' },
+  { code: 'WHT', label: 'หัก ณ ที่จ่าย (รายการเดิม)' },
+  { code: 'OTHER', label: '6. หักอื่นๆ' },
   { code: 'NET', label: 'จ่ายสุทธิ' },
 ]
 
 // Lines that are always listed for each bill type in the popup (others only when they carry an amount).
 const DETAIL_RELEVANT: Record<BillType, string[]> = {
-  ADV: ['ADV', 'VAT', 'WHT'],
-  PROGRESS: ['PROGRESS', 'ADV_DEDUCT', 'VAT', 'RETENTION', 'WHT'],
-  RETENTION: ['PROGRESS', 'VAT', 'WHT'],
+  ADV: ['ADV', 'VAT'],
+  PROGRESS: ['PROGRESS', 'ADV_DEDUCT', 'VAT', 'RETENTION'],
+  RETENTION: ['PROGRESS', 'VAT'],
 }
 
 interface BillForm {
@@ -374,7 +374,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       : f.retention_amount != null
         ? (base > 0 ? round2((f.retention_amount / base) * 100) : 0)
         : f.retention_pct
-    const wht = round2(afterDeduct * f.wht_pct / 100)
+    const wht = 0 // หัก ณ ที่จ่าย row removed from the form (the 0 line is still sent so the API contract is unchanged)
     const net = round2(subtotal - retention - wht - f.other_amount)
     return { adv, progress, advDeduct, beforeVat: round2(afterDeduct), vat, subtotal, retention, retentionPct, wht, net }
   }, [f, contractAmount, installmentCount])
@@ -578,28 +578,8 @@ const WOContractorBillTab: React.FC<Props> = ({
       ),
     },
     {
-      key: 'wht',
-      label: (
-        <Space wrap>
-          <span>6. หัก ณ ที่จ่าย</span>
-          <Select
-            size="small"
-            style={{ minWidth: 150 }}
-            value={f.wht_type}
-            options={WHT_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            onChange={(v) => {
-              const opt = WHT_TYPE_OPTIONS.find((o) => o.value === v)
-              patch({ wht_type: v, wht_pct: opt ? opt.rate : f.wht_pct })
-            }}
-          />
-        </Space>
-      ),
-      pct: pctInput(f.wht_pct, (v) => patch({ wht_pct: v })),
-      amount: amountText(calc.wht),
-    },
-    {
       key: 'other',
-      label: '7. หักอื่นๆ',
+      label: '6. หักอื่นๆ',
       amount: (
         <InputNumber<number>
           style={{ width: 180 }}
@@ -646,7 +626,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       { line_code: 'ADV_DEDUCT', percent: f.adv_deduct_pct, amount: calc.advDeduct },
       { line_code: 'VAT', percent: f.vat_pct, amount: calc.vat },
       { line_code: 'RETENTION', percent: calc.retentionPct, amount: calc.retention },
-      { line_code: 'WHT', percent: f.wht_pct, amount: calc.wht },
+      { line_code: 'WHT', percent: 0, amount: 0 },
       { line_code: 'OTHER', percent: null, amount: f.other_amount },
     ],
     invoices: invoices.map((r) => ({
