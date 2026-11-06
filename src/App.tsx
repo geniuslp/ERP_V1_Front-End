@@ -200,7 +200,7 @@ const AppRoutes: React.FC = () => (
                 <RequirePermission menuCode="MENU_PETTY_CASH_APPROVAL" action="read"><PettyCashApprovalListPage /></RequirePermission>
               } />
               <Route path="/petty-cash/:id/edit" element={
-                <RequirePermission menuCode="MENU_PETTY_CASH_CREATE" action="update"><PettyCashCreatePage key="petty-cash-edit" /></RequirePermission>
+                <RequirePermission menuCode="MENU_PETTY_CASH_CREATE" action="edit"><PettyCashCreatePage key="petty-cash-edit" /></RequirePermission>
               } />
               <Route path="/petty-cash/:id" element={
                 <RequirePermission menuCode="MENU_PETTY_CASH_LIST" action="read"><PettyCashDetailPage /></RequirePermission>

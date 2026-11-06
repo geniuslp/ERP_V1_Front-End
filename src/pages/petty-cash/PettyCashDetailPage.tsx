@@ -117,7 +117,9 @@ const PettyCashDetailPage: React.FC = () => {
   useEffect(() => { fetchPc() }, [id])
 
   const isOwner = pc && user && String(pc.requested_by) === String(user.id)
-  const canEditDoc = isOwner && (pc?.status === 'DRAFT' || pc?.status === 'REJECTED') && can('MENU_PETTY_CASH_CREATE', 'update')
+  // Edit rule: the "edit" permission on the create menu (Permission Matrix) AND the document check — only the creator,
+  // and never once the document is APPROVED (or CANCELLED).
+  const canEditDoc = isOwner && (pc?.status === 'DRAFT' || pc?.status === 'PENDING_APPROVAL' || pc?.status === 'REJECTED') && can('MENU_PETTY_CASH_CREATE', 'edit')
   const canDeleteDoc = isOwner && pc?.status === 'DRAFT'
   const canApproveHere = isAssignedApprover && can(APPROVAL_MENU_CODE, 'write')
 
@@ -366,7 +368,7 @@ const PettyCashDetailPage: React.FC = () => {
               <Button danger icon={<StopOutlined />} onClick={handleDelete}>ลบ</Button>
             )}
             {(pc?.status === 'DRAFT' || pc?.status === 'REJECTED') && isOwner && (
-              <PermissionButton menuCode="MENU_PETTY_CASH_CREATE" action={pc.status === 'DRAFT' ? 'write' : 'update'} type="primary" onClick={handleSubmit}>
+              <PermissionButton menuCode="MENU_PETTY_CASH_CREATE" action={pc.status === 'DRAFT' ? 'write' : 'edit'} type="primary" onClick={handleSubmit}>
                 ส่งอนุมัติ
               </PermissionButton>
             )}

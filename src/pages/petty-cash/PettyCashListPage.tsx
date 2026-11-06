@@ -164,7 +164,7 @@ const PettyCashListPage: React.FC = () => {
       width: 130,
       render: (_: unknown, r) => {
         const isOwner = user && String(r.requested_by) === String(user.id)
-        const canEdit = isOwner && (r.status === 'DRAFT' || r.status === 'REJECTED')
+        const canEdit = isOwner && (r.status === 'DRAFT' || r.status === 'PENDING_APPROVAL' || r.status === 'REJECTED')
         return (
           <Space size={4}>
             <Button type="link" icon={<EyeOutlined />} size="small" onClick={() => navigate(`/petty-cash/${r.id}`)}>

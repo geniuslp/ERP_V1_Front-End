@@ -24,18 +24,21 @@ const EFFECTIVE_FIELD: Record<PermissionAction, keyof EffectivePermission & `${s
   read: 'user_can_read',
   write: 'user_can_write',
   edit: 'user_can_update',
+  update: 'user_can_update', // alias of edit: some pages (petty cash) use action="update"
   delete: 'user_can_delete',
 }
 const EFFECTIVE_ROLE_FIELD: Record<PermissionAction, keyof EffectivePermission & `${string}_can_${string}`> = {
   read: 'role_can_read',
   write: 'role_can_write',
   edit: 'role_can_update',
+  update: 'role_can_update', // alias of edit: some pages (petty cash) use action="update"
   delete: 'role_can_delete',
 }
 const EFFECTIVE_DEPT_FIELD: Record<PermissionAction, keyof EffectivePermission & `${string}_can_${string}`> = {
   read: 'dept_can_read',
   write: 'dept_can_write',
   edit: 'dept_can_update',
+  update: 'dept_can_update', // alias of edit: some pages (petty cash) use action="update"
   delete: 'dept_can_delete',
 }
 

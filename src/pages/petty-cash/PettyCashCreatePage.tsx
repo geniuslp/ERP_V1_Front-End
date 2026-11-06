@@ -25,6 +25,8 @@ import type { CreatePettyCashRequest, PettyCashLineForm, PettyCashLineOptions, P
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 const MENU_CODE = 'MENU_PETTY_CASH_CREATE'
+// Statuses a saved document can still be edited in (creator only). APPROVED and CANCELLED are locked.
+const EDITABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED']
 
 // Single test-mode switch. false = real API (POST/PUT /petty-cash, POST /petty-cash/:id/submit, real
 // validation, real doc number). true = nothing is saved/submitted, validation is skipped, fake doc no.
@@ -118,6 +120,8 @@ const PettyCashCreatePage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [docStatus, setDocStatus] = useState<string>('DRAFT')
+  // Edit rule: only the creator may edit a saved document (and never once APPROVED / CANCELLED).
+  const [isDocOwner, setIsDocOwner] = useState(true)
 
   const [pcNo, setPcNo] = useState('')
   const [pcDate, setPcDate] = useState<string>(dayjs().format('YYYY-MM-DD'))
@@ -175,8 +179,12 @@ const PettyCashCreatePage: React.FC = () => {
     setLoading(true)
     try {
       const pc = await pettyCashService.get(accessToken, docId)
-      if (pc.status !== 'DRAFT' && pc.status !== 'REJECTED') {
-        message.warning('แก้ไขได้เฉพาะเอกสารสถานะ ร่าง หรือ ถูกปฏิเสธ เท่านั้น')
+      const owner = !currentUser || String(pc.requested_by) === String(currentUser.id)
+      setIsDocOwner(owner)
+      if (!owner) {
+        message.warning('แก้ไขได้เฉพาะผู้สร้างเอกสารเท่านั้น')
+      } else if (!EDITABLE_STATUSES.includes(pc.status)) {
+        message.warning('ไม่สามารถแก้ไขเอกสารที่อนุมัติแล้วหรือยกเลิกแล้วได้')
       }
       setDocStatus(pc.status)
       setPcNo(pc.pc_no ?? '')
@@ -273,7 +281,7 @@ const PettyCashCreatePage: React.FC = () => {
     return true
   }
 
-  const canEdit = !docIdEff || docStatus === 'DRAFT' || docStatus === 'REJECTED'
+  const canEdit = !docIdEff || (isDocOwner && EDITABLE_STATUSES.includes(docStatus))
 
   // Exactly the line keys the backend contract lists — no qty / unit_price / discount / wht_rate.
   const buildLinesPayload = () => items.filter((r) => !r.isNew).map((r) => ({
@@ -476,6 +484,15 @@ const PettyCashCreatePage: React.FC = () => {
     // TEMPORARY: validation is skipped in mock mode so the popup can be reviewed with an empty form.
     if (!PETTY_CASH_MOCK_SAVE && !validateForSubmit()) return
     setConfirmOpen(true)
+  }
+
+  // A document that is already waiting for approval: save the edits in place. The existing approval request
+  // continues (status and approver are not changed), so there is nothing to confirm or re-submit.
+  const handleSavePending = async () => {
+    if (submitting || submittingYes) return
+    if (!validateForSubmit()) return
+    const saved = await saveDocument(true, true)
+    if (saved && docIdEff != null) navigate(`/petty-cash/${docIdEff}`)
   }
 
   // Yes: no save/submit yet — close this popup and open the approver picker.
@@ -905,7 +922,7 @@ const PettyCashCreatePage: React.FC = () => {
             action={isEdit ? 'edit' : 'write'}
             type="primary"
             icon={<SaveOutlined />}
-            onClick={openConfirm}
+            onClick={isEdit && docStatus === 'PENDING_APPROVAL' ? handleSavePending : openConfirm}
             disabled={!canEdit || submitting}
           >
             บันทึก
