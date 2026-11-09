@@ -107,8 +107,10 @@ export const buildPettyCashPrintLines = (lines: NonNullable<PettyCashRequisition
 
 const MM_TO_PX = 96 / 25.4
 // Same page budget as PRPrint.tsx: usable height of an A4 page and a safety buffer at the bottom.
-const PAGE_H_MM = 275
-const BOTTOM_BUFFER_MM = 8
+// .pcp-page is 297mm tall with 6mm top + 12mm bottom padding => 279mm usable. Keep only a small
+// safety buffer (4mm); the old 275/8 budget wasted ~12mm and pushed a 7-line document onto 2 pages.
+const PAGE_H_MM = 279
+const BOTTOM_BUFFER_MM = 4
 
 const CSS = `
   .pcp-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
