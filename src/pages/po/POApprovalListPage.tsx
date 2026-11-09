@@ -1,3 +1,4 @@
+import TableScrollEnd from '../../components/common/TableScrollEnd'
 import React, { useState, useEffect } from 'react'
 import { Table, Select, Input, Button, Space, Badge, Grid, Pagination, Spin, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
@@ -245,6 +246,7 @@ const POApprovalListPage: React.FC = () => {
           </div>
         </Spin>
       ) : (
+        <TableScrollEnd>
         <Table
           rowKey="po_id"
           className="po-approval-table"
@@ -268,6 +270,7 @@ const POApprovalListPage: React.FC = () => {
           size="small"
           style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}
         />
+        </TableScrollEnd>
       )}
     </div>
   )

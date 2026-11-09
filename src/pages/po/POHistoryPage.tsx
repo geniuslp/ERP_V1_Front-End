@@ -1,3 +1,4 @@
+import TableScrollEnd from '../../components/common/TableScrollEnd'
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Button, Space, message, Tag, Typography, Tooltip, Popconfirm, Select, Input } from 'antd'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
@@ -490,6 +491,7 @@ const POHistoryPage: React.FC = () => {
           />
         </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} style={{ marginLeft: 16 }} />
+        <TableScrollEnd>
         <Table
           rowKey="po_id"
           loading={loading}
@@ -510,6 +512,7 @@ const POHistoryPage: React.FC = () => {
             onChange: (p, l) => { setPage(p); setLimit(l) },
           }}
         />
+        </TableScrollEnd>
       </Card>
     </div>
   )
