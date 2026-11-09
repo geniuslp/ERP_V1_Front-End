@@ -131,7 +131,10 @@ creation/submit time and stored as `memo.approver_id`.
 Memo, i.e. `purchase_order.approver_id`, **NOT purely role-based**. Flow:
 `DRAFT → PENDING_APPROVAL → APPROVED / REJECTED`. Approved POs can be edited within 1 year via
 `PUT /po/:id/edit-approved` (reason is mandatory) — this transitions the PO to
-`PENDING_REAPPROVAL` and routes it back to the **same** original approver, not a newly picked one.
+`PENDING_REAPPROVAL`. **Approver rule changed 2026-11-05 (supersedes "always the same original approver"):** the
+edit form's approver Select is editable and `approver_id` is sent with `PUT /po/:id/edit-approved`; leaving it unchanged
+routes back to the original approver, picking another eligible approver moves the re-approval to them (backend updates
+`purchase_order.approver_id` and `approval_request.assigned_to`).
 
 **`approval_delegation` table** — columns: `id, doc_type (nullable, NULL = applies to all doc
 types), user_id, reason, created_at, created_by`. This is the "extra approver" mechanism,

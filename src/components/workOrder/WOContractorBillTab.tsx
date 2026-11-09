@@ -23,16 +23,28 @@ const FIELD_SPAN = { xs: 24, sm: 12, md: 6 }
 type BillType = 'ADV' | 'PROGRESS' | 'RETENTION'
 type BillStatus = 'DRAFT' | 'SAVED'
 
-const BILL_TYPE_OPTIONS: { value: BillType; label: string }[] = [
-  { value: 'ADV', label: 'Advance Payment' },
-  { value: 'PROGRESS', label: 'Work Progress' },
-  { value: 'RETENTION', label: 'Retention' },
-]
-const BILL_TYPE_LABEL: Record<BillType, string> = {
+// Same stored codes for WO and PO; only the display names differ (PO: ADV = Downpayment, PROGRESS = Progress Payment,
+// RETENTION = Test & Commissioning).
+const BILL_TYPE_LABEL_WO: Record<BillType, string> = {
   ADV: 'Advance Payment',
   PROGRESS: 'Work Progress',
   RETENTION: 'Retention',
 }
+const BILL_TYPE_LABEL_PO: Record<BillType, string> = {
+  ADV: 'Downpayment',
+  PROGRESS: 'Progress Payment (Custom Made)',
+  RETENTION: 'Test & Commissioning',
+}
+// Petty cash has no advance payment: only PROGRESS / RETENTION can be chosen.
+const BILL_TYPE_LABEL_PC: Record<BillType, string> = {
+  ADV: 'Advance Payment',
+  PROGRESS: 'Progress Payment',
+  RETENTION: 'Retention',
+}
+const billTypeOptions = (labels: Record<BillType, string>, noAdvance = false): { value: BillType; label: string }[] =>
+  (['ADV', 'PROGRESS', 'RETENTION'] as BillType[])
+    .filter((value) => !(noAdvance && value === 'ADV'))
+    .map((value) => ({ value, label: labels[value] }))
 
 // หัก ณ ที่จ่าย: type picks the default rate; the rate itself stays editable.
 const WHT_TYPE_OPTIONS = [
@@ -84,11 +96,16 @@ interface Props {
   // Called after a bill was saved, with the record id.
   onBillSaved?: (recordId: number) => void
   woId?: number
+  // Which document the log belongs to. PC (petty cash) has no advance payment and no VAT.
+  kind?: 'WO' | 'PO' | 'PC'
   supplierName?: string
   creditTermDays?: number | null
   contractAmount: number
   // Contract value minus the advance: the base of "เงินงวดนี้" %. Falls back to contractAmount until the summary loads.
   paymentBase?: number
+  // The contract's advance and what earlier SAVED bills already deducted: a progress bill deducts the rest automatically.
+  advanceTotal?: number
+  advanceDeducted?: number
   // Tab 1 table values, used only as defaults for a new bill.
   defaultAdvPct?: number | null
   defaultRetentionPct?: number | null
@@ -152,7 +169,8 @@ interface BillForm {
   progress_pct: number
   progress_note: string
   adv_pct: number
-  adv_deduct_pct: number
+  // 3. หักเงินจ่ายล่วงหน้า: null = automatic (the advance still to be deducted, at most this bill's installment); a number = typed by hand.
+  adv_deduct_amount: number | null
   vat_pct: number
   // Row 5 (เงินประกันผลงาน): EVERY = retention_pct of this bill's amount; ONCE = contract value x retention_pct split evenly over
   // every installment of the contract (installments of the WO + the advance). retention_pct is the typed %, in both modes.
@@ -165,19 +183,29 @@ interface BillForm {
 }
 
 const WOContractorBillTab: React.FC<Props> = ({
-  logId, onEnsureLog, onBillSaved, woId, supplierName, creditTermDays, contractAmount, paymentBase, defaultAdvPct,
+  logId, onEnsureLog, onBillSaved, woId, kind, supplierName, creditTermDays, contractAmount, advanceTotal, advanceDeducted, defaultAdvPct,
 }) => {
-  const installmentBase = paymentBase && paymentBase > 0 ? paymentBase : contractAmount
+  // No woId = this tab belongs to a PO (WOContractorLogPanel passes woId only for a work order).
+  const isPC = kind === 'PC'
+  const isPO = !woId && !isPC
+  // VAT is not used for work orders or petty cash: the row is hidden and always 0. Only PO bills still carry it.
+  const noVat = !isPO
+  const BILL_TYPE_LABEL = isPC ? BILL_TYPE_LABEL_PC : isPO ? BILL_TYPE_LABEL_PO : BILL_TYPE_LABEL_WO
+  const BILL_TYPE_OPTIONS = billTypeOptions(BILL_TYPE_LABEL, isPC)
+  // "เงินงวดนี้" % is always a % of the FULL contract value (30% of 1,000,000 = 300,000); the advance is taken back by row 3.
+  const installmentBase = contractAmount
+  // Advance not yet deducted by earlier saved bills.
+  const advanceRemaining = Math.max(round2((advanceTotal ?? 0) - (advanceDeducted ?? 0)), 0)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const headers = { Authorization: `Bearer ${accessToken}` }
 
   // Defaults for the next new bill (set after a save and when the list loads): the installment after the highest
   // saved one, and PROGRESS once an advance bill exists.
-  const nextDefaults = useRef<{ bill_type: BillType; installment_no: number }>({ bill_type: 'ADV', installment_no: 1 })
+  const nextDefaults = useRef<{ bill_type: BillType; installment_no: number }>({ bill_type: kind === 'PC' ? 'PROGRESS' : 'ADV', installment_no: 1 })
   const computeNext = (list: { bill_type: BillType; installment_no: number | null }[]) => {
     const maxNo = list.reduce((m, b) => Math.max(m, b.installment_no ?? 0), 0)
     nextDefaults.current = {
-      bill_type: list.some((b) => b.bill_type === 'ADV') ? 'PROGRESS' : 'ADV',
+      bill_type: kind === 'PC' || list.some((b) => b.bill_type === 'ADV') ? 'PROGRESS' : 'ADV',
       installment_no: maxNo + 1,
     }
   }
@@ -194,15 +222,15 @@ const WOContractorBillTab: React.FC<Props> = ({
     progress_pct: 0,
     progress_note: '',
     adv_pct: defaultAdvPct ?? 0,
-    adv_deduct_pct: 0,
-    vat_pct: 7,
+    adv_deduct_amount: null,
+    vat_pct: noVat ? 0 : 7,
     retention_mode: 'EVERY',
     retention_pct: 0, // retention is only deducted once the user types a % / amount (not pre-filled from the WO terms)
     retention_amount: null,
     wht_type: WHT_TYPE_OPTIONS[0].value,
     wht_pct: WHT_TYPE_OPTIONS[0].rate,
     other_amount: 0,
-  }), [supplierName, creditTermDays, defaultAdvPct])
+  }), [supplierName, creditTermDays, defaultAdvPct, noVat])
 
   const [bills, setBills] = useState<BillListItem[]>([])
   const [billId, setBillId] = useState<number | null>(null)
@@ -286,11 +314,14 @@ const WOContractorBillTab: React.FC<Props> = ({
       const l = byCode.get(d.code)
       return { ...d, percent: l?.percent ?? null, amount: Number(l?.amount ?? 0), strong: false }
     }).filter((r) =>
+      // Petty cash never has an advance or VAT; WO bills have no VAT (an old bill that still carries one keeps showing it).
+      !(isPC && ['ADV', 'ADV_DEDUCT', 'VAT'].includes(r.code)) &&
+      !(noVat && r.code === 'VAT' && r.amount === 0) &&
       // Only what happened in this kind of payment: its own lines, the tax lines that were applied, and the totals.
       // A line that does not belong to the type is still shown when it carries an amount, so the totals stay explainable.
       r.strong || relevant.includes(r.code) || r.amount !== 0,
     )
-  }, [detail])
+  }, [detail, isPC, noVat])
 
   const startNew = () => {
     setTried(false)
@@ -321,14 +352,16 @@ const WOContractorBillTab: React.FC<Props> = ({
           ? Number(line('PROGRESS')?.percent)
           : pctOfContract(Number(line('PROGRESS')?.amount ?? 0)),
         adv_pct: Number(line('ADV')?.percent ?? 0),
-        adv_deduct_pct: Number(line('ADV_DEDUCT')?.percent ?? 0),
-        vat_pct: Number(line('VAT')?.percent ?? 0),
+        // A saved bill keeps the amount it was saved with (never re-computed from today's advance balance).
+        adv_deduct_amount: Number(line('ADV_DEDUCT')?.amount ?? 0),
+        vat_pct: noVat ? 0 : Number(line('VAT')?.percent ?? 0),
         retention_mode: d.retention_mode === 'ONCE' ? 'ONCE' : 'EVERY',
         retention_pct: Number(line('RETENTION')?.percent ?? 0),
         // A saved amount that doesn't follow its mode's formula was typed by hand: keep it as typed.
         retention_amount: (() => {
           const amt = Number(line('RETENTION')?.amount ?? 0)
-          const base = Number(line('ADV')?.amount ?? 0) + Number(line('PROGRESS')?.amount ?? 0)
+          // Retention base = what the bill is worth after the advance is taken back (= รวมเป็นเงิน before VAT).
+          const base = Number(line('ADV')?.amount ?? 0) + Number(line('PROGRESS')?.amount ?? 0) - Number(line('ADV_DEDUCT')?.amount ?? 0)
           const mode = d.retention_mode === 'ONCE' ? 'ONCE' : 'EVERY'
           return Math.abs(amt - formulaRetention(mode, Number(line('RETENTION')?.percent ?? 0), base)) > 0.01 ? amt : null
         })(),
@@ -362,22 +395,28 @@ const WOContractorBillTab: React.FC<Props> = ({
     // An Advance bill has no installment (เงินงวดนี้): whatever sits in those fields is ignored, so it never reaches Contract.
     const progress = f.bill_type === 'ADV' ? 0 : f.progress_amount
     const base = adv + progress
-    const advDeduct = round2(base * f.adv_deduct_pct / 100)
+    // Only a progress bill deducts the advance, automatically: what is still to be deducted, at most this installment.
+    const advDeduct = f.adv_deduct_amount != null
+      ? round2(f.adv_deduct_amount)
+      : f.bill_type === 'PROGRESS' ? round2(Math.min(advanceRemaining, progress)) : 0
     const afterDeduct = base - advDeduct
-    const vat = round2(afterDeduct * f.vat_pct / 100)
+    const vat = noVat ? 0 : round2(afterDeduct * f.vat_pct / 100)
     const subtotal = round2(afterDeduct + vat)
     // 5. retention: the % and the amount are both typeable; the one typed last wins and the other follows.
-    const retention = f.retention_amount ?? formulaRetention(f.retention_mode, f.retention_pct, base)
+    // The base is the bill AFTER the advance is taken back (300,000 installment - 200,000 advance = 100,000 -> 5% = 5,000),
+    // so the retention of all bills adds up to the % of the contract value (the advance bill itself is retained too).
+    const retentionBase = afterDeduct
+    const retention = f.retention_amount ?? formulaRetention(f.retention_mode, f.retention_pct, retentionBase)
     // EVERY: the % of this bill (follows a typed amount). ONCE: the typed % of the whole contract, kept as typed.
     const retentionPct = f.retention_mode === 'ONCE'
       ? f.retention_pct
       : f.retention_amount != null
-        ? (base > 0 ? round2((f.retention_amount / base) * 100) : 0)
+        ? (retentionBase > 0 ? round2((f.retention_amount / retentionBase) * 100) : 0)
         : f.retention_pct
     const wht = 0 // หัก ณ ที่จ่าย row removed from the form (the 0 line is still sent so the API contract is unchanged)
     const net = round2(subtotal - retention - wht - f.other_amount)
     return { adv, progress, advDeduct, beforeVat: round2(afterDeduct), vat, subtotal, retention, retentionPct, wht, net }
-  }, [f, contractAmount, installmentCount])
+  }, [f, contractAmount, installmentCount, noVat, advanceRemaining])
 
   const invoiceTotal = useMemo(() => round2(invoices.reduce((s, r) => s + (r.amount ?? 0), 0)), [invoices])
   // "มูลค่า/INV ที่เบิก" follows the summary amount BEFORE VAT while there is a single invoice nobody typed an amount into.
@@ -490,7 +529,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       key: 'progress',
       label: (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flexShrink: 0 }}>2. เงินงวดนี้ งวดที่</span>
+          <span style={{ flexShrink: 0 }}>{isPC ? '1.' : '2.'} เงินงวดนี้ งวดที่</span>
           {/* One joined field: installment number + free-text detail */}
           <Space.Compact size="small" style={{ flex: 1, minWidth: 0 }}>
             <InputNumber<number>
@@ -531,9 +570,30 @@ const WOContractorBillTab: React.FC<Props> = ({
     },
     {
       key: 'advDeduct',
-      label: '3. หักเงินจ่ายล่วงหน้า',
-      pct: pctInput(f.adv_deduct_pct, (v) => patch({ adv_deduct_pct: v })),
-      amount: amountText(calc.advDeduct),
+      label: (
+        <div>
+          <div>3. หักเงินจ่ายล่วงหน้า</div>
+          {(advanceTotal ?? 0) > 0 && (
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              Advance ทั้งสัญญา {money(advanceTotal ?? 0)} · หักไปแล้ว {money(advanceDeducted ?? 0)} · หักบิลนี้ {money(calc.advDeduct)} · เหลือหลังบิลนี้ {money(Math.max(round2(advanceRemaining - calc.advDeduct), 0))}
+            </div>
+          )}
+        </div>
+      ),
+      // % of the contract value (same basis as "เงินงวดนี้"), follows the amount.
+      pct: <span style={{ fontVariantNumeric: 'tabular-nums' }}>{contractAmount > 0 ? money(round2((calc.advDeduct / contractAmount) * 100)) : money(0)} %</span>,
+      amount: (
+        <InputNumber<number>
+          style={{ width: 180 }}
+          min={0}
+          precision={2}
+          formatter={moneyFormatter}
+          parser={moneyParser}
+          controls={false}
+          value={calc.advDeduct}
+          onChange={(v) => patch({ adv_deduct_amount: v ?? 0 })}
+        />
+      ),
     },
     {
       key: 'vat',
@@ -547,7 +607,7 @@ const WOContractorBillTab: React.FC<Props> = ({
       label: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Space wrap>
-            <span>5. หักเงินประกันผลงาน</span>
+            <span>{isPC ? '2.' : noVat ? '4.' : '5.'} หักเงินประกันผลงาน</span>
             <Select<'EVERY' | 'ONCE'>
               size="small"
               style={{ width: 130 }}
@@ -579,7 +639,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     },
     {
       key: 'other',
-      label: '6. หักอื่นๆ',
+      label: `${isPC ? '3.' : noVat ? '5.' : '6.'} หักอื่นๆ`,
       amount: (
         <InputNumber<number>
           style={{ width: 180 }}
@@ -623,7 +683,7 @@ const WOContractorBillTab: React.FC<Props> = ({
     lines: [
       { line_code: 'ADV', percent: f.adv_pct, amount: calc.adv },
       { line_code: 'PROGRESS', percent: isAdv ? 0 : f.progress_pct, amount: calc.progress },
-      { line_code: 'ADV_DEDUCT', percent: f.adv_deduct_pct, amount: calc.advDeduct },
+      { line_code: 'ADV_DEDUCT', percent: contractAmount > 0 ? round2((calc.advDeduct / contractAmount) * 100) : 0, amount: calc.advDeduct },
       { line_code: 'VAT', percent: f.vat_pct, amount: calc.vat },
       { line_code: 'RETENTION', percent: calc.retentionPct, amount: calc.retention },
       { line_code: 'WHT', percent: 0, amount: 0 },
@@ -704,7 +764,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   return (
     <div>
       <div style={subCardStyle}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>ประวัติการเบิกจ่ายหนังสือสั่งจ้าง</div>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>{isPC ? 'ประวัติการเบิกจ่ายเงินสดย่อย' : 'ประวัติการเบิกจ่ายหนังสือสั่งจ้าง'}</div>
         <Table<InvoiceHistoryRow>
           rowKey={(r) => `${r.bill_id}-${r.invoice_no ?? ''}-${r.invoice_date ?? ''}-${r.pay_date ?? ''}`}
           size="small"
@@ -868,7 +928,10 @@ const WOContractorBillTab: React.FC<Props> = ({
           rowKey="key"
           size="small"
           pagination={false}
-          dataSource={summaryRows}
+          // Petty cash: no advance (1, 3) and no VAT (4) rows. Work orders: no VAT row.
+          dataSource={isPC
+            ? summaryRows.filter((r) => !['adv', 'advDeduct', 'vat'].includes(r.key))
+            : noVat ? summaryRows.filter((r) => r.key !== 'vat') : summaryRows}
           columns={summaryColumns}
         />
       </div>

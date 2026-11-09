@@ -1,6 +1,8 @@
 import { BLOCK_CARD_STYLE } from '@/constants/blockStyle'
 import FormattedNote from '@/components/common/FormattedNote'
 import React, { useState, useEffect } from 'react'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 import {
   Button, Descriptions, Table, Alert, Spin,
   Modal, Form, Input, Popconfirm, message, Space, Grid,
@@ -47,6 +49,47 @@ const cardStyle: React.CSSProperties = {
   background: '#fff',
   padding: 24,
   marginBottom: 16,
+}
+
+// Same local react-resizable pattern as POHistoryPage.tsx: only header cells that receive
+// width + onResize (via onHeaderCell) get a drag handle.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) return <th {...restProps} />
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
+const LINE_COL_DEFAULTS: Record<string, number> = {
+  line_no: 70, cost_code: 260, mat_code: 150, mat_name: 340,
+  qty_ordered: 120, unit_price: 130, amount: 150, remarks: 200,
+}
+
+// "FS01101 — Stock": the display Cost Code plus the cost subgroup name when the API sent one.
+const costCodeLabel = (r: { cost_code?: string | null; cost_name?: string | null; cost_subgroup_name?: string | null }) => {
+  const code = r.cost_code ? formatCostCodeDisplay(r.cost_code) : ''
+  const name = (r.cost_name || r.cost_subgroup_name || '').trim()
+  return name ? `${code} — ${name}` : code
 }
 
 const formatSize = (b: number) =>
@@ -251,29 +294,44 @@ const POApprovalDetailPage: React.FC = () => {
     Boolean(po?.can_edit_approved) ||
     (po?.status === 'PENDING_REAPPROVAL' && withinEditApprovedWindow)
 
+  const [colW, setColW] = useState<Record<string, number>>({})
+  const rz = (key: string) => {
+    const width = colW[key] ?? LINE_COL_DEFAULTS[key]
+    return {
+      width,
+      onHeaderCell: () => ({
+        width,
+        onResize: (_e: React.SyntheticEvent, d: ResizeCallbackData) =>
+          setColW((prev) => ({ ...prev, [key]: Math.max(60, d.size.width) })),
+      }),
+    }
+  }
+
   const lineColumns: ColumnsType<POLine> = [
     {
       title: 'ลำดับ',
       dataIndex: 'line_no',
       key: 'line_no',
-      width: 70,
+      ...rz('line_no'),
     },
     {
       title: 'Cost Code',
       key: 'cost_code',
+      ...rz('cost_code'),
       render: (_: unknown, r: POLine) =>
-        r.cost_code ? <span>{formatCostCodeDisplay(r.cost_code)}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+        r.cost_code ? <span>{costCodeLabel(r)}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
     },
     {
       title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
       key: 'mat_code',
-      width: 130,
+      ...rz('mat_code'),
       render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span>,
     },
     {
       title: 'ชื่อวัสดุ',
       key: 'mat_name',
+      ...rz('mat_name'),
       render: (_: unknown, r: POLine) => (
         <div>
           <div>{formatItemLabel(r.mat_name, r.spec, r.brand_name) || '—'}</div>
@@ -286,7 +344,7 @@ const POApprovalDetailPage: React.FC = () => {
     {
       title: 'จำนวนสั่ง',
       key: 'qty_ordered',
-      width: 120,
+      ...rz('qty_ordered'),
       render: (_: unknown, r: POLine) =>
         `${r.qty_ordered.toLocaleString()} ${r.unit_name ?? ''}`,
     },
@@ -294,19 +352,20 @@ const POApprovalDetailPage: React.FC = () => {
       title: 'ราคา/หน่วย',
       dataIndex: 'unit_price',
       key: 'unit_price',
-      width: 130,
+      ...rz('unit_price'),
       render: (v: number) => `${v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'มูลค่า',
       dataIndex: 'amount',
       key: 'amount',
-      width: 150,
+      ...rz('amount'),
       render: (v: number) => `${v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'หมายเหตุ',
       key: 'remarks',
+      ...rz('remarks'),
       // The line's remark is saved in `description` (what the PO form's remark box sends); `remarks` is the older column.
       render: (_: unknown, r: POLine) => <FormattedNote value={r.description ?? r.remarks} empty="—" />,
     },
@@ -522,7 +581,7 @@ const POApprovalDetailPage: React.FC = () => {
                 <div key={r.line_no} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: '#64748b' }}>
                     <span>ลำดับ {r.line_no}</span>
-                    <span>{r.cost_code ? formatCostCodeDisplay(r.cost_code) : '-'}</span>
+                    <span>{r.cost_code ? costCodeLabel(r) : '-'}</span>
                   </div>
                   <div style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 4 }}>{r.mat_code}</div>
                   <div style={{ fontWeight: 600, marginTop: 2, overflowWrap: 'anywhere' }}>
@@ -554,7 +613,8 @@ const POApprovalDetailPage: React.FC = () => {
             columns={lineColumns}
             pagination={false}
             size="small"
-            scroll={{ x: 900 }}
+            scroll={{ x: Object.keys(LINE_COL_DEFAULTS).reduce((a, k) => a + (colW[k] ?? LINE_COL_DEFAULTS[k]), 0) }}
+            components={{ header: { cell: ResizableTitle } }}
             locale={{ emptyText: 'ไม่มีรายการ' }}
           />
         )}

@@ -40,6 +40,19 @@ const TERM_LABEL: Record<ItemType, string> = {
   ADVANCE: 'Advance',
   RETENTION: 'Retention',
 }
+// A PO uses the same three rows under the PO bill-type names (see BILL_TYPE_LABEL_PO in WOContractorBillTab).
+const TERM_LABEL_PO: Record<ItemType, string> = {
+  CONTRACT: 'Progress Payment (Custom Made)',
+  ADVANCE: 'Downpayment',
+  RETENTION: 'Test & Commissioning',
+}
+
+// Petty cash: no advance, so only the contract and retention rows are shown.
+const TERM_LABEL_PC: Record<ItemType, string> = {
+  CONTRACT: 'Progress Payment',
+  ADVANCE: 'Advance',
+  RETENTION: 'Retention',
+}
 
 const emptyTerms = (): TermRow[] => [
   { item_type: 'CONTRACT', percent: 100, amount: null, accumulate: null, balance: null },
@@ -65,7 +78,10 @@ const errText = (e: any, fallback: string) =>
   e?.response?.data?.message || e?.response?.data?.error || fallback
 
 interface Props {
-  woId: number
+  // Exactly one of woId / poId. A PO uses the same log, bills, invoices and attachments (the API keys them on log_id).
+  woId?: number
+  poId?: number
+  pcId?: number
   // Called with the contract money paid through all SAVED bills (ex VAT / WHT) and the WO contract value (on load and after every save).
   // retentionAmount = the WO's total retention (เงินประกัน, contract value × retention %), held back and not payable yet.
   onBillsPaidChange?: (paid: number, contractAmount: number, retentionAmount: number) => void
@@ -76,7 +92,13 @@ interface Props {
  * (FinancePaymentDetailPage). Tab 1 ข้อมูลเอกสาร (Contract table / ประเภทวางบิล via two buttons) + tab 2 แนบไฟล์ PDF/JPEG. One record per WO: it is looked up
  * by WO (GET /wo-contractor-log/by-wo/:woId) and created on the first save.
  */
-const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
+const WOContractorLogPanel: React.FC<Props> = ({ woId: woIdProp, poId, pcId, onBillsPaidChange }) => {
+  const isPO = !!poId
+  const isPC = !!pcId
+  // The id of the document this panel belongs to (WO, PO or petty cash); the API paths below differ only by the by-/summary prefix.
+  const woId = (isPC ? pcId : isPO ? poId : woIdProp) as number
+  const docKey = isPC ? { pc_id: pcId } : isPO ? { po_id: poId } : { wo_id: woIdProp }
+  const pathKind = isPC ? 'pc' : isPO ? 'po' : 'wo'
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const headers = { Authorization: `Bearer ${accessToken}` }
   const [form] = Form.useForm()
@@ -93,6 +115,8 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   // WO-derived values tab 2 needs (supplier for PAY TO, credit term from supplier.payment_terms).
   // Contract value after the advance is taken out: the base of every installment %.
   const [paymentBase, setPaymentBase] = useState<number | null>(null)
+  // The contract's advance (amount) and how much of it earlier saved bills already deducted: the bill form deducts the rest.
+  const [advanceInfo, setAdvanceInfo] = useState<{ total: number; deducted: number }>({ total: 0, deducted: 0 })
   const [billDefaults, setBillDefaults] = useState<{ adv: number | null; ret: number | null }>({ adv: null, ret: null })
   const [woCtx, setWoCtx] =useState<{ supplier?: string; credit?: number | null; contractAmount?: number }>({})
 
@@ -111,7 +135,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
       setTerms(emptyTerms())
       setPjCurrent(undefined)
       try {
-        const found = await axios.get(`${BASE_URL}/wo-contractor-log/by-wo/${woId}`, { headers })
+        const found = await axios.get(`${BASE_URL}/wo-contractor-log/by-${pathKind}/${woId}`, { headers })
         const existingId: number | undefined = found.data?.data?.id
         if (existingId) {
           // Saved record: WO info is live-read by the API, nothing is stored twice.
@@ -133,9 +157,28 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
           const saved: TermRow[] = Array.isArray(d.terms) ? d.terms : []
           setTerms(emptyTerms().map((t) => saved.find((s) => s.item_type === t.item_type) ?? t))
         } else {
-          // Nothing saved yet: prefill from the work order (supplier, project, contract description, contract value).
-          const res = await axios.get(`${BASE_URL}/work-order/${woId}`, { headers })
-          const wo = res.data?.data
+          // Nothing saved yet: prefill from the work order (supplier, project, contract description, contract value)
+          // or, for a PO, from the PO (value before VAT after discount).
+          const res = await axios.get(`${BASE_URL}/${isPC ? 'petty-cash' : isPO ? 'po' : 'work-order'}/${woId}`, { headers })
+          const wo = isPC
+            ? (() => {
+                // Petty cash: payee = the named payee or the requester; the project sits on the lines when the header has none.
+                const pc = res.data?.data
+                return pc && {
+                  ...pc,
+                  wo_no: pc.pc_no,
+                  supplier_name: pc.payee_name || pc.requested_by_name,
+                  project_code: pc.project_code ?? pc.lines?.[0]?.project_code,
+                  project_name: pc.project_name ?? pc.lines?.[0]?.project_name,
+                  contract_amount: Number(pc.total_amount ?? 0) - Number(pc.discount_amount ?? 0),
+                }
+              })()
+            : isPO
+              ? (() => {
+                  const po = res.data?.data
+                  return po && { ...po, wo_no: po.po_no, contract_amount: Number(po.total_amount ?? 0) - Number(po.discount_amount ?? 0) }
+                })()
+              : res.data?.data
           if (cancelled) return
           form.setFieldsValue({
             wo_no: wo?.wo_no,
@@ -173,12 +216,13 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   // Pulls the calculated rows; called on load and after a bill is saved (the totals change then).
   const loadSummary = async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/wo-contractor-log/summary/${woId}`, { headers })
+      const res = await axios.get(`${BASE_URL}/wo-contractor-log/${pathKind === 'wo' ? 'summary' : `summary-${pathKind}`}/${woId}`, { headers })
       const d = res.data?.data
       if (!d) return
       // The paid-vs-contract comparison outside this panel uses the full contract value, not the post-advance base.
       onBillsPaidChange?.(Number(d.bills_paid_total ?? 0), Number(d.contract_total ?? d.contract?.amount ?? 0), Number(d.retention?.amount ?? 0))
       setPaymentBase(Number(d.payment_base ?? d.contract?.amount ?? 0))
+      setAdvanceInfo({ total: Number(d.advance?.amount ?? 0), deducted: Number(d.advance?.accumulate ?? 0) })
       // Credit term comes from the supplier even before the log record exists; keep a value already loaded from the record.
       setWoCtx((prev) => ({ ...prev, credit: prev.credit ?? d.credit_term_days ?? null }))
       // Tab 2's defaults (advance / retention %) come from the WO even while the table below stays empty.
@@ -199,7 +243,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   }
 
   const columns: ColumnsType<TermRow> = [
-    { title: 'รายการ (Item)', dataIndex: 'item_type', render: (t: ItemType) => TERM_LABEL[t], width: 130 },
+    { title: 'รายการ (Item)', dataIndex: 'item_type', render: (t: ItemType) => (isPC ? TERM_LABEL_PC : isPO ? TERM_LABEL_PO : TERM_LABEL)[t], width: isPO ? 230 : 130 },
     { title: '%', width: 130, render: (_, r) => numCell(r.item_type, 'percent', true) },
     { title: 'Amount', width: 170, render: (_, r) => numCell(r.item_type, 'amount') },
     { title: 'Accumulate (สะสม)', width: 170, render: (_, r) => numCell(r.item_type, 'accumulate') },
@@ -249,7 +293,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   // returns its id. Tab 2's บันทึกร่าง / บันทึก buttons call this before saving the bill, so tab 2 is the only place
   // that saves. Throws on failure (the caller shows the error).
   const ensureLog = async (): Promise<number> => {
-    const payload = { wo_id: woId, project_code: form.getFieldValue('project_code') ?? null, terms }
+    const payload = { ...docKey, project_code: form.getFieldValue('project_code') ?? null, terms }
     if (logId) {
       await axios.put(`${BASE_URL}/wo-contractor-log/${logId}`, payload, { headers })
       return logId
@@ -273,12 +317,12 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
     <Form autoComplete="off" form={form} layout="vertical">
       <Row gutter={[16, 0]}>
         <Col {...FIELD_SPAN}>
-          <Form.Item label={<span style={labelStyle}>เอกสารหนังสือสั่งจ้าง</span>} name="wo_no">
+          <Form.Item label={<span style={labelStyle}>{isPC ? 'เอกสารเงินสดย่อย' : isPO ? 'เอกสารใบสั่งซื้อ (PO)' : 'เอกสารหนังสือสั่งจ้าง'}</span>} name="wo_no">
             <Input style={fieldStyle} readOnly />
           </Form.Item>
         </Col>
         <Col {...FIELD_SPAN}>
-          <Form.Item label={<span style={labelStyle}>ผู้รับจ้าง</span>} name="supplier_name">
+          <Form.Item label={<span style={labelStyle}>{isPC ? 'ผู้ขอเบิก / ผู้รับเงิน' : isPO ? 'ผู้ขาย' : 'ผู้รับจ้าง'}</span>} name="supplier_name">
             <Input style={fieldStyle} readOnly placeholder="AUTO" />
           </Form.Item>
         </Col>
@@ -287,11 +331,13 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
             <Input style={fieldStyle} readOnly placeholder="AUTO" />
           </Form.Item>
         </Col>
-        <Col xs={24}>
-          <Form.Item label={<span style={labelStyle}>ลักษณะสัญญา</span>} name="contract_description">
-            <Input.TextArea style={fieldStyle} readOnly autoSize={{ minRows: 3 }} placeholder="AUTO" />
-          </Form.Item>
-        </Col>
+        {!isPO && !isPC && (
+          <Col xs={24}>
+            <Form.Item label={<span style={labelStyle}>ลักษณะสัญญา</span>} name="contract_description">
+              <Input.TextArea style={fieldStyle} readOnly autoSize={{ minRows: 3 }} placeholder="AUTO" />
+            </Form.Item>
+          </Col>
+        )}
       </Row>
 
       <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
@@ -304,7 +350,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
           rowKey="item_type"
           size="small"
           pagination={false}
-          dataSource={terms}
+          dataSource={isPC ? terms.filter((t) => t.item_type !== 'ADVANCE') : terms}
           columns={columns}
           className="wo-log-terms"
           scroll={{ x: 770 }}
@@ -320,12 +366,15 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
         logId={logId}
         onEnsureLog={ensureLog}
         onBillSaved={refreshCredit}
-        woId={woId}
+        woId={isPO || isPC ? undefined : woId}
+        kind={isPC ? 'PC' : isPO ? 'PO' : 'WO'}
         supplierName={woCtx.supplier}
         creditTermDays={woCtx.credit}
         // The bill's % -> amount always uses this work order's own contract value (not the editable Contract row).
         contractAmount={woCtx.contractAmount || (terms.find((t) => t.item_type === 'CONTRACT')?.amount ?? 0)}
         paymentBase={paymentBase ?? undefined}
+        advanceTotal={advanceInfo.total}
+        advanceDeducted={advanceInfo.deducted}
         defaultAdvPct={billDefaults.adv}
         defaultRetentionPct={billDefaults.ret}
       />
@@ -335,7 +384,7 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId, onBillsPaidChange }) => {
   const filesTab = (
     <div>
       {/* Files attached to the work order itself (WO create / edit page), read-only here; hidden when there are none. */}
-      {woId ? (
+      {woId && !isPO && !isPC ? (
         <div style={{ marginBottom: 20 }}>
           <WOAttachmentPanel woId={woId} readOnly hideWhenEmpty title="ไฟล์แนบจากหนังสือสั่งจ้าง" />
         </div>

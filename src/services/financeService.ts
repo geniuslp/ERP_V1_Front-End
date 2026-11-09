@@ -47,6 +47,9 @@ export const financeService = {
       params: {
         doc_type: params.doc_type,
         project_code: params.project_code || undefined,
+        supplier: params.supplier || undefined,
+        ap_voucher: params.ap_voucher || undefined,
+        requester: params.requester || undefined,
         status: params.status || undefined,
         search: params.search || undefined,
         page,

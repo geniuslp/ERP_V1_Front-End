@@ -63,6 +63,7 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_PR_APPROVAL: <CheckCircleOutlined />,
   MENU_PO_LINE_ITEMS: <SearchOutlined />,
   MENU_PO_MY: <UserOutlined />,
+  MENU_PO_REPORT: <FileTextOutlined />,
   MENU_PO_COST_BUDGET: <CalculatorOutlined />,
   MENU_WO_LIST: <SearchOutlined />,
   MENU_WO_CREATE: <PlusOutlined />,

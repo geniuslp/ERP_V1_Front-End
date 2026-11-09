@@ -244,6 +244,9 @@ const PettyCashCreatePage: React.FC = () => {
           line_vat: l.line_vat ?? 0,
           line_wht: l.line_wht ?? 0,
           line_net: l.line_net ?? amount,
+          // A saved VAT / WHT that differs from the automatic figure was typed by the user — keep it manual.
+          vat_manual: !!l.has_tax_invoice && Math.abs((l.line_vat ?? 0) - Math.round(amount * 7) / 100) > 0.005,
+          wht_manual: !!l.has_wht && Math.abs((l.line_wht ?? 0) - Math.round((l.wht_base_amount ?? amount) * (l.wht_rate ?? 0)) / 100) > 0.005,
         }
       }))
     } catch (err: any) {
@@ -307,6 +310,8 @@ const PettyCashCreatePage: React.FC = () => {
     wht_pay_date: r.wht_pay_date,
     invoice_no: r.invoice_no?.trim() ? r.invoice_no.trim() : null,
     invoice_date: r.invoice_date || null,
+    vat_override: r.has_tax_invoice && r.vat_manual ? r.line_vat : null,
+    wht_override: r.has_wht && r.wht_manual ? r.line_wht : null,
   }))
 
   // หมายเหตุผู้เบิก + at least one line are required at submit only, never for a DRAFT save.
@@ -933,8 +938,8 @@ const PettyCashCreatePage: React.FC = () => {
   )
 
   return (
-    <div style={{ display: 'flex' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ display: 'flex', minHeight: isNarrow ? undefined : 'calc(100vh - 112px)' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <PageHeader
           title={pcNo ? `ใบเบิกเงินสดย่อย ${pcNo}` : isEdit ? 'แก้ไขใบเบิกเงินสดย่อย' : 'สร้างใบเบิกเงินสดย่อย'}
           subtitle="เบิกเงินสดย่อยเพื่อซื้อ/เบิกจ่ายวัสดุสำหรับโครงการ — ไม่มีการตัด stock"
@@ -956,9 +961,10 @@ const PettyCashCreatePage: React.FC = () => {
         {/* Station card: the stepper only, full width. Last element on the page, outside the Tabs, so it
             is visible on both tabs. Sticky to the viewport bottom (window is the scroll container);
             on narrow widths it is a normal end-of-page card. */}
+        <div style={{ height: 16, flexShrink: 0 }} />
         <Card
           style={{
-            ...cardStyle, marginTop: 16, marginBottom: 8,
+            ...cardStyle, marginTop: 'auto', marginBottom: 8,
             ...(isNarrow ? {} : { position: 'sticky', bottom: 8, zIndex: 10 }),
           }}
           styles={{ body: { padding: '12px 20px' } }}

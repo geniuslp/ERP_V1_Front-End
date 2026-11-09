@@ -25,6 +25,8 @@ export interface FinancePaymentListItem {
   supplier_name?: string | null
   ap_voucher_nos?: string | null
   requested_by_name?: string | null
+  // Petty cash: ผู้รับเงิน (named payee, else the requester).
+  payee_name?: string | null
   net_amount: number
   status: string
   // Document approval status shown on the finance list (filter param: status=PENDING_APPROVAL|APPROVED).
@@ -43,6 +45,9 @@ export interface FinancePaymentListItem {
 export interface FinancePaymentListParams {
   doc_type: FinanceDocType
   project_code?: string
+  supplier?: string
+  ap_voucher?: string
+  requester?: string
   status?: string
   search?: string
   page?: number

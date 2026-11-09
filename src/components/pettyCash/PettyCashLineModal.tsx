@@ -97,6 +97,15 @@ const PettyCashLineModal: React.FC<Props> = ({
   const isView = mode === 'view'
   const vatRate = lineOptions?.vat_rate ?? 7
 
+  // Manual VAT / WHT amounts. null = automatic (calculated); clearing the field returns to automatic.
+  const [vatManual, setVatManual] = useState<number | null>(null)
+  const [whtManual, setWhtManual] = useState<number | null>(null)
+  useEffect(() => {
+    if (!open) return
+    setVatManual(initial?.vat_manual && initial.has_tax_invoice ? initial.line_vat : null)
+    setWhtManual(initial?.wht_manual && initial.has_wht ? initial.line_wht : null)
+  }, [open, initial])
+
   const [materialOpen, setMaterialOpen] = useState(false)
   const [costOpen, setCostOpen] = useState(false)
   const [suppliers, setSuppliers] = useState<SupplierRow[]>(supplierCache ?? [])
@@ -205,9 +214,11 @@ const PettyCashLineModal: React.FC<Props> = ({
   const rate = incomeType?.rate ?? 0
   // Same formulas as the server (display rounding only).
   // `amount` is the pre-VAT amount; VAT is derived from it (0 when the tax-invoice switch is off).
-  const vat = hasInvoice ? round2((amount * vatRate) / 100) : 0
+  const autoVat = round2((amount * vatRate) / 100)
+  const vat = hasInvoice ? (vatManual ?? autoVat) : 0
   const totalWithVat = round2(amount + vat)
-  const wht = hasWht ? (amount * rate) / 100 : 0
+  const autoWht = round2((amount * rate) / 100)
+  const wht = hasWht ? (whtManual ?? autoWht) : 0
   const net = totalWithVat - wht
 
   const isOh = isOhOrderType(headerOrderType)
@@ -413,6 +424,9 @@ const PettyCashLineModal: React.FC<Props> = ({
       const next = qty > 0 && price > 0 ? round2(qty * price) : null
       form.setFieldValue('amount', next)
       form.setFieldValue('wht_base_amount', next)
+      // The amount changed, so a hand-typed VAT / WHT no longer applies — back to automatic.
+      setVatManual(null)
+      setWhtManual(null)
     }
     // ยอดเงิน (หัก ณ ที่จ่าย) always equals จำนวนเงิน — it is read-only.
     if ('amount' in changed) {
@@ -440,8 +454,18 @@ const PettyCashLineModal: React.FC<Props> = ({
     const amt = Number(v.amount ?? 0)
     const base = hasW ? amt : null
     const type = hasW ? lineOptions?.wht_income_types.find((t) => t.id === v.wht_income_type_id) : undefined
-    const lineVat = hasInv ? round2((amt * vatRate) / 100) : 0
-    const lineWht = hasW && base != null ? (base * (type?.rate ?? 0)) / 100 : 0
+    const autoV = round2((amt * vatRate) / 100)
+    const autoW = base != null ? round2((base * (type?.rate ?? 0)) / 100) : 0
+    if (hasInv && vatManual != null && (vatManual < 0 || vatManual > amt)) {
+      message.error('ยอดภาษีมูลค่าเพิ่มต้องไม่ติดลบและไม่เกินจำนวนเงิน')
+      return
+    }
+    if (hasW && whtManual != null && (whtManual < 0 || whtManual > (base ?? 0))) {
+      message.error('ยอดหัก ณ ที่จ่ายต้องไม่ติดลบและไม่เกินยอดเงินที่ใช้คำนวณ')
+      return
+    }
+    const lineVat = hasInv ? (vatManual ?? autoV) : 0
+    const lineWht = hasW ? (whtManual ?? autoW) : 0
     const line: PettyCashLineForm = {
       key: initial?.key ?? `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       id: initial?.id,
@@ -477,6 +501,8 @@ const PettyCashLineModal: React.FC<Props> = ({
       line_vat: lineVat,
       line_wht: lineWht,
       line_net: round2(amt + lineVat - lineWht),
+      vat_manual: hasInv && vatManual != null,
+      wht_manual: hasW && whtManual != null,
     }
     onOk(line)
   }
@@ -735,7 +761,23 @@ const PettyCashLineModal: React.FC<Props> = ({
                   <Form.Item label="ภาษีมูลค่าเพิ่ม"><Input disabled value={`${vatRate}%`} /></Form.Item>
                 </Col>
                 <Col xs={24} lg={6} style={{ minWidth: 0 }}>
-                  <Form.Item label="ยอดภาษีมูลค่าเพิ่ม"><Input readOnly value={money(vat)} style={{ textAlign: 'right' }} /></Form.Item>
+                  <Form.Item
+                    label="ยอดภาษีมูลค่าเพิ่ม"
+                    extra={vatManual != null ? `กรอกเอง (อัตโนมัติ ${money(autoVat)}) — ล้างช่องเพื่อกลับเป็นอัตโนมัติ` : 'คำนวณอัตโนมัติ — แก้ไขเองได้'}
+                  >
+                    <InputNumber
+                      min={0}
+                      max={amount > 0 ? amount : undefined}
+                      precision={2}
+                      controls={false}
+                      disabled={isView}
+                      value={vat}
+                      onChange={(v) => setVatManual(v == null ? null : Number(v))}
+                      style={{ width: '100%' }}
+                      formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
+                    />
+                  </Form.Item>
                 </Col>
               </Row>
             </>
@@ -808,7 +850,23 @@ const PettyCashLineModal: React.FC<Props> = ({
                   <Form.Item label="ภาษีหัก ณ ที่จ่าย %"><Input readOnly value={incomeType ? `${rate}%` : ''} /></Form.Item>
                 </Col>
                 <Col xs={24} lg={6} style={{ minWidth: 0 }}>
-                  <Form.Item label="ยอดหัก ณ ที่จ่ายรวม"><Input readOnly value={money(wht)} style={{ textAlign: 'right' }} /></Form.Item>
+                  <Form.Item
+                    label="ยอดหัก ณ ที่จ่ายรวม"
+                    extra={whtManual != null ? `กรอกเอง (อัตโนมัติ ${money(autoWht)}) — ล้างช่องเพื่อกลับเป็นอัตโนมัติ` : 'คำนวณอัตโนมัติ — แก้ไขเองได้'}
+                  >
+                    <InputNumber
+                      min={0}
+                      max={amount > 0 ? amount : undefined}
+                      precision={2}
+                      controls={false}
+                      disabled={isView}
+                      value={wht}
+                      onChange={(v) => setWhtManual(v == null ? null : Number(v))}
+                      style={{ width: '100%' }}
+                      formatter={(v) => `${v ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      parser={(v) => Number((v ?? '').replace(/,/g, '')) as any}
+                    />
+                  </Form.Item>
                 </Col>
               </Row>
             </>

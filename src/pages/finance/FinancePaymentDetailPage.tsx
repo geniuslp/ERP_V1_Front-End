@@ -15,6 +15,8 @@ import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
 import { poApprovalService } from '@/services/poApprovalService'
+import { pettyCashService } from '@/services/pettyCashService'
+import type { PettyCashRequisition, PettyCashLine } from '@/types/pettyCash'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import { FINANCE_DOC_TYPE_LABEL, type FinanceDocType, type FinancePaymentListItem, type FinancePaymentLogEntry } from '@/types/finance'
@@ -59,6 +61,10 @@ const FinancePaymentDetailPage: React.FC = () => {
   // already uses. Other doc types (WO, etc.) are untouched.
   const [poDetail, setPoDetail] = useState<PODetail | null>(null)
   const [poDetailLoading, setPoDetailLoading] = useState(false)
+
+  // Full petty cash document (header + lines) — only fetched/rendered when docType === 'PC', same idea as poDetail.
+  const [pcDetail, setPcDetail] = useState<PettyCashRequisition | null>(null)
+  const [pcDetailLoading, setPcDetailLoading] = useState(false)
 
   const [users, setUsers] = useState<UserOption[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
@@ -132,6 +138,18 @@ const FinancePaymentDetailPage: React.FC = () => {
     }
   }
 
+  const fetchPcDetail = async () => {
+    if (!docId || docType !== 'PC') return
+    setPcDetailLoading(true)
+    try {
+      setPcDetail(await pettyCashService.get(accessToken, docId))
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.message || 'โหลดข้อมูลเงินสดย่อยไม่สำเร็จ')
+    } finally {
+      setPcDetailLoading(false)
+    }
+  }
+
   const fetchUsers = async () => {
     setUsersLoading(true)
     try {
@@ -152,14 +170,17 @@ const FinancePaymentDetailPage: React.FC = () => {
     fetchLog()
     fetchUsers()
     if (docType === 'PO') fetchPoDetail()
+    if (docType === 'PC') fetchPcDetail()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType, docId])
 
   // Same as the backend: sum of every row, reversal (negative) rows included.
   const loggedPaid = docItem?.paid_amount ?? log.reduce((s, l) => s + l.amount_paid, 0)
   const paidAmount = loggedPaid + billPaid
-  const baseAmount = docType === 'WO' && woContractValue > 0 ? woContractValue : (docItem?.net_amount ?? 0)
-  const remaining = docType === 'WO' && woContractValue > 0
+  // WO, PO and petty cash all record payments through the contractor-log bills (WOContractorLogPanel) instead of the payment form.
+  const isLogDoc = docType === 'WO' || docType === 'PO' || docType === 'PC'
+  const baseAmount = isLogDoc && woContractValue > 0 ? woContractValue : (docItem?.net_amount ?? 0)
+  const remaining = isLogDoc && woContractValue > 0
     ? Math.max(baseAmount - woRetention - paidAmount, 0)
     : Math.max((docItem?.remaining_to_pay ?? Math.max(baseAmount - loggedPaid, 0)) - billPaid, 0)
   // Remaining is only trustworthy once the document itself has loaded.
@@ -360,6 +381,49 @@ const FinancePaymentDetailPage: React.FC = () => {
     },
   ]
 
+  // Petty cash lines, laid out like the PO line table above.
+  const pcLineColumns: ColumnsType<PettyCashLine> = [
+    { title: 'ลำดับ', dataIndex: 'line_no', key: 'line_no', width: 70 },
+    {
+      title: 'โครงการ',
+      key: 'project',
+      render: (_: unknown, r: PettyCashLine) =>
+        r.project_code ? `${r.project_code} ${r.project_name ?? ''}`.trim() : <span style={{ color: '#9ca3af' }}>-</span>,
+    },
+    {
+      title: 'Cost Code',
+      key: 'cost_code',
+      render: (_: unknown, r: PettyCashLine) =>
+        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+    },
+    {
+      title: 'รหัสวัสดุ',
+      dataIndex: 'mat_code',
+      key: 'mat_code',
+      width: 130,
+      render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span>,
+    },
+    {
+      title: 'ชื่อวัสดุ / รายละเอียด',
+      key: 'mat_name',
+      render: (_: unknown, r: PettyCashLine) => (
+        <div>
+          <div>{r.mat_name_th ?? r.item_name ?? '—'}</div>
+          {r.description ? <div style={{ fontSize: 12, color: '#888' }}>{r.description}</div> : null}
+        </div>
+      ),
+    },
+    {
+      title: 'จำนวน',
+      key: 'qty',
+      width: 110,
+      render: (_: unknown, r: PettyCashLine) => `${Number(r.qty).toLocaleString()} ${r.unit ?? ''}`,
+    },
+    { title: 'ราคา/หน่วย', dataIndex: 'unit_price', key: 'unit_price', width: 120, align: 'right', render: (v: number) => formatMoney(v) },
+    { title: 'มูลค่า', dataIndex: 'amount', key: 'amount', width: 130, align: 'right', render: (v: number) => formatMoney(v) },
+    { title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', render: (v: string | null | undefined) => v ?? '—' },
+  ]
+
   return (
     <div>
       <PageHeader
@@ -368,7 +432,7 @@ const FinancePaymentDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'การเงิน' }, { title: 'การจ่ายเงิน' }, { title: docItem?.doc_no ?? '' }]}
       />
 
-      <Card style={{ ...cardStyle, marginBottom: 20 }} loading={docLoading}>
+      <Card style={{ ...cardStyle, marginBottom: 20 }} loading={docLoading || (docType === 'PO' && poDetailLoading) || (docType === 'PC' && pcDetailLoading)}>
         <Descriptions column={4} bordered size="small">
           <Descriptions.Item label="เลขที่เอกสาร">
             {docType === 'WO' && docId && docItem?.doc_no
@@ -389,6 +453,33 @@ const FinancePaymentDetailPage: React.FC = () => {
                   : <WOStatusBadge status={docItem.status as WOStatus} />
               : '—'}
           </Descriptions.Item>
+          {/* PC: the same detail block as PO, filled from the petty cash document. */}
+          {docType === 'PC' && (
+            <>
+              <Descriptions.Item label="ผู้ขอเบิก">{pcDetail?.requested_by_name ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="ผู้รับเงิน">{pcDetail?.payee_name || pcDetail?.requested_by_name || '—'}</Descriptions.Item>
+              <Descriptions.Item label="วันที่เอกสาร">{pcDetail?.pc_date ? dayjs(pcDetail.pc_date).format('DD/MM/YYYY') : '—'}</Descriptions.Item>
+              <Descriptions.Item label="แผนก">{pcDetail?.dept_name ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="วัตถุประสงค์" span={4}>{pcDetail?.purpose ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="หมายเหตุ" span={4}>{pcDetail?.remarks ?? '—'}</Descriptions.Item>
+            </>
+          )}
+          {/* PO: the document details that used to sit in their own card. */}
+          {docType === 'PO' && (
+            <>
+              <Descriptions.Item label="Supplier">{poDetail?.supplier_name ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="ประเภทการสั่งซื้อ">
+                {poDetail?.order_type ? (ORDER_TYPE_LABEL[poDetail.order_type] ?? poDetail.order_type) : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="ประเภท Job">
+                {poDetail?.job_code ? (JOB_TYPES.find((jt) => jt.code === poDetail.job_code)?.label ?? poDetail.job_code) : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="เงื่อนไขการชำระ">{poDetail?.payment_terms ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="ภาษีมูลค่าเพิ่ม (VAT)">{poDetail ? thb(poDetail.vat_amount) : '—'}</Descriptions.Item>
+              <Descriptions.Item label="ที่อยู่จัดส่ง" span={3}>{poDetail?.location_text ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="หมายเหตุ" span={4}>{poDetail?.remarks ?? '—'}</Descriptions.Item>
+            </>
+          )}
         </Descriptions>
 
         <div style={{ display: 'flex', gap: 24, marginTop: 20 }}>
@@ -400,8 +491,8 @@ const FinancePaymentDetailPage: React.FC = () => {
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>คงเหลือต้องจ่าย</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: remaining > 0 ? '#d97706' : '#16a34a' }}>{thb(remaining)} บาท</div>
           </div>
-          {/* WO only: the retention (เงินประกันผลงาน) held back from the bills; it is not part of "คงเหลือต้องจ่าย". */}
-          {docType === 'WO' && (
+          {/* WO / PO: the retention (เงินประกันผลงาน) held back from the bills; it is not part of "คงเหลือต้องจ่าย". */}
+          {isLogDoc && (
             <div style={{ flex: 1, padding: 16, background: '#fff1f2', borderRadius: 10 }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>เงินประกันผลงาน</div>
               <div style={{ fontSize: 22, fontWeight: 700, color: '#e11d48' }}>{thb(woRetention)} บาท</div>
@@ -410,29 +501,23 @@ const FinancePaymentDetailPage: React.FC = () => {
         </div>
       </Card>
 
-      {docType === 'WO' && docId && (
-        <Card title="บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง" style={{ ...cardStyle, marginBottom: 20 }}>
-          <WOContractorLogPanel woId={Number(docId)} onBillsPaidChange={(paid, contract, retention) => { setBillPaid(paid); setWoContractValue(contract); setWoRetention(retention) }} />
+      {isLogDoc && docId && (
+        <Card title={docType === 'PC' ? 'บันทึกการจ่ายเงินของเงินสดย่อย' : docType === 'PO' ? 'บันทึกการจ่ายเงินของใบสั่งซื้อ' : 'บันทึกงานของผู้รับเหมาตามใบสั่งจ้าง'} style={{ ...cardStyle, marginBottom: 20 }}>
+          <WOContractorLogPanel {...(docType === 'PC' ? { pcId: Number(docId) } : docType === 'PO' ? { poId: Number(docId) } : { woId: Number(docId) })} onBillsPaidChange={(paid, contract, retention) => { setBillPaid(paid); setWoContractValue(contract); setWoRetention(retention) }} />
         </Card>
       )}
 
-      {docType === 'PO' && (
-        <Card title="ข้อมูลใบสั่งซื้อ (PO)" style={{ ...cardStyle, marginBottom: 20 }} loading={poDetailLoading}>
-          <Descriptions column={{ xs: 1, sm: 2, lg: 3 }} bordered size="small">
-            <Descriptions.Item label="Supplier">{poDetail?.supplier_name ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="ประเภทการสั่งซื้อ">
-              {poDetail?.order_type ? (ORDER_TYPE_LABEL[poDetail.order_type] ?? poDetail.order_type) : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="ประเภท Job">
-              {poDetail?.job_code ? (JOB_TYPES.find((jt) => jt.code === poDetail.job_code)?.label ?? poDetail.job_code) : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="เงื่อนไขการชำระ">{poDetail?.payment_terms ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="ที่อยู่จัดส่ง" span={2}>{poDetail?.location_text ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="มูลค่ารวม">{poDetail ? thb(poDetail.total_amount) : '—'}</Descriptions.Item>
-            <Descriptions.Item label="ภาษี VAT">{poDetail ? thb(poDetail.vat_amount) : '—'}</Descriptions.Item>
-            <Descriptions.Item label="ภาษีหัก ณ ที่จ่าย">{poDetail?.use_wht ? thb(poDetail.wht_amount ?? 0) : '—'}</Descriptions.Item>
-            <Descriptions.Item label="หมายเหตุ" span={3}>{poDetail?.remarks ?? '—'}</Descriptions.Item>
-          </Descriptions>
+      {docType === 'PC' && (
+        <Card title="รายการเบิกเงินสดย่อย" style={{ ...cardStyle, marginBottom: 20 }}>
+          <Table
+            rowKey="id"
+            loading={pcDetailLoading}
+            dataSource={pcDetail?.lines ?? []}
+            columns={pcLineColumns}
+            pagination={false}
+            size="small"
+            locale={{ emptyText: 'ไม่มีรายการ' }}
+          />
         </Card>
       )}
 
@@ -450,8 +535,8 @@ const FinancePaymentDetailPage: React.FC = () => {
         </Card>
       )}
 
-      {/* WO: the contractor log card above replaces installments / payment history / new payment. */}
-      {docType && docType !== 'WO' && docId && (
+      {/* WO / PO / PC: the contractor log card above replaces installments / new payment. */}
+      {docType && !isLogDoc && docId && (
         <FinanceInstallmentsSection
           ref={instRef}
           accessToken={accessToken}
@@ -462,7 +547,8 @@ const FinancePaymentDetailPage: React.FC = () => {
         />
       )}
 
-      {docType !== 'WO' && (
+      {/* WO / PO: payments are recorded through the contractor-log bills above, so there is no separate history card. */}
+      {!isLogDoc && (
       <Card title="ประวัติการจ่ายเงิน" style={{ ...cardStyle, marginBottom: 20 }}>
         <Table
           rowKey="id"
@@ -476,7 +562,7 @@ const FinancePaymentDetailPage: React.FC = () => {
       </Card>
       )}
 
-      {docType === 'WO' ? null : fullyPaid ? (
+      {isLogDoc ? null : fullyPaid ? (
         <>
           <Alert
             type="info"

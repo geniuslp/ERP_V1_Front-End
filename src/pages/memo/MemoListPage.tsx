@@ -424,6 +424,7 @@ const MemoListPage: React.FC = () => {
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
           dataSource={data}
+          size="small"
           scroll={{ x: 1400 }}
           rowClassName={(record) => getRowClassName(record.status)}
           pagination={{

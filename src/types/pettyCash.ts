@@ -144,6 +144,8 @@ export interface CreatePettyCashLineItem {
   wht_pay_date: string // YYYY-MM-DD or ''
   invoice_no: string | null
   invoice_date: string | null // YYYY-MM-DD or null
+  vat_override?: number | null // manual VAT amount; null/omitted = automatic
+  wht_override?: number | null // manual withholding amount; null/omitted = automatic
 }
 
 // GET /petty-cash/line-options
@@ -190,6 +192,9 @@ export interface PettyCashLineForm {
   line_vat: number
   line_wht: number
   line_net: number
+  /** true when the user typed the VAT / WHT amount instead of using the automatic calculation. */
+  vat_manual?: boolean
+  wht_manual?: boolean
 }
 
 export interface CreatePettyCashRequest {

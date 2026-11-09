@@ -42,3 +42,6 @@ Thumbs.db
 .eslintcache
 .parcelcache
 .cache/
+
+# Tutorial video tooling (Playwright recorders, outputs, narration) - local only, not part of the app
+/video-tools/

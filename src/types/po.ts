@@ -128,6 +128,7 @@ export interface POLine {
   // cost_subgroup_id is null (no cost code assigned to this line).
   cost_code?: string | null
   cost_subgroup_name?: string | null
+  cost_name?: string | null // GET /po/:id: the line's cost subgroup name (e.g. "Stock")
   // Added to GET /po/:id lines: spec_name mirrors `spec`; cost_code_full mirrors `cost_code`;
   // cost_code_main = subject+job+group; cost_code_sub = subgroup_code only.
   spec_name?: string | null

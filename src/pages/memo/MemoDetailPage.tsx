@@ -451,7 +451,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       >
         <Descriptions
           column={isMobile ? 1 : 2}
-          size="small"
+          size={isMobile ? 'small' : 'middle'}
           bordered={isMobile}
           labelStyle={isMobile ? { fontWeight: 600, width: 104, padding: '6px 8px', fontSize: 13 } : undefined}
           contentStyle={{ overflowWrap: 'anywhere' }}

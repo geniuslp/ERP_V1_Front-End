@@ -3,15 +3,21 @@
 .pc-line-modal-body {
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* old Edge / IE */
-  scrollbar-gutter: auto;
+  /* Thin visible bar: the sections at the bottom (ใบกำกับภาษี / หัก ณ ที่จ่าย toggles) were
+     out of sight on short screens when the bar was hidden. */
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #94a3b8 transparent;
   outline: none;
 }
 .pc-line-modal-body::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  width: 8px;
+}
+.pc-line-modal-body::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+.pc-line-modal-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 /* a little tighter vertical rhythm so the modal usually fits without scrolling */
 .pc-line-modal-body .ant-form-item {

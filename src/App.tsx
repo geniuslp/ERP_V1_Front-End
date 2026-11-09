@@ -28,6 +28,7 @@ const PRHistoryPage = lazy(() => import('@/pages/pr/PRHistoryPage'))
 const POCreatePage = lazy(() => import('@/pages/po/POCreatePage'))
 const POStatusPage = lazy(() => import('@/pages/po/POStatusPage'))
 const POHistoryPage = lazy(() => import('@/pages/po/POHistoryPage'))
+const POReportPage = lazy(() => import('@/pages/po/POReportPage'))
 const POLineItemsPage = lazy(() => import('@/pages/po/POLineItemsPage'))
 const POCostBudgetPage = lazy(() => import('@/pages/po/POCostBudgetPage'))
 const POMyListPage = lazy(() => import('@/pages/po/POMyListPage'))
@@ -157,6 +158,9 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/po/history" element={
                 <RequirePermission menuCode="MENU_PO_HISTORY" action="read"><POHistoryPage /></RequirePermission>
+              } />
+              <Route path="/po/report" element={
+                <RequirePermission menuCode="MENU_PO_REPORT" action="read"><POReportPage /></RequirePermission>
               } />
               <Route path="/po/my" element={
                 <RequirePermission menuCode="MENU_PO_MY" action="read"><POMyListPage /></RequirePermission>

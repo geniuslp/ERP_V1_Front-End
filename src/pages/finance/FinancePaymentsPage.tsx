@@ -100,12 +100,18 @@ const FinancePaymentsPage: React.FC = () => {
   const [status, setStatus] = useState('')
   // เลขที่เอกสาร (WO tab) — sent as `search` (backend: ILIKE on the document number).
   const [docNo, setDocNo] = useState('')
+  // WO tab: ร้านค้า and AP Voucher No. search boxes (the โครงการ/แผนก box is projectCode).
+  const [supplier, setSupplier] = useState('')
+  const [apVoucher, setApVoucher] = useState('')
+  // PC tab: ผู้ขอเบิก search box.
+  const [requester, setRequester] = useState('')
 
   // Resizable widths — not persisted, reset on refresh.
   const [docNoColWidth, setDocNoColWidth] = useState(DOC_NO_COL_DEFAULT_WIDTH)
   const [supplierColWidth, setSupplierColWidth] = useState(SUPPLIER_COL_DEFAULT_WIDTH)
   const [apColWidth, setApColWidth] = useState(160)
   const [requesterColWidth, setRequesterColWidth] = useState(180)
+  const [payeeColWidth, setPayeeColWidth] = useState(180)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COL_DEFAULT_WIDTH)
   const [netAmountColWidth, setNetAmountColWidth] = useState(NET_AMOUNT_COL_DEFAULT_WIDTH)
   const [receivingColWidth, setReceivingColWidth] = useState(RECEIVING_COL_DEFAULT_WIDTH)
@@ -119,13 +125,16 @@ const FinancePaymentsPage: React.FC = () => {
   const fetchList = async (
     nextPage = page,
     type = docType,
-    filters: { projectCode: string; status: string; docNo: string } = { projectCode, status, docNo },
+    filters: { projectCode: string; status: string; docNo: string; supplier: string; apVoucher: string; requester: string } = { projectCode, status, docNo, supplier, apVoucher, requester },
   ) => {
     setLoading(true)
     try {
       const result = await financeService.list(accessToken, {
         doc_type: type,
         project_code: filters.projectCode || undefined,
+        supplier: type === 'WO' ? filters.supplier.trim() || undefined : undefined,
+        ap_voucher: type === 'WO' ? filters.apVoucher.trim() || undefined : undefined,
+        requester: type === 'PC' ? filters.requester.trim() || undefined : undefined,
         status: filters.status || undefined,
         search: filters.docNo.trim() || undefined,
         page: nextPage,
@@ -142,13 +151,16 @@ const FinancePaymentsPage: React.FC = () => {
   }
 
   // A tab change clears the filters (handleTabChange), so the reload for the new tab runs with empty ones.
-  useEffect(() => { fetchList(1, docType, { projectCode: '', status: '', docNo: '' }) }, [docType])
+  useEffect(() => { fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '' }) }, [docType])
 
   const handleReset = () => {
     setProjectCode('')
     setStatus('')
     setDocNo('')
-    fetchList(1, docType, { projectCode: '', status: '', docNo: '' })
+    setSupplier('')
+    setApVoucher('')
+    setRequester('')
+    fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '' })
   }
 
   const handleTabChange = (key: string) => {
@@ -157,6 +169,9 @@ const FinancePaymentsPage: React.FC = () => {
     setProjectCode('')
     setStatus('')
     setDocNo('')
+    setSupplier('')
+    setApVoucher('')
+    setRequester('')
   }
 
   const columns: ColumnsType<FinancePaymentListItem> = [
@@ -212,6 +227,16 @@ const FinancePaymentsPage: React.FC = () => {
       width: requesterColWidth,
       ellipsis: true,
       onHeaderCell: () => ({ width: requesterColWidth, onResize: handleResize(setRequesterColWidth) }),
+      render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
+    }] : []),
+    // ผู้รับเงิน: petty cash only.
+    ...(docType === 'PC' ? [{
+      title: 'ผู้รับเงิน',
+      dataIndex: 'payee_name',
+      key: 'payee_name',
+      width: payeeColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({ width: payeeColWidth, onResize: handleResize(setPayeeColWidth) }),
       render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
     }] : []),
     // AP Voucher No.: WO only — comma-joined from the WO's contractor-log bills.
@@ -324,13 +349,43 @@ const FinancePaymentsPage: React.FC = () => {
             />
           )}
           <Input
-            placeholder="โครงการ"
+            placeholder={docType === 'WO' ? 'โครงการ/แผนก' : 'โครงการ'}
             value={projectCode}
             onChange={(e) => setProjectCode(e.target.value)}
             onPressEnter={() => fetchList(1)}
             style={{ width: 180 }}
             allowClear
           />
+          {docType === 'PC' && (
+            <Input
+              placeholder="ผู้ขอเบิก"
+              value={requester}
+              onChange={(e) => setRequester(e.target.value)}
+              onPressEnter={() => fetchList(1)}
+              style={{ width: 180 }}
+              allowClear
+            />
+          )}
+          {docType === 'WO' && (
+            <>
+              <Input
+                placeholder="ร้านค้า"
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                onPressEnter={() => fetchList(1)}
+                style={{ width: 180 }}
+                allowClear
+              />
+              <Input
+                placeholder="AP (AP Voucher No.)"
+                value={apVoucher}
+                onChange={(e) => setApVoucher(e.target.value)}
+                onPressEnter={() => fetchList(1)}
+                style={{ width: 180 }}
+                allowClear
+              />
+            </>
+          )}
           <Select value={status} onChange={setStatus} style={{ width: 200 }} options={STATUS_OPTIONS} />
           <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchList(1)}>ค้นหา</Button>
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
@@ -343,7 +398,7 @@ const FinancePaymentsPage: React.FC = () => {
           components={{ header: { cell: ResizableTitle } }}
           scroll={{
             x:
-              docNoColWidth + (docType === 'PC' ? 0 : supplierColWidth) + (docType === 'WO' ? apColWidth : 0) + (docType === 'PC' ? requesterColWidth : 0) + projectColWidth + netAmountColWidth +
+              docNoColWidth + (docType === 'PC' ? 0 : supplierColWidth) + (docType === 'WO' ? apColWidth : 0) + (docType === 'PC' ? requesterColWidth + payeeColWidth : 0) + projectColWidth + netAmountColWidth +
               receivingColWidth + paidColWidth + remainingColWidth + ACTION_COL_WIDTH,
           }}
           dataSource={data}
