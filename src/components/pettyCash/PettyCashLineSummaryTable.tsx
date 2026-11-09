@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { EyeOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import type { PettyCashLineForm } from '@/types/pettyCash'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 
 export type LineModalMode = 'view' | 'edit' | 'add'
 
@@ -24,6 +25,12 @@ const blank = (r: PettyCashLineForm, v: React.ReactNode) => (r.isNew ? '-' : v)
 const PettyCashLineSummaryTable: React.FC<Props> = ({ items, canEdit, onOpenLine, onDelete, errorKey }) => {
   const columns: ColumnsType<PettyCashLineForm> = [
     { title: 'No.', key: 'no', width: 60, align: 'center', render: (_v, _r, i) => i + 1 },
+    {
+      title: 'Cost Code',
+      key: 'cost_code',
+      width: 130,
+      render: (_v, r) => (r.isNew || !r.cost_code ? '-' : formatCostCodeDisplay(r.cost_code)),
+    },
     {
       title: 'Expense',
       key: 'expense',
@@ -69,7 +76,7 @@ const PettyCashLineSummaryTable: React.FC<Props> = ({ items, canEdit, onOpenLine
       pagination={false}
       size="small"
       bordered={false}
-      scroll={{ x: 900 }}
+      scroll={{ x: 1030 }}
       onRow={(r) => ({
         style: r.key === errorKey
           ? { background: '#ffe4e6', boxShadow: 'inset 3px 0 0 #dc2626' }

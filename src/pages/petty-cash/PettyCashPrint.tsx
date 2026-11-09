@@ -316,13 +316,9 @@ export const paginateLines = (heights: number[], avail: number, bottomH: number)
   const last = pages[pages.length - 1]
   const lastUsed = last.reduce((a, i) => a + heights[i], 0)
   if (last.length > 0 && lastUsed + bottomH > avail) {
-    const tail: number[] = []
-    let t = bottomH
-    for (let k = last.length - 1; k >= 0; k--) {
-      if (tail.length > 0 && t + heights[last[k]] > avail) break
-      tail.unshift(last[k])
-      t += heights[last[k]]
-    }
+    // Fill the earlier page as much as possible: move only the FEWEST trailing lines (at least one,
+    // so the bottom block never sits alone on a page) to the final page together with the block.
+    const tail: number[] = [last[last.length - 1]]
     const head = last.slice(0, last.length - tail.length)
     pages.pop()
     if (head.length > 0) pages.push(head)
