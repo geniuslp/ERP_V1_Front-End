@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Select, DatePicker, Button, Space, Row, Col, Table, Empty, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { HistoryOutlined, InboxOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
+import { HistoryOutlined, InboxOutlined, SearchOutlined, ReloadOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import type { Dayjs } from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { useJobTypes } from '@/hooks/useJobTypeNames'
-import { POApprovalStatusTag } from '@/components/po/POStatusBadge'
+import { POApprovalStatusTag, poApprovalStatusLabel } from '@/components/po/POStatusBadge'
+import POReportPrint from './POReportPrint'
 import { formatMoney } from '@/utils/formatMoney'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 import type { POStatus } from '@/types/po'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -23,7 +25,7 @@ const cardStyle: React.CSSProperties = {
 type ReportKey = 'HISTORY' | 'PENDING_RECEIPT'
 
 const REPORTS: { key: ReportKey; title: string; desc: string; icon: React.ReactNode }[] = [
-  { key: 'HISTORY', title: 'รายงานประวัติใบสั่ง', desc: 'ค้นประวัติใบสั่งซื้อตามโครงการ ร้านค้า และช่วงวันที่', icon: <HistoryOutlined /> },
+  { key: 'HISTORY', title: 'รายงานประวัติใบสั่ง', desc: 'ค้นประวัติใบสั่งซื้อ (PO ทุกสถานะ) ตามโครงการ ระบบ (Job) ร้านค้า และช่วงวันที่', icon: <HistoryOutlined /> },
   { key: 'PENDING_RECEIPT', title: 'รายการค้างรับสินค้า', desc: 'ค้นรายการที่ยังรับสินค้าไม่ครบตามโครงการ Job และช่วงวันที่', icon: <InboxOutlined /> },
 ]
 
@@ -32,6 +34,8 @@ interface SupplierOption { value: number; label: string }
 interface HistoryLine {
   line_no: number
   job_code: string | null
+  cost_code: string | null
+  mat_code: string | null
   description: string
   qty: number
   unit_name: string | null
@@ -58,8 +62,8 @@ const unitPrice = (n: number) => (n ?? 0).toLocaleString('th-TH', { minimumFract
 
 /**
  * รายงานการสั่งซื้อ (PO/WO > รายงาน). Pick a report first (same card-pick idea as the IC pages), then its filters:
- *  - รายงานประวัติใบสั่ง: โครงการ, ร้านค้า, ช่วงวันที่ (start - end)
- *  - รายการค้างรับสินค้า: โครงการ, Job, ช่วงวันที่ (start - end)
+ *  - รายงานประวัติใบสั่ง: โครงการ (บังคับ), ระบบ (Job), ร้านค้า, ช่วงวันที่ (start - end) — PO ทุกสถานะ
+ *  - รายการค้างรับสินค้า: โครงการ (บังคับ), ระบบ (Job), ช่วงวันที่ (start - end)
  * Both show the same grouped table (ร้านค้า + เลข PO band, lines, subtotal, grand total); the pending report lists
  * only approved POs' lines not yet received through IC, with the outstanding qty / amount.
  */
@@ -90,10 +94,16 @@ const POReportPage: React.FC = () => {
       .finally(() => setSuppliersLoading(false))
   }, [accessToken])
 
+  // Set once the user tried to run without a project, so the field shows its error until one is chosen.
+  const [projectError, setProjectError] = useState(false)
+
   const [result, setResult] = useState<{ groups: HistoryGroup[]; grandTotal: number } | null>(null)
   const [loading, setLoading] = useState(false)
   // The project the shown result was run for (heading line of the report).
   const [shownProject, setShownProject] = useState('ทั้งหมด')
+  // The conditions the shown result was run with ("โครงการ : …", "ระบบ (Job) : …" …) — used by the exports.
+  const [shownConditions, setShownConditions] = useState<string[]>([])
+  const [printing, setPrinting] = useState(false)
 
   const reset = () => {
     setProjectCode(undefined)
@@ -101,18 +111,24 @@ const POReportPage: React.FC = () => {
     setJobCode(undefined)
     setRange(null)
     setResult(null)
+    setProjectError(false)
   }
 
   const runReport = async () => {
     if (!report) return
+    if (!projectCode) {
+      setProjectError(true)
+      message.warning('กรุณาเลือกโครงการก่อนแสดงรายงาน')
+      return
+    }
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/po-report/${report === 'HISTORY' ? 'history' : 'pending-receipt'}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         params: {
-          project_code: projectCode || undefined,
+          project_code: projectCode,
           supplier_id: report === 'HISTORY' ? supplierId || undefined : undefined,
-          job_code: report === 'PENDING_RECEIPT' ? jobCode || undefined : undefined,
+          job_code: jobCode || undefined,
           date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
           date_to: range?.[1] ? range[1].format('YYYY-MM-DD') : undefined,
         },
@@ -120,7 +136,15 @@ const POReportPage: React.FC = () => {
       const d = res.data?.data
       const groups: HistoryGroup[] = d?.groups ?? []
       setResult({ groups, grandTotal: Number(d?.grand_total ?? 0) })
-      setShownProject(projectCode ? (projects.find((p) => p.value === projectCode)?.label ?? projectCode) : 'ทั้งหมด')
+      const projectLabel = projects.find((p) => p.value === projectCode)?.label ?? projectCode
+      setShownProject(projectLabel)
+      const jobLabel = jobCode ? jobTypes.find((j) => j.job_code === jobCode) : undefined
+      const conds = [`โครงการ : ${projectLabel}`]
+      // Only conditions the user actually set are listed ("ทั้งหมด" lines are left out).
+      if (report === 'HISTORY' && supplierId) conds.push(`ร้านค้า : ${suppliers.find((x) => x.value === supplierId)?.label ?? supplierId}`)
+      if (jobCode) conds.push(`ระบบ (Job) : ${jobLabel ? `${jobLabel.job_code} ${jobLabel.job_name}` : jobCode}`)
+      if (range?.[0] && range?.[1]) conds.push(`วันที่ : ${range[0].format('DD/MM/YYYY')} - ${range[1].format('DD/MM/YYYY')}`)
+      setShownConditions(conds)
     } catch (e: any) {
       message.error(e?.response?.data?.message || e?.response?.data?.error || 'โหลดรายงานไม่สำเร็จ')
     } finally {
@@ -128,29 +152,125 @@ const POReportPage: React.FC = () => {
     }
   }
 
+  // Description is one line (ellipsis). Its column is sized from the longest description shown (~8px per
+  // character) plus 20% spare room before Qty, clamped so the table stays sensible.
+  const descWidth = (() => {
+    const longest = Math.max(0, ...(result?.groups ?? []).flatMap((g) => g.lines.map((l) => (l.description ?? '').length)))
+    return Math.min(Math.max(Math.ceil((longest * 8) / 0.8), 220), 560)
+  })()
+
+  const reportTitle = report === 'HISTORY' ? 'รายงานประวัติใบสั่ง' : 'รายการค้างรับสินค้า'
+
+  const exportExcel = async () => {
+    if (!result || result.groups.length === 0) return
+    const pending = report === 'PENDING_RECEIPT'
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Report')
+    const head = ['No.', 'Job', 'Cost Code', 'MatCode', 'Description', pending ? 'Qty (ค้างรับ)' : 'Qty', 'Unit', 'Unit/Price', pending ? 'Amount ค้างรับ (Exc. VAT)' : 'Amount (Exc. VAT)', 'Remark']
+    ws.columns = [6, 8, 14, 20, 48, 12, 10, 14, 22, 30].map((width) => ({ width }))
+    const LAST = head.length
+    const thin = { style: 'thin' as const, color: { argb: 'FF888888' } }
+    const border = { top: thin, left: thin, bottom: thin, right: thin }
+    const MONEY = '#,##0.00'
+
+    ws.addRow([reportTitle]).font = { bold: true, size: 14, color: { argb: 'FF0F2D5E' } }
+    shownConditions.forEach((c) => ws.addRow([c]))
+    ws.addRow([])
+
+    const merged = (text: string, fill: string) => {
+      const row = ws.addRow([text])
+      ws.mergeCells(row.number, 1, row.number, LAST)
+      for (let c = 1; c <= LAST; c++) {
+        const cell = row.getCell(c)
+        cell.border = border
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+      }
+      row.getCell(1).font = { bold: true }
+      return row
+    }
+    const totalRow = (label: string, amount: number) => {
+      const row = ws.addRow([label])
+      ws.mergeCells(row.number, 1, row.number, 8)
+      row.getCell(1).alignment = { horizontal: 'right' }
+      row.getCell(9).value = amount
+      row.getCell(9).numFmt = MONEY
+      for (let c = 1; c <= LAST; c++) {
+        row.getCell(c).border = border
+        row.getCell(c).font = { bold: true }
+      }
+    }
+
+    result.groups.forEach((g) => {
+      merged(`ชื่อร้านค้า ${g.supplier_name ?? '-'}     PO ${g.po_no}     สถานะ ${poApprovalStatusLabel(g.status)}`, 'FFEFF6FF')
+      const hr = ws.addRow(head)
+      hr.eachCell((cell) => {
+        cell.border = border
+        cell.font = { bold: true }
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+      })
+      g.lines.forEach((l, i) => {
+        const r = ws.addRow([
+          i + 1, l.job_code ?? '', l.cost_code ? formatCostCodeDisplay(l.cost_code) : '', l.mat_code ?? '', l.description,
+          Number(l.qty), l.unit_name ?? '', Number(l.unit_price ?? 0), Number(l.amount ?? 0), l.remarks ?? '',
+        ])
+        r.eachCell({ includeEmpty: true }, (cell, col) => {
+          cell.border = border
+          cell.alignment = { vertical: 'top', horizontal: col === 1 ? 'center' : undefined, wrapText: col === 5 || col === 10 }
+        })
+        r.getCell(6).numFmt = '#,##0.####'
+        r.getCell(8).numFmt = '#,##0.00##'
+        r.getCell(9).numFmt = MONEY
+      })
+      totalRow('รวม', g.subtotal)
+      ws.addRow([])
+    })
+    totalRow('รวมทั้งสิ้น', result.grandTotal)
+
+    const buf = await wb.xlsx.writeBuffer()
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${pending ? 'PO_PendingReceipt' : 'PO_History'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const groupRows = (g: HistoryGroup): HistoryRow[] => [
     ...g.lines.map((l, i): HistoryRow => ({ key: `l${g.po_id}-${i}`, kind: 'line', no: i + 1, line: l })),
     { key: `s${g.po_id}`, kind: 'subtotal', amount: g.subtotal },
   ]
 
+  // Subtotal / grand-total rows merge the first 7 columns (No. … Unit/Price) into one label cell.
   const historyColumns: ColumnsType<HistoryRow> = [
     {
       title: 'No.', key: 'no', width: 70,
-      onCell: (r) => (r.kind === 'subtotal' || r.kind === 'grand' ? { colSpan: 5 } : {}),
+      onCell: (r) => (r.kind === 'subtotal' || r.kind === 'grand' ? { colSpan: 7 } : {}),
       render: (_, r) => {
         if (r.kind === 'line') return r.no
         return r.kind === 'grand' ? <b>รวมทั้งสิ้น</b> : null
       },
     },
     {
-      title: 'Job', key: 'job', width: 80,
+      title: 'Job', key: 'job', width: 70,
       onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
       render: (_, r) => (r.kind === 'line' ? r.line.job_code ?? '-' : null),
     },
     {
-      title: 'Description', key: 'desc',
+      title: 'Cost Code', key: 'cost_code', width: 120,
       onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
-      render: (_, r) => (r.kind === 'line' ? r.line.description : null),
+      render: (_, r) => (r.kind === 'line' ? (r.line.cost_code ? formatCostCodeDisplay(r.line.cost_code) : '-') : null),
+    },
+    {
+      title: 'MatCode', key: 'mat_code', width: 150,
+      onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
+      render: (_, r) => (r.kind === 'line' ? (r.line.mat_code ? <span style={{ fontFamily: 'monospace' }}>{r.line.mat_code}</span> : '-') : null),
+    },
+    {
+      title: 'Description', key: 'desc', width: descWidth, ellipsis: true,
+      onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
+      render: (_, r) => (r.kind === 'line' ? <span title={r.line.description}>{r.line.description}</span> : null),
     },
     {
       title: report === 'PENDING_RECEIPT' ? 'Qty (ค้างรับ)' : 'Qty', key: 'qty', width: 120,
@@ -171,7 +291,7 @@ const POReportPage: React.FC = () => {
       },
     },
     {
-      title: 'Remark', key: 'remark', width: 220,
+      title: 'Remark', key: 'remark',
       render: (_, r) => (r.kind === 'line' ? r.line.remarks ?? '' : null),
     },
   ]
@@ -221,23 +341,30 @@ const POReportPage: React.FC = () => {
       {current && (
         <Card title={current.title} style={cardStyle}>
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}>
-              <div style={{ marginBottom: 4, color: '#374151' }}>โครงการ</div>
+            <Col span={24}>
+              <div style={{ maxWidth: 520 }}>
+              <div style={{ marginBottom: 4, color: '#374151' }}><span style={{ color: '#dc2626' }}>* </span>โครงการ</div>
               <Select
                 showSearch
                 allowClear
                 style={{ width: '100%' }}
-                placeholder="ทั้งหมด"
+                placeholder="เลือกโครงการ"
+                status={projectError && !projectCode ? 'error' : undefined}
                 loading={projectsLoading}
                 optionFilterProp="label"
                 value={projectCode}
-                onChange={setProjectCode}
+                onChange={(v) => { setProjectCode(v); if (v) setProjectError(false) }}
                 options={projects}
               />
+              {projectError && !projectCode && (
+                <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>กรุณาเลือกโครงการ</div>
+              )}
+            </div>
             </Col>
 
             {report === 'HISTORY' && (
-              <Col xs={24} md={8}>
+              <Col span={24}>
+              <div style={{ maxWidth: 520 }}>
                 <div style={{ marginBottom: 4, color: '#374151' }}>ร้านค้า</div>
                 <Select
                   showSearch
@@ -250,12 +377,13 @@ const POReportPage: React.FC = () => {
                   onChange={setSupplierId}
                   options={suppliers}
                 />
-              </Col>
+              </div>
+            </Col>
             )}
 
-            {report === 'PENDING_RECEIPT' && (
-              <Col xs={24} md={8}>
-                <div style={{ marginBottom: 4, color: '#374151' }}>Job</div>
+            <Col span={24}>
+              <div style={{ maxWidth: 520 }}>
+                <div style={{ marginBottom: 4, color: '#374151' }}>ระบบ (Job)</div>
                 <Select
                   showSearch
                   allowClear
@@ -266,10 +394,11 @@ const POReportPage: React.FC = () => {
                   onChange={setJobCode}
                   options={jobTypes.map((j) => ({ value: j.job_code, label: `${j.job_code} ${j.job_name}` }))}
                 />
-              </Col>
-            )}
+            </div>
+            </Col>
 
-            <Col xs={24} md={8}>
+            <Col span={24}>
+              <div style={{ maxWidth: 520 }}>
               <div style={{ marginBottom: 4, color: '#374151' }}>วันที่ (เริ่มต้น - สิ้นสุด)</div>
               <DatePicker.RangePicker
                 style={{ width: '100%' }}
@@ -277,6 +406,7 @@ const POReportPage: React.FC = () => {
                 value={range as any}
                 onChange={(v) => setRange(v as any)}
               />
+            </div>
             </Col>
           </Row>
 
@@ -292,6 +422,14 @@ const POReportPage: React.FC = () => {
           <div style={{ fontSize: 16, fontWeight: 600, color: '#0f2d5e', marginBottom: 12 }}>
             {report === 'HISTORY' ? 'ประวัติการสั่งซื้อ' : 'รายการค้างรับสินค้า'} : โครงการ {shownProject}
           </div>
+          {result.groups.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+              <Space>
+                <Button type="primary" icon={<FileExcelOutlined />} onClick={exportExcel}>Export Excel</Button>
+                <Button type="primary" icon={<FilePdfOutlined />} onClick={() => setPrinting(true)}>Export PDF</Button>
+              </Space>
+            </div>
+          )}
           {result.groups.length === 0 && (
             <Empty description={report === 'HISTORY' ? 'ไม่พบใบสั่งซื้อตามเงื่อนไขที่เลือก' : 'ไม่มีรายการค้างรับตามเงื่อนไขที่เลือก'} />
           )}
@@ -313,7 +451,7 @@ const POReportPage: React.FC = () => {
                 dataSource={groupRows(g)}
                 columns={historyColumns}
                 tableLayout="fixed"
-                scroll={{ x: 900 }}
+                scroll={{ x: 1170 }}
               />
             </div>
           ))}
@@ -327,10 +465,23 @@ const POReportPage: React.FC = () => {
               dataSource={[{ key: 'grand', kind: 'grand', amount: result.grandTotal }]}
               columns={historyColumns}
               tableLayout="fixed"
-              scroll={{ x: 900 }}
+              scroll={{ x: 1170 }}
             />
           )}
         </Card>
+      )}
+
+      {printing && result && (
+        <POReportPrint
+          onDone={() => setPrinting(false)}
+          data={{
+            title: reportTitle,
+            conditions: shownConditions,
+            pending: report === 'PENDING_RECEIPT',
+            groups: result.groups,
+            grandTotal: result.grandTotal,
+          }}
+        />
       )}
     </div>
   )

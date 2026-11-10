@@ -268,7 +268,7 @@ const PettyCashDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'เบิกเงินสดย่อย' }, { title: pc?.pc_no ?? '' }]}
         extra={
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/petty-cash')}>กลับ</Button>
+            <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate('/petty-cash')}>กลับ</Button>
             <Button icon={<PrinterOutlined />} disabled={!pc} onClick={() => setPrinting(true)}>พิมพ์</Button>
             {canEditDoc && (
               <Button icon={<EditOutlined />} onClick={() => navigate(`/petty-cash/${pc!.id}/edit`)}>แก้ไข</Button>

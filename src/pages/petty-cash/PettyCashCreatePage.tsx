@@ -15,6 +15,7 @@ import PettyCashSubmitApprove, { type SubmitApproveSummary } from '@/components/
 import PettyCashStationBar from './PettyCashStationBar'
 import PettyCashStagedAttachments, { type StagedFile } from '@/components/pettyCash/PettyCashStagedAttachments'
 import { validateAttachmentFile } from '@/components/pettyCash/attachmentUtils'
+import { PC_BRANCH_OPTIONS, pcBranchLabel } from '@/constants/pettyCashBranches'
 import PettyCashPrint, { projectLabel, pettyCashLineDesc, buildPettyCashPrintData, buildPettyCashPrintLines, type PettyCashPrintData, type PettyCashPrintLine } from './PettyCashPrint'
 import { useAppSelector } from '@/store'
 import { pettyCashService } from '@/services/pettyCashService'
@@ -40,15 +41,7 @@ const MockTag: React.FC = () => (
 
 const DOC_TYPE_OPTIONS = [{ value: 'PETTY_CASH', label: 'เบิกเงินสดย่อย (Petty Cash)' }]
 
-// No branch master endpoint exists in erp-api. These are the codes the frontend already uses for
-// the branch dropdown elsewhere (WO employer_branch: HO/FAC-S/FAC-P/BO). Swap this for a fetch
-// when a real branch source exists — branch_code is varchar(20) server-side.
-const BRANCH_OPTIONS = [
-  { value: 'HO', label: 'HO — สำนักงานใหญ่ (บางแค)' },
-  { value: 'FAC-S', label: 'FAC-S — ศาลายา' },
-  { value: 'FAC-P', label: 'FAC-P — ปราจีนบุรี' },
-  { value: 'FAC-B', label: 'FAC-B — บางบ่อ' },
-]
+const BRANCH_OPTIONS = PC_BRANCH_OPTIONS
 
 interface LookupOption { value: string; label: string; name: string }
 interface EmployeeOption extends LookupOption { deptCode?: string; deptName?: string }
@@ -635,6 +628,8 @@ const PettyCashCreatePage: React.FC = () => {
         dept: v.dept_name ?? '',
         orderType: v.order_type ? getOrderTypeLabel(v.order_type) : '',
         payee: [v.payee_emp_code, v.payee_name].filter(Boolean).join(' '),
+        branch: pcBranchLabel(v.branch_code),
+        remarks: String(v.remarks ?? '').trim(),
         subtotal,
         discount: 0,
         vat: totalVat,

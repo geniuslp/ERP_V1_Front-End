@@ -1856,7 +1856,7 @@ const POCreatePage: React.FC = () => {
               {/* Left: พิมพ์ + กลับ */}
               <Space>
                 <Button icon={<PrinterOutlined />} loading={printing} onClick={handlePrint}>พิมพ์</Button>
-                <Button icon={<ArrowLeftOutlined />} onClick={() => {
+                <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => {
                   navigate('/po/history')
                 }}>กลับหน้าหลัก</Button>
               </Space>

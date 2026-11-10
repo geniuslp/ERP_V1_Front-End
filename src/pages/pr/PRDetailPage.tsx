@@ -522,7 +522,7 @@ const PRDetailPage: React.FC = () => {
                 {pr.status === 'PENDING_APPROVAL' ? 'ถอนกลับ/แก้ไข' : 'แก้ไข'}
               </Button>
             )}
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(forApproval ? '/pr/approval' : '/pr/history')}>
+            <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate(forApproval ? '/pr/approval' : '/pr/history')}>
               กลับ
             </Button>
           </Space>

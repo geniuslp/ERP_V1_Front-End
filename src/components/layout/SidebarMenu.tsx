@@ -8,6 +8,7 @@ import {
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
   DollarOutlined, CalculatorOutlined, RollbackOutlined, ContainerOutlined,
+  PlayCircleOutlined, UploadOutlined, VideoCameraOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -40,6 +41,7 @@ const topIconMap: Record<string, React.ReactNode> = {
   MENU_FINANCE: <DollarOutlined />,
   MENU_PROJECT_OVERVIEW: <FundOutlined />,
   MENU_IC: <DatabaseOutlined />,
+  MENU_HOWTO: <VideoCameraOutlined />,
 }
 
 // Sub-menu codes whose child route requires a param (:projectId) with no
@@ -113,6 +115,8 @@ const subIconMap: Record<string, React.ReactNode> = {
   // MENU_MASTER_CUSTOMER (ลูกค้า) intentionally unmapped — renders without an icon,
   // like its Master siblings (กลุ่ม, วัสดุ, สถานที่, ผู้ขาย, โครงการ, Group Cost Code).
   MENU_IC_PROJECT: <SearchOutlined />,
+  MENU_HOWTO_VIDEOS: <PlayCircleOutlined />,
+  MENU_HOWTO_UPLOAD: <UploadOutlined />,
   MENU_IC_PO_RECEIVE: <InboxOutlined />,
   MENU_IC_PO_RETURN: <RollbackOutlined />,
   // คลัง (Stock) — child of MENU_IC in the DB (menu_path /master/stock). Its menu_code is not

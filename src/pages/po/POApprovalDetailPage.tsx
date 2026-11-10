@@ -388,7 +388,7 @@ const POApprovalDetailPage: React.FC = () => {
         showIcon
         style={{ margin: 24 }}
         action={
-          <Button size="small" onClick={() => navigate(-1)}>
+          <Button type="primary" size="small" onClick={() => navigate(-1)}>
             กลับ
           </Button>
         }
@@ -412,7 +412,7 @@ const POApprovalDetailPage: React.FC = () => {
         }}
       >
         <Space wrap>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
+          <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
             กลับ
           </Button>
           <span style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>

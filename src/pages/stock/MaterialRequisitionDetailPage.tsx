@@ -169,7 +169,7 @@ const MaterialRequisitionDetailPage: React.FC = () => {
         title={detail.borrow_no}
         subtitle={REQUISITION_STATUS_LABEL[detail.status] || detail.status}
         breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: 'ใบขอเบิก' }, { title: detail.borrow_no }]}
-        extra={<Button onClick={() => navigate('/stock/requisition')}>กลับ</Button>}
+        extra={<Button type="primary" onClick={() => navigate('/stock/requisition')}>กลับ</Button>}
       />
 
       <Card title="ข้อมูลใบขอเบิก" style={cardStyle}>

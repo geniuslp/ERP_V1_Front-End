@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import api from '@/services/api'
+import { formatMoney } from '@/utils/formatMoney'
 
 // Row of GET /po/cost-budget/:projectCode/cost-codes/:costSubgroupId/po-lines
 interface CostCodePoLine {
@@ -31,6 +32,8 @@ interface CostCodePoLine {
   remarks: string | null
   po_status: string
   amount: number
+  // ยอดรายจ่าย: this row's share of what the finance page has paid (before VAT / WHT); a transfer row = its amount.
+  expense_amount?: number
 }
 
 export interface CostCodePoLinesTarget {
@@ -56,6 +59,8 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   item_name: 400,
   quantity: 110,
   unit: 90,
+  amount: 140,
+  expense_amount: 140,
   remarks: 300,
   created_at: 150,
   updated_at: 150,
@@ -205,6 +210,24 @@ const CostCodePoLinesModal: React.FC<Props> = ({ target, onClose }) => {
       render: (v: number) => fmtQty(v),
     },
     { title: 'หน่วย', dataIndex: 'unit', key: 'unit', ...col('unit'), render: (v: string | null) => v || '-' },
+    {
+      // Value of the row as counted in Pu.Cost (ex-VAT); negative (red) when the goods left this project.
+      title: 'ยอดเงิน',
+      dataIndex: 'amount',
+      key: 'amount',
+      ...col('amount'),
+      align: 'right',
+      render: (v: number) => <span style={{ whiteSpace: 'nowrap', color: v < 0 ? '#dc2626' : undefined }}>{formatMoney(v)}</span>,
+    },
+    {
+      // Paid so far on this row's document (finance bills, ex-VAT / ex-WHT), spread over its lines by value.
+      title: 'ยอดรายจ่าย',
+      dataIndex: 'expense_amount',
+      key: 'expense_amount',
+      ...col('expense_amount'),
+      align: 'right',
+      render: (v?: number) => <span style={{ whiteSpace: 'nowrap', color: (v ?? 0) < 0 ? '#dc2626' : undefined }}>{formatMoney(v ?? 0)}</span>,
+    },
     {
       title: 'หมายเหตุ',
       dataIndex: 'remarks',

@@ -21,9 +21,17 @@ import POStatusBadges from '@/components/po/POStatusBadge'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import { FINANCE_DOC_TYPE_LABEL, type FinanceDocType, type FinancePaymentListItem, type FinancePaymentLogEntry } from '@/types/finance'
 import type { POStatus, PODetail, POLine } from '@/types/po'
+import { formatCostCodeDisplay } from '@/utils/costCode'
 import type { WOStatus } from '@/types/workOrder'
 import { JOB_TYPES } from '@/constants/jobTypes'
 import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
+
+// "FS01101 — Stock": the Cost Code plus its name (subgroup name) when the API sent one — PO and PC lines.
+const costCodeLabel = (r: { cost_code?: string | null; cost_name?: string | null; cost_subgroup_name?: string | null }) => {
+  const code = r.cost_code ? formatCostCodeDisplay(r.cost_code) : ''
+  const name = (r.cost_name || r.cost_subgroup_name || '').trim()
+  return name ? `${code} — ${name}` : code
+}
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -315,7 +323,7 @@ const FinancePaymentDetailPage: React.FC = () => {
       title: 'Cost Code',
       key: 'cost_code',
       render: (_: unknown, r: POLine) =>
-        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+        r.cost_code ? <span>{costCodeLabel(r)}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
     },
     {
       title: 'รหัสวัสดุ',
@@ -394,7 +402,7 @@ const FinancePaymentDetailPage: React.FC = () => {
       title: 'Cost Code',
       key: 'cost_code',
       render: (_: unknown, r: PettyCashLine) =>
-        r.cost_code ? <span>{r.cost_code}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
+        r.cost_code ? <span>{costCodeLabel(r)}</span> : <span style={{ color: '#9ca3af' }}>-</span>,
     },
     {
       title: 'รหัสวัสดุ',
@@ -570,7 +578,7 @@ const FinancePaymentDetailPage: React.FC = () => {
             message="เอกสารนี้จ่ายครบแล้ว หากต้องการจ่ายใหม่ให้ยกเลิกรายการจ่ายก่อน"
             style={{ marginBottom: 16 }}
           />
-          <Button onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
+          <Button type="primary" onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
         </>
       ) : (
       <Card title="บันทึกการจ่ายเงินใหม่" style={cardStyle}>
@@ -638,7 +646,7 @@ const FinancePaymentDetailPage: React.FC = () => {
                 </PermissionButton>
               </span>
             </Tooltip>
-            <Button onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
+            <Button type="primary" onClick={() => navigate('/finance/payments')}>กลับไปรายการ</Button>
           </Space>
         </Form>
       </Card>

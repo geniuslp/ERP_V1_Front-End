@@ -136,7 +136,7 @@ const StockWhRequisitionApprovalDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: 'ตรวจสอบ/อนุมัติใบเบิก' }, { title: detail.transfer_no }]}
         extra={
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={() => navigate(LIST_PATH)}>กลับ</Button>
+            <Button type="primary" onClick={() => navigate(LIST_PATH)}>กลับ</Button>
             {isDraft && (
               <>
                 <Tooltip title={allChecked ? '' : 'กรุณาตรวจสอบครบทุกรายการก่อนยืนยัน'}>

@@ -151,7 +151,7 @@ const StockTransferDetailView: React.FC<Props> = ({ transferType, menuCode, brea
         breadcrumbs={[{ title: 'Home' }, { title: 'Stock Management' }, { title: breadcrumbLabel }, { title: detail.transfer_no }]}
         extra={
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={() => navigate(listPath)}>กลับ</Button>
+            <Button type="primary" onClick={() => navigate(listPath)}>กลับ</Button>
             {detail.status === 'DRAFT' && (
               <>
                 <PermissionButton menuCode={menuCode} action="write" type="primary" loading={actionLoading} onClick={handleConfirm}>

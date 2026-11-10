@@ -1307,7 +1307,7 @@ const PRCreatePage: React.FC = () => {
                   พิมพ์
                 </Button>
               </Tooltip>
-              <Button
+              <Button type="primary"
                 icon={<RollbackOutlined />}
                 onClick={() => {
                   navigate(isEdit ? `/pr/${id}` : '/pr/history')

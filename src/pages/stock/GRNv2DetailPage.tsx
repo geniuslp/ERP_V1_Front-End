@@ -59,7 +59,7 @@ const GRNv2DetailPage: React.FC = () => {
           { title: 'Home' }, { title: 'Stock Management' }, { title: 'ประวัติ GRN' }, { title: grn?.grn_no || '...' },
         ]}
         extra={
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/grn')}>
+          <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/grn')}>
             กลับไปรายการ
           </Button>
         }

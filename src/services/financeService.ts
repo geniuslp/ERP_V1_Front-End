@@ -50,6 +50,8 @@ export const financeService = {
         supplier: params.supplier || undefined,
         ap_voucher: params.ap_voucher || undefined,
         requester: params.requester || undefined,
+        payee: params.payee || undefined,
+        branch: params.branch || undefined,
         status: params.status || undefined,
         search: params.search || undefined,
         page,

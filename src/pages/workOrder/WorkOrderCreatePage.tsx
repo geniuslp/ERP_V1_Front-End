@@ -1241,7 +1241,7 @@ const WorkOrderCreatePage: React.FC = () => {
                 <div style={{ ...barStyle, margin: '16px 24px 0', paddingBottom: 24 }}>
                   <div style={groupStyle}>{printTrigger}</div>
                   <div style={{ ...groupStyle, justifyContent: 'flex-end' }}>
-                    <Button icon={<ArrowLeftOutlined />} style={{ borderRadius: 8 }} onClick={() => setActiveTab('header')}>
+                    <Button type="primary" icon={<ArrowLeftOutlined />} style={{ borderRadius: 8 }} onClick={() => setActiveTab('header')}>
                       ย้อนกลับ
                     </Button>
                     {/* Same rules as PO: a document still waiting for approval is just saved in place ("บันทึก",

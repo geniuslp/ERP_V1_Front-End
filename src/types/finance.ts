@@ -48,6 +48,8 @@ export interface FinancePaymentListParams {
   supplier?: string
   ap_voucher?: string
   requester?: string
+  payee?: string // PC: ผู้รับเงิน
+  branch?: string // PC: สาขา code
   status?: string
   search?: string
   page?: number

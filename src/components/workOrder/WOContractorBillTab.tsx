@@ -32,7 +32,7 @@ const BILL_TYPE_LABEL_WO: Record<BillType, string> = {
 }
 const BILL_TYPE_LABEL_PO: Record<BillType, string> = {
   ADV: 'Downpayment',
-  PROGRESS: 'Progress Payment (Custom Made)',
+  PROGRESS: 'Progress Payment',
   RETENTION: 'Test & Commissioning',
 }
 // Petty cash has no advance payment: only PROGRESS / RETENTION can be chosen.
@@ -188,8 +188,9 @@ const WOContractorBillTab: React.FC<Props> = ({
   // No woId = this tab belongs to a PO (WOContractorLogPanel passes woId only for a work order).
   const isPC = kind === 'PC'
   const isPO = !woId && !isPC
-  // VAT is not used for work orders or petty cash: the row is hidden and always 0. Only PO bills still carry it.
-  const noVat = !isPO
+  // VAT is not used for work orders, petty cash or purchase orders: the row is hidden and always 0.
+  // (An old bill that already holds a VAT amount still shows that row in its detail popup.)
+  const noVat = true
   const BILL_TYPE_LABEL = isPC ? BILL_TYPE_LABEL_PC : isPO ? BILL_TYPE_LABEL_PO : BILL_TYPE_LABEL_WO
   const BILL_TYPE_OPTIONS = billTypeOptions(BILL_TYPE_LABEL, isPC)
   // "เงินงวดนี้" % is always a % of the FULL contract value (30% of 1,000,000 = 300,000); the advance is taken back by row 3.

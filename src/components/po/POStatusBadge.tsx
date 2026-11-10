@@ -28,6 +28,9 @@ const receiveMap: Record<POReceiveStatus, { color: string; label: string }> = {
   RECEIVED: { color: 'success', label: 'รับของครบแล้ว' },
 }
 
+/** Plain-text label of a PO approval status (for exports / print). */
+export const poApprovalStatusLabel = (status: POStatus): string => approvalMap[status]?.label ?? status
+
 export const POApprovalStatusTag: React.FC<{ status: POStatus }> = ({ status }) => {
   const s = approvalMap[status] ?? { color: 'default', label: status }
   return <Tag color={s.color}>{s.label}</Tag>

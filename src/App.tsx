@@ -96,6 +96,8 @@ const ProjectStockBalancePage = lazy(() => import('@/pages/stock/ProjectStockBal
 const FinancePaymentsPage = lazy(() => import('@/pages/finance/FinancePaymentsPage'))
 const FinancePaymentDetailPage = lazy(() => import('@/pages/finance/FinancePaymentDetailPage'))
 const ProjectOverviewPage = lazy(() => import('@/pages/project-overview/ProjectOverviewPage'))
+const HowToVideosPage = lazy(() => import('@/pages/howto/HowToVideosPage'))
+const HowToUploadPage = lazy(() => import('@/pages/howto/HowToUploadPage'))
 const ICProjectListPage = lazy(() => import('@/pages/ic/ICProjectListPage'))
 const ICPoReceivePage = lazy(() => import('@/pages/ic/ICPoReceivePage'))
 const ICPoReturnPage = lazy(() => import('@/pages/ic/ICPoReturnPage'))
@@ -313,6 +315,15 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/finance/payments/:docType/:docId" element={
                 <RequirePermission menuCode="MENU_FINANCE_PAYMENTS" action="read"><FinancePaymentDetailPage /></RequirePermission>
+              } />
+              {/* How To use — tutorial videos. Videos page: any role granted MENU_HOWTO_VIDEOS (each section is then
+                  filtered by its own menu permission on the API). Upload page: MENU_HOWTO_UPLOAD. */}
+              <Route path="/howto" element={<Navigate to="/howto/videos" replace />} />
+              <Route path="/howto/videos" element={
+                <RequirePermission menuCode="MENU_HOWTO_VIDEOS" action="read"><HowToVideosPage /></RequirePermission>
+              } />
+              <Route path="/howto/upload" element={
+                <RequirePermission menuCode="MENU_HOWTO_UPLOAD" action="read"><HowToUploadPage /></RequirePermission>
               } />
               <Route path="/project-overview" element={
                 <RequirePermission menuCode="MENU_PROJECT_OVERVIEW" action="read"><ProjectOverviewPage /></RequirePermission>

@@ -86,7 +86,7 @@ const PettyCashSubmitApprove: React.FC<Props> = ({ open, summary, chain, submitt
       }}
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Button onClick={onBack} disabled={submitting}>กลับ</Button>
+          <Button type="primary" onClick={onBack} disabled={submitting}>กลับ</Button>
           <Button type="primary" onClick={onConfirm} loading={submitting} disabled={submitting}>
             ยืนยันการอนุมัติ
           </Button>

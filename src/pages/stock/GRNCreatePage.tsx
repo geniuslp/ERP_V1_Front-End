@@ -162,7 +162,7 @@ const GRNCreatePage: React.FC = () => {
           { title: 'Home' }, { title: 'Stock Management' }, { title: 'รับเข้า' }, { title: po?.po_no || '...' },
         ]}
         extra={
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/receivable')}>
+          <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/receivable')}>
             กลับไปรายการ
           </Button>
         }

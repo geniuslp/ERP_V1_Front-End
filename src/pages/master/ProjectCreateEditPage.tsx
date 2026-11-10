@@ -158,6 +158,9 @@ const ProjectCreateEditPage: React.FC = () => {
     setJobRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
 
   const [legacyProjectOwnerName, setLegacyProjectOwnerName] = useState<string | undefined>()
+  // Old projects only have the free-text responsible_person_name (no linked users). Keep it as-is
+  // unless the user picks real users, so editing other fields never forces re-selecting.
+  const [legacyResponsibleName, setLegacyResponsibleName] = useState<string | undefined>()
 
   // "เจ้าของโครงการ" dropdown — same source as CustomerPage.tsx (GET /customer),
   // fetched in full (large page_size) like the department/supplier dropdowns
@@ -211,6 +214,11 @@ const ProjectCreateEditPage: React.FC = () => {
         })
         const p = res.data?.data ?? res.data
         setLegacyProjectOwnerName(p.project_owner_name ?? undefined)
+        setLegacyResponsibleName(
+          (p.responsible_users ?? []).length === 0 && String(p.responsible_person_name ?? '').trim()
+            ? String(p.responsible_person_name).trim()
+            : undefined,
+        )
         setInUse(typeof p.in_use === 'boolean' ? p.in_use : undefined)
         setInUseBy(Array.isArray(p.in_use_by) ? p.in_use_by : [])
         setSavedCode(p.project_code)
@@ -283,7 +291,10 @@ const ProjectCreateEditPage: React.FC = () => {
       location_code: values.location_code || undefined,
       // "ผู้รับผิดชอบหลัก" — required free text, replaces the old owner_id dropdown
       // The server derives the legacy responsible_person_name from the selected usernames.
-      responsible_user_ids: values.responsible_user_ids ?? [],
+      // Legacy project with no users picked: omit the ids and resend the old name so the server keeps it.
+      ...((values.responsible_user_ids ?? []).length === 0 && legacyResponsibleName
+        ? { responsible_person_name: legacyResponsibleName }
+        : { responsible_user_ids: values.responsible_user_ids ?? [] }),
       // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
       // replacing the old project_owner_name free-text input.
       // Omitted while the owner is locked (in use / unknown) so a changed owner is never sent.
@@ -468,7 +479,8 @@ const ProjectCreateEditPage: React.FC = () => {
               <Form.Item
                 label="ผู้รับผิดชอบหลัก"
                 name="responsible_user_ids"
-                rules={[{ required: true, type: 'array', min: 1, message: 'กรุณาเลือกผู้รับผิดชอบหลัก' }]}
+                rules={[{ required: !legacyResponsibleName, type: 'array', min: 1, message: 'กรุณาเลือกผู้รับผิดชอบหลัก' }]}
+                extra={legacyResponsibleName ? `ค่าเดิม: ${legacyResponsibleName} (ไม่ต้องเลือกใหม่ หากไม่ต้องการเปลี่ยน)` : undefined}
               >
                 <Select
                   mode="multiple"

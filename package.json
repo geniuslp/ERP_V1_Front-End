@@ -17,6 +17,7 @@
     "antd": "^5.20.0",
     "axios": "^1.7.7",
     "dayjs": "^1.11.13",
+    "exceljs": "^4.4.0",
     "html5-qrcode": "^2.3.8",
     "jwt-decode": "^4.0.0",
     "qrcode.react": "^4.2.0",

@@ -7,6 +7,7 @@ import { getOrderTypeLabel } from '@/constants/orderTypes'
 import { thaiBahtText } from '@/utils/thaiBahtText'
 import type { PettyCashRequisition } from '@/types/pettyCash'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import { pcBranchLabel } from '@/constants/pettyCashBranches'
 
 // Standalone Petty Cash print component, paginated the way PRPrint.tsx does it: fixed A4 pages
 // (210x297mm, flex column), page header + info grid + column header repeated on every page, rows
@@ -41,6 +42,8 @@ export interface PettyCashPrintData {
   dept: string // dept_name
   orderType: string
   payee: string
+  branch: string // สาขา, display label
+  remarks: string // header หมายเหตุ of the PC document
   subtotal: number
   discount: number
   vat: number
@@ -74,6 +77,8 @@ export const buildPettyCashPrintData = (pc: PettyCashRequisition): PettyCashPrin
   dept: pc.dept_name ?? '',
   orderType: pc.order_type ? getOrderTypeLabel(pc.order_type) : '',
   payee: [pc.payee_emp_code, pc.payee_name].filter(Boolean).join(' '),
+  branch: pcBranchLabel(pc.branch_code),
+  remarks: (pc.remarks ?? '').trim(),
   subtotal: pc.total_amount ?? 0,
   discount: pc.discount_amount ?? 0,
   vat: pc.vat_amount ?? 0,
@@ -133,6 +138,7 @@ const CSS = `
     font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.2;}
   .pcp-info > div{padding:3px 8px;}
   .pcp-info > div:nth-child(even){border-left:1px solid #000;text-align:left;}
+  .pcp-info > .pcp-info-wide{grid-column:1 / -1;border-left:none;border-top:1px solid #000;}
   .pcp-tbl{width:100%;border-collapse:collapse;table-layout:fixed;
     border-left:1px solid #000;border-right:1px solid #000;border-bottom:1px solid #000;}
   .pcp-tbl thead{display:table-header-group;}
@@ -209,13 +215,17 @@ const InfoBox = ({ data }: { data: PettyCashPrintData }) => (
       </div>
     </div>
     <div>
-      <b>เลขที่ :</b>{' '}
-      <span style={{ fontSize: '15pt', fontWeight: 700 }}>{data.pcNo || '-'}</span>
+      <div>
+        <b>เลขที่ :</b>{' '}
+        <span style={{ fontSize: '15pt', fontWeight: 700 }}>{data.pcNo || '-'}</span>
+      </div>
+      <div><b>วันที่ :</b>&nbsp;{data.pcDate || '-'}</div>
     </div>
-    <div><b>ประเภทการสั่งซื้อ :</b>&nbsp;{data.orderType || '-'}</div>
-    <div><b>วันที่ :</b>&nbsp;{data.pcDate || '-'}</div>
     <div><b>จ่ายให้ :</b>&nbsp;{data.payee || '-'}</div>
+    <div><b>สาขา :</b>&nbsp;{data.branch || '-'}</div>
+    <div><b>ประเภทการสั่งซื้อ :</b>&nbsp;{data.orderType || '-'}</div>
     <div><b>จำนวนสุทธิ :</b>&nbsp;{fmt(data.netAmount)} บาท</div>
+    <div className="pcp-info-wide" style={{ whiteSpace: 'pre-wrap' }}><b>หมายเหตุ :</b>&nbsp;{data.remarks || '-'}</div>
   </div>
 )
 

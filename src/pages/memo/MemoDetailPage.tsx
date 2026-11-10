@@ -412,7 +412,7 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบบันทึกขอซื้อ (Memo)' }, { title: memo?.memoNo ?? '' }]}
         extra={
           <Space wrap>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
+            <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate(ROUTES.MEMO.LIST)}>
               กลับ
             </Button>
             <Button icon={<PrinterOutlined />} onClick={handlePrint}>

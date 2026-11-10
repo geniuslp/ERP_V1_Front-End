@@ -752,7 +752,7 @@ const ICProjectMovementPage: React.FC = () => {
 
       {headerReadOnly && (
         <Space>
-          <Button onClick={() => navigate(`/ic/projects/${projectCode}/movements`)}>กลับไปรายการ</Button>
+          <Button type="primary" onClick={() => navigate(`/ic/projects/${projectCode}/movements`)}>กลับไปรายการ</Button>
         </Space>
       )}
     </Form>
@@ -815,7 +815,7 @@ const ICProjectMovementPage: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: 12 }}>
-        <Button
+        <Button type="primary"
           icon={<ArrowLeftOutlined />}
           style={{ height: 36, borderRadius: 8, fontWeight: 500 }}
           onClick={() =>
@@ -864,7 +864,7 @@ const ICProjectMovementPage: React.FC = () => {
           >
             พิมพ์เอกสาร
           </Button>,
-          <Button key="back" onClick={closeSuccess}>
+          <Button type="primary" key="back" onClick={closeSuccess}>
             กลับ
           </Button>,
         ]}

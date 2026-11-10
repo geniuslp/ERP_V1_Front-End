@@ -200,7 +200,7 @@ const StockProjectDetailPage: React.FC = () => {
         title={TYPE_LABEL[dataType] ?? 'คลัง (Stock)'}
         subtitle={`${project.project_code} — ${project.project_name}`}
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Inventory Control' }, { title: 'คลัง (Stock)' }]}
-        extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate(listRoute)}>เปลี่ยนโครงการ</Button>}
+        extra={<Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate(listRoute)}>เปลี่ยนโครงการ</Button>}
       />
       {dataType !== 'balance' ? (
         <Card style={cardStyle}>

@@ -6,7 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useAppSelector } from '@/store'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import WOContractorBillTab from '@/components/workOrder/WOContractorBillTab'
-import WOAttachmentPanel from '@/components/workOrder/WOAttachmentPanel'
+import LinkedDocFiles from '@/components/workOrder/LinkedDocFiles'
 import { WO_CONTRACT_DESCRIPTION_LABEL } from '@/types/workOrder'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -42,7 +42,7 @@ const TERM_LABEL: Record<ItemType, string> = {
 }
 // A PO uses the same three rows under the PO bill-type names (see BILL_TYPE_LABEL_PO in WOContractorBillTab).
 const TERM_LABEL_PO: Record<ItemType, string> = {
-  CONTRACT: 'Progress Payment (Custom Made)',
+  CONTRACT: 'Progress Payment',
   ADVANCE: 'Downpayment',
   RETENTION: 'Test & Commissioning',
 }
@@ -244,10 +244,10 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId: woIdProp, poId, pcId, onB
 
   const columns: ColumnsType<TermRow> = [
     { title: 'รายการ (Item)', dataIndex: 'item_type', render: (t: ItemType) => (isPC ? TERM_LABEL_PC : isPO ? TERM_LABEL_PO : TERM_LABEL)[t], width: isPO ? 230 : 130 },
-    { title: '%', width: 130, render: (_, r) => numCell(r.item_type, 'percent', true) },
-    { title: 'Amount', width: 170, render: (_, r) => numCell(r.item_type, 'amount') },
-    { title: 'Accumulate (สะสม)', width: 170, render: (_, r) => numCell(r.item_type, 'accumulate') },
-    { title: 'Balance', width: 170, render: (_, r) => numCell(r.item_type, 'balance') },
+    { title: '%', width: 130, align: 'right', render: (_, r) => numCell(r.item_type, 'percent', true) },
+    { title: 'Amount', width: 170, align: 'right', render: (_, r) => numCell(r.item_type, 'amount') },
+    { title: 'Accumulate (สะสม)', width: 170, align: 'right', render: (_, r) => numCell(r.item_type, 'accumulate') },
+    { title: 'Balance (รอจ่าย)', width: 170, align: 'right', render: (_, r) => numCell(r.item_type, 'balance') },
   ]
 
   const loadFiles = async (id: number) => {
@@ -383,12 +383,10 @@ const WOContractorLogPanel: React.FC<Props> = ({ woId: woIdProp, poId, pcId, onB
 
   const filesTab = (
     <div>
-      {/* Files attached to the work order itself (WO create / edit page), read-only here; hidden when there are none. */}
-      {woId && !isPO && !isPC ? (
-        <div style={{ marginBottom: 20 }}>
-          <WOAttachmentPanel woId={woId} readOnly hideWhenEmpty title="ไฟล์แนบจากหนังสือสั่งจ้าง" />
-        </div>
-      ) : null}
+      {/* Files that travel with the document, tagged by origin: Memo → PR → WO (or PO). Read-only; hidden when none.
+          (For a WO this also lists its own files, so the separate WO-only list is no longer shown.) */}
+      {/* woId already holds the PO id for a PO (see the aliasing above). */}
+      {woId && !isPC ? <LinkedDocFiles kind={isPO ? 'PO' : 'WO'} docId={woId} /> : null}
       <Upload.Dragger
         accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
         showUploadList={false}

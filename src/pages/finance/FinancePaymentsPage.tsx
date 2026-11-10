@@ -7,6 +7,7 @@ import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import { PC_BRANCH_OPTIONS } from '@/constants/pettyCashBranches'
 import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
 import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
@@ -105,6 +106,9 @@ const FinancePaymentsPage: React.FC = () => {
   const [apVoucher, setApVoucher] = useState('')
   // PC tab: ผู้ขอเบิก search box.
   const [requester, setRequester] = useState('')
+  // PC tab: ผู้รับเงิน text box and สาขา dropdown.
+  const [payee, setPayee] = useState('')
+  const [branch, setBranch] = useState('')
 
   // Resizable widths — not persisted, reset on refresh.
   const [docNoColWidth, setDocNoColWidth] = useState(DOC_NO_COL_DEFAULT_WIDTH)
@@ -125,7 +129,7 @@ const FinancePaymentsPage: React.FC = () => {
   const fetchList = async (
     nextPage = page,
     type = docType,
-    filters: { projectCode: string; status: string; docNo: string; supplier: string; apVoucher: string; requester: string } = { projectCode, status, docNo, supplier, apVoucher, requester },
+    filters: { projectCode: string; status: string; docNo: string; supplier: string; apVoucher: string; requester: string; payee: string; branch: string } = { projectCode, status, docNo, supplier, apVoucher, requester, payee, branch },
   ) => {
     setLoading(true)
     try {
@@ -135,6 +139,8 @@ const FinancePaymentsPage: React.FC = () => {
         supplier: type === 'WO' ? filters.supplier.trim() || undefined : undefined,
         ap_voucher: type === 'WO' ? filters.apVoucher.trim() || undefined : undefined,
         requester: type === 'PC' ? filters.requester.trim() || undefined : undefined,
+        payee: type === 'PC' ? filters.payee.trim() || undefined : undefined,
+        branch: type === 'PC' ? filters.branch || undefined : undefined,
         status: filters.status || undefined,
         search: filters.docNo.trim() || undefined,
         page: nextPage,
@@ -151,7 +157,7 @@ const FinancePaymentsPage: React.FC = () => {
   }
 
   // A tab change clears the filters (handleTabChange), so the reload for the new tab runs with empty ones.
-  useEffect(() => { fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '' }) }, [docType])
+  useEffect(() => { fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '', payee: '', branch: '' }) }, [docType])
 
   const handleReset = () => {
     setProjectCode('')
@@ -160,7 +166,9 @@ const FinancePaymentsPage: React.FC = () => {
     setSupplier('')
     setApVoucher('')
     setRequester('')
-    fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '' })
+    setPayee('')
+    setBranch('')
+    fetchList(1, docType, { projectCode: '', status: '', docNo: '', supplier: '', apVoucher: '', requester: '', payee: '', branch: '' })
   }
 
   const handleTabChange = (key: string) => {
@@ -172,6 +180,8 @@ const FinancePaymentsPage: React.FC = () => {
     setSupplier('')
     setApVoucher('')
     setRequester('')
+    setPayee('')
+    setBranch('')
   }
 
   const columns: ColumnsType<FinancePaymentListItem> = [
@@ -245,9 +255,14 @@ const FinancePaymentsPage: React.FC = () => {
       dataIndex: 'ap_voucher_nos',
       key: 'ap_voucher_nos',
       width: apColWidth,
-      ellipsis: true,
       onHeaderCell: () => ({ width: apColWidth, onResize: handleResize(setApColWidth) }),
-      render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
+      // The API joins a WO's voucher numbers with ", " — show them one per line (no truncation).
+      render: (v: string | null | undefined) => {
+        const nos = (v ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+        return nos.length
+          ? <div>{nos.map((no) => <div key={no} style={{ whiteSpace: 'nowrap' }}>{no}</div>)}</div>
+          : <span style={{ color: '#9ca3af' }}>—</span>
+      },
     }] : []),
     {
       title: 'มูลค่าสุทธิ',
@@ -258,7 +273,8 @@ const FinancePaymentsPage: React.FC = () => {
       align: 'right',
       render: (v: number) => <span style={{ whiteSpace: 'nowrap' }}>{thb(v)} บาท</span>,
     },
-    {
+    // สถานะรับของ: not for petty cash (nothing is received against it).
+    ...(docType === 'PC' ? [] : [{
       title: 'สถานะรับของ',
       dataIndex: 'receivingStatus',
       key: 'receivingStatus',
@@ -271,7 +287,7 @@ const FinancePaymentsPage: React.FC = () => {
         const s = receivingStatusMap[v] ?? { color: 'default', label: v }
         return <Tag color={s.color}>{s.label}</Tag>
       },
-    },
+    }]),
     {
       title: 'จ่ายแล้ว',
       dataIndex: 'paid_amount',
@@ -357,14 +373,32 @@ const FinancePaymentsPage: React.FC = () => {
             allowClear
           />
           {docType === 'PC' && (
-            <Input
-              placeholder="ผู้ขอเบิก"
-              value={requester}
-              onChange={(e) => setRequester(e.target.value)}
-              onPressEnter={() => fetchList(1)}
-              style={{ width: 180 }}
-              allowClear
-            />
+            <>
+              <Input
+                placeholder="ผู้ขอเบิก"
+                value={requester}
+                onChange={(e) => setRequester(e.target.value)}
+                onPressEnter={() => fetchList(1)}
+                style={{ width: 180 }}
+                allowClear
+              />
+              <Input
+                placeholder="ผู้รับเงิน"
+                value={payee}
+                onChange={(e) => setPayee(e.target.value)}
+                onPressEnter={() => fetchList(1)}
+                style={{ width: 180 }}
+                allowClear
+              />
+              <Select
+                value={branch || undefined}
+                onChange={(v) => setBranch(v ?? '')}
+                placeholder="สาขา"
+                allowClear
+                style={{ width: 240 }}
+                options={PC_BRANCH_OPTIONS}
+              />
+            </>
           )}
           {docType === 'WO' && (
             <>
@@ -399,7 +433,7 @@ const FinancePaymentsPage: React.FC = () => {
           scroll={{
             x:
               docNoColWidth + (docType === 'PC' ? 0 : supplierColWidth) + (docType === 'WO' ? apColWidth : 0) + (docType === 'PC' ? requesterColWidth + payeeColWidth : 0) + projectColWidth + netAmountColWidth +
-              receivingColWidth + paidColWidth + remainingColWidth + ACTION_COL_WIDTH,
+              (docType === 'PC' ? 0 : receivingColWidth) + paidColWidth + remainingColWidth + ACTION_COL_WIDTH,
           }}
           dataSource={data}
           pagination={{

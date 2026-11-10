@@ -177,7 +177,7 @@ const WorkOrderDetailPage: React.FC = () => {
         breadcrumbs={[{ title: 'Home' }, { title: 'Work Order' }, { title: formatPoNoWithRevision(wo.wo_no, wo.revision_round) }]}
         extra={
           <div className="wo-detail-actions">
-            <Button onClick={() => navigate('/work-order/list')}>กลับ</Button>
+            <Button type="primary" onClick={() => navigate('/work-order/list')}>กลับ</Button>
             <WorkOrderPrintTrigger id={wo.id} fixedTemplate="WO_STANDARD" label="แบบฟอร์มสัญญาสั่งจ้าง" buttonProps={{ className: 'wo-span-2' }} />
             <WorkOrderPrintTrigger id={wo.id} fixedTemplate="PO_HEADER" label="แบบฟอร์มรายละเอียดสัญญาจ้าง" buttonProps={{ className: 'wo-span-2' }} />
             {['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(wo.status) && (

@@ -268,7 +268,7 @@ const GoodsReceiptDetailPage: React.FC = () => {
           { title: po?.po_no || '...' },
         ]}
         extra={
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/receiving')}>
+          <Button type="primary" icon={<ArrowLeftOutlined />} onClick={() => navigate('/stock/receiving')}>
             กลับไปค้นหา
           </Button>
         }
