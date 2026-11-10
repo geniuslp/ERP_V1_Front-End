@@ -487,7 +487,7 @@ const PRDetailPage: React.FC = () => {
             <Button icon={<PrinterOutlined />} onClick={handlePrint}>
               พิมพ์
             </Button>
-            {pr.status === 'PENDING_APPROVAL' && canApprove && (
+            {forApproval && pr.status === 'PENDING_APPROVAL' && canApprove && (
               <>
                 <PermissionButton
                   menuCode={MENU_PR_APPROVAL}

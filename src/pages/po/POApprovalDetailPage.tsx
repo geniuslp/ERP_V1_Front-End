@@ -276,7 +276,8 @@ const POApprovalDetailPage: React.FC = () => {
   // Backend allows approve/reject from both PENDING_APPROVAL (first approval)
   // and PENDING_REAPPROVAL (an APPROVED PO edited via edit-approved and
   // resent) — see po_approval.go's status guard on Approve/Reject.
-  const canAct = po?.status === 'PENDING_APPROVAL' || po?.status === 'PENDING_REAPPROVAL'
+  // Approve / reject only when opened from the approval menu (?for_approval=true), never from the history / detail check.
+  const canAct = forApproval && (po?.status === 'PENDING_APPROVAL' || po?.status === 'PENDING_REAPPROVAL')
   const canCancel = po?.status === 'APPROVED'
 
   // po.can_edit_approved (po.go:488, `CanEditApproved = status=="APPROVED" &&

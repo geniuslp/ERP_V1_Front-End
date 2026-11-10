@@ -1,3 +1,4 @@
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Select, Input, Button, Space, Badge, Tag, Grid, Pagination, Spin, message } from 'antd'
 import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons'
@@ -197,6 +198,7 @@ const PRApprovalListPage: React.FC = () => {
             </div>
           </Spin>
         ) : (
+          <TableScrollEnd>
           <Table
             rowKey="id"
             loading={loading}
@@ -215,6 +217,7 @@ const PRApprovalListPage: React.FC = () => {
             scroll={{ x: 900 }}
             size="small"
           />
+          </TableScrollEnd>
         )}
       </Card>
     </div>

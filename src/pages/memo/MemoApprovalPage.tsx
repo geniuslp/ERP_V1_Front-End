@@ -1,3 +1,4 @@
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import React, { useEffect, useState } from 'react'
 import {
   Card, Table, Button, Space, Tooltip, Modal, Input, Grid, Pagination, Spin, message,
@@ -315,6 +316,7 @@ const MemoApprovalPage: React.FC = () => {
             </div>
           </Spin>
         ) : (
+          <TableScrollEnd>
           <Table
             rowKey="id"
             loading={loading}
@@ -322,7 +324,9 @@ const MemoApprovalPage: React.FC = () => {
             dataSource={data}
             pagination={{ pageSize: 10, showTotal: (t) => `Total ${t} items` }}
             locale={{ emptyText: APPROVAL_EMPTY_TEXT }}
+            scroll={{ x: 1100 }}
           />
+          </TableScrollEnd>
         )}
       </Card>
 

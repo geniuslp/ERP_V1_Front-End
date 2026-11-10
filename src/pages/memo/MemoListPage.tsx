@@ -1,3 +1,4 @@
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, DatePicker, Button, Space, Tooltip, Popconfirm, message } from 'antd'
 import {
@@ -418,6 +419,7 @@ const MemoListPage: React.FC = () => {
           ]}
         />
 
+        <TableScrollEnd>
         <Table
           rowKey="id"
           loading={loading}
@@ -434,6 +436,7 @@ const MemoListPage: React.FC = () => {
           }}
           locale={{ emptyText: 'ไม่พบข้อมูลใบบันทึกขอซื้อ (Memo)' }}
         />
+        </TableScrollEnd>
       </Card>
     </div>
   )

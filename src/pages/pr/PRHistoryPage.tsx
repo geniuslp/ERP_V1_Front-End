@@ -1,3 +1,4 @@
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { Card, Table, Tag, message, Tooltip, Space, Button, Popconfirm, Select, Input } from 'antd'
@@ -455,6 +456,7 @@ const PRHistoryPage: React.FC = () => {
           />
         </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} />
+        <TableScrollEnd>
         <Table
           rowKey="id"
           loading={loading}
@@ -475,6 +477,7 @@ const PRHistoryPage: React.FC = () => {
             onChange: (p, l) => { setPage(p); setLimit(l) },
           }}
         />
+        </TableScrollEnd>
       </Card>
     </div>
   )
