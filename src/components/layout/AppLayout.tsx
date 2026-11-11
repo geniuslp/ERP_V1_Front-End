@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Layout, Avatar, Dropdown, Badge, Button, Grid } from 'antd'
-import { BellOutlined, UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined } from '@ant-design/icons'
+import { Layout, Avatar, Dropdown, Button, Grid, notification } from 'antd'
+import { UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined } from '@ant-design/icons'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
@@ -10,6 +10,9 @@ import BrandLogo from '@/components/common/BrandLogo'
 import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
 import { useMyPendingApprovalCount } from '@/hooks/useMyPendingApprovalCount'
+import { useNotifications } from '@/hooks/useNotifications'
+import type { AppNotification } from '@/hooks/useNotifications'
+import NotificationBell from './NotificationBell'
 import { useDisableInputAutofill } from '@/hooks/useDisableInputAutofill'
 
 const { Content } = Layout
@@ -28,7 +31,25 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const screens = useBreakpoint()
   // The top bar's desktop layout starts at 992px (antd `lg`); below that the menu becomes a drawer.
   const isNarrow = screens.lg === false
-  const pendingCounts = useMyPendingApprovalCount(location.pathname)
+  const openNotification = (n: AppNotification) => {
+    markRead(n.id)
+    if (n.link) navigate(n.link)
+  }
+  // Live push: toast with a link straight to the document.
+  const { items: notifications, attention, unread, lastPushId, markRead, markAllRead } = useNotifications((n) => {
+    const key = `notif-${n.id}`
+    notification.open({
+      key,
+      message: n.title,
+      description: n.message,
+      placement: 'bottomRight',
+      duration: 8,
+      style: { cursor: n.link ? 'pointer' : 'default' },
+      onClick: () => { notification.destroy(key); openNotification(n) },
+    })
+  }, location.pathname)
+  // A new notification usually means the pending-approval numbers changed too, so refetch them.
+  const pendingCounts = useMyPendingApprovalCount(`${location.pathname}#${lastPushId}`)
   useDisableInputAutofill()
 
   const handleLogout = () => {
@@ -74,14 +95,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const right = (
     <>
-      <Badge count={pendingCounts.total} size="small" overflowCount={99}>
-        <Button
-          type="text"
-          className="tn-icon-btn"
-          aria-label="การแจ้งเตือน"
-          icon={<BellOutlined style={{ fontSize: 18 }} />}
-        />
-      </Badge>
+      <NotificationBell
+        items={notifications}
+        attention={attention}
+        unread={unread}
+        pendingTotal={pendingCounts.total}
+        onOpen={openNotification}
+        onMarkAllRead={markAllRead}
+      />
 
       <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
         <div
