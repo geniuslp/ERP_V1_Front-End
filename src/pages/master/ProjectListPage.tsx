@@ -11,6 +11,9 @@ import {
 import { Upload } from 'antd'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
@@ -20,6 +23,41 @@ import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import { JOB_TYPES } from '@/constants/jobTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
+
+// Drag-to-resize header cell (same local pattern as PRHistoryPage / POHistoryPage): only columns that pass
+// width + onResize via onHeaderCell get a drag handle.
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) return <th {...restProps} />
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
+
+const DEFAULT_COL_WIDTHS: Record<string, number> = {
+  projectCode: 140, projectName: 280, responsiblePersonName: 180, relatedUsernames: 170,
+  budgetAmount: 150, projectTier: 80, voAmount: 150, duration: 170, actions: 110, status: 120,
+}
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -51,6 +89,7 @@ const mapProject = (raw: any): Project => ({
   customerId:   raw.customer_id,
   customerName: raw.customer_name,
   responsiblePersonName: raw.responsible_person_name,
+  relatedUsernames: raw.related_usernames,
   inUse:        raw.in_use,
   inUseBy:      raw.in_use_by ?? [],
   jobCodes:     raw.job_codes ?? [],
@@ -421,33 +460,51 @@ const ProjectListPage: React.FC = () => {
     }
   }
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COL_WIDTHS)
+  const handleColResize = (key: string) => (_: React.SyntheticEvent, { size }: ResizeCallbackData) =>
+    setColWidths((prev) => ({ ...prev, [key]: Math.max(60, size.width) }))
+  // width + drag handle for a column key
+  const rz = (key: string) => ({
+    width: colWidths[key],
+    onHeaderCell: () => ({ width: colWidths[key], onResize: handleColResize(key) }),
+  })
+
   const columns = [
     {
       title: 'รหัสโครงการ',
       dataIndex: 'projectCode',
       key: 'projectCode',
-      width: '10%',
+      ...rz('projectCode'),
       render: (code: string, record: Project) => (
         <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/master/projects/${record.id}/edit`)}>
           {code}
         </a>
       ),
     },
-    { title: 'ชื่อโครงการ', dataIndex: 'projectName', key: 'projectName', width: '30%', ellipsis: true },
+    { title: 'ชื่อโครงการ', dataIndex: 'projectName', key: 'projectName', ellipsis: true, ...rz('projectName') },
     {
       // Now backed by the required free-text responsible_person_name field
       // (the owner_id/users dropdown it replaces is deprecated server-side).
       title: 'ผู้รับผิดชอบหลัก',
       dataIndex: 'responsiblePersonName',
       key: 'responsiblePersonName',
-      width: '15%',
+      ellipsis: true,
+      ...rz('responsiblePersonName'),
+      render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
+    },
+    {
+      title: 'บุคคลที่เกี่ยวข้อง',
+      dataIndex: 'relatedUsernames',
+      key: 'relatedUsernames',
+      ...rz('relatedUsernames'),
+      ellipsis: true,
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'มูลค่าโครงการ',
       dataIndex: 'budgetAmount',
       key: 'budgetAmount',
-      width: '7%',
+      ...rz('budgetAmount'),
       align: 'right' as const,
       // VO projects carry their value in vo_amount, so show that instead.
       render: (val: number, record: Project) =>
@@ -457,7 +514,7 @@ const ProjectListPage: React.FC = () => {
       title: 'Tier',
       dataIndex: 'projectTier',
       key: 'projectTier',
-      width: '5%',
+      ...rz('projectTier'),
       align: 'center' as const,
       render: (v?: number | null) => formatProjectTier(v),
     },
@@ -465,13 +522,14 @@ const ProjectListPage: React.FC = () => {
       title: 'มูลค่า VO',
       dataIndex: 'voAmount',
       key: 'voAmount',
-      width: '7%',
+      ...rz('voAmount'),
       align: 'right' as const,
       render: (val: number) => `${(val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`,
     },
     {
       title: 'ระยะเวลา',
       key: 'duration',
+      ...rz('duration'),
       render: (_: any, record: Project) => {
         if (!record.startDate && !record.endDate) return <span style={{ color: '#9ca3af' }}>—</span>
         const start = record.startDate ? dayjs(record.startDate).format('DD/MM/YY') : '—'
@@ -482,7 +540,7 @@ const ProjectListPage: React.FC = () => {
     {
       title: 'จัดการ',
       key: 'actions',
-      width: 110,
+      ...rz('actions'),
       render: (_: any, record: Project) => (
         <Space>
           <Tooltip title="แก้ไข">
@@ -500,6 +558,7 @@ const ProjectListPage: React.FC = () => {
       title: 'สถานะ',
       dataIndex: 'status',
       key: 'status',
+      ...rz('status'),
       align: 'right' as const,
       render: (val: ProjectStatus) => <Tag color={statusColor[val]}>{statusLabel[val]}</Tag>,
     },
@@ -529,7 +588,7 @@ const ProjectListPage: React.FC = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onPressEnter={fetchData}
-            style={{ width: 220 }}
+            style={{ width: '100%', maxWidth: 220, minWidth: 160 }}
             allowClear
           />
           <Select
@@ -547,14 +606,19 @@ const ProjectListPage: React.FC = () => {
           <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>ค้นหา</Button>
           <Button icon={<ReloadOutlined />} onClick={handleReset}>รีเซต</Button>
         </Space>
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          pagination={{ pageSize: 20, showTotal: (t) => `ทั้งหมด ${t} โครงการ` }}
-          locale={{ emptyText: 'ไม่พบข้อมูลโครงการ' }}
-        />
+        <TableScrollEnd>
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={data}
+            components={{ header: { cell: ResizableTitle } }}
+            size="small"
+            scroll={{ x: Object.values(colWidths).reduce((s, w) => s + w, 0) }}
+            pagination={{ pageSize: 20, showTotal: (t) => `ทั้งหมด ${t} โครงการ`, responsive: true }}
+            locale={{ emptyText: 'ไม่พบข้อมูลโครงการ' }}
+          />
+        </TableScrollEnd>
       </Card>
 
       {/* upload panel — mirrors MaterialPage.tsx's inline import section exactly */}

@@ -77,7 +77,7 @@ const POCostBudgetPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/master/projects`, {
         headers: authHeader,
-        params: { search: search || undefined, page_size: 1000 },
+        params: { search: search || undefined, page_size: 1000, scope: 'budget' }, // budget scope: own projects only, no warehouse projects
       })
       const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
       setProjects((Array.isArray(raw) ? raw : []).map(mapProject))

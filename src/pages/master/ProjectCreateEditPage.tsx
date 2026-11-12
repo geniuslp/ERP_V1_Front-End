@@ -238,6 +238,7 @@ const ProjectCreateEditPage: React.FC = () => {
           location_code: p.location_code,
           responsible_person_name: p.responsible_person_name,
           responsible_user_ids: (p.responsible_users ?? []).map((u: { id: number }) => Number(u.id)),
+          related_user_ids: (p.related_users ?? []).map((u: { id: number }) => Number(u.id)),
           customer_id: p.customer_id ?? undefined,
           budget_amount: p.budget_amount ?? 0,
           vo_amount: p.vo_amount ?? 0,
@@ -295,6 +296,7 @@ const ProjectCreateEditPage: React.FC = () => {
       ...((values.responsible_user_ids ?? []).length === 0 && legacyResponsibleName
         ? { responsible_person_name: legacyResponsibleName }
         : { responsible_user_ids: values.responsible_user_ids ?? [] }),
+      related_user_ids: values.related_user_ids ?? [],
       // "เจ้าของโครงการ" — now a customer_id FK dropdown (GET /customer),
       // replacing the old project_owner_name free-text input.
       // Omitted while the owner is locked (in use / unknown) so a changed owner is never sent.
@@ -487,6 +489,20 @@ const ProjectCreateEditPage: React.FC = () => {
                   allowClear
                   showSearch
                   placeholder="เลือกผู้รับผิดชอบหลัก"
+                  loading={usersLoading}
+                  options={userOptions}
+                  optionFilterProp="label"
+                  notFoundContent={usersLoading ? 'กำลังโหลด...' : 'ไม่พบข้อมูล'}
+                />
+              </Form.Item>
+            </Col>
+            <Col md={12} xs={24}>
+              <Form.Item label="บุคคลที่เกี่ยวข้อง" name="related_user_ids" extra="ผู้ใช้แผนก Project จะเห็นเฉพาะโครงการที่เป็นผู้รับผิดชอบหรือบุคคลที่เกี่ยวข้อง">
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  placeholder="เลือกบุคคลที่เกี่ยวข้อง"
                   loading={usersLoading}
                   options={userOptions}
                   optionFilterProp="label"
