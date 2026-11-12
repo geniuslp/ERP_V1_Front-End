@@ -309,7 +309,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   return (
     <Card className="wo-block" title="7. เงื่อนไขการจ่ายเงิน" style={cardStyle}>
       {advanceSlot && (
-        <Card title="7.1 เงินล่วงหน้า" size="small" style={subCardStyle}>
+        <Card title="7.1 จ่ายเงินล่วงหน้า" size="small" style={subCardStyle}>
           {advanceSlot}
         </Card>
       )}

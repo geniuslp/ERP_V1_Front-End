@@ -65,6 +65,7 @@ function mapWorkOrderToPOStyle(data: WOPrintData, jobNames: Record<string, strin
       termOfPayment: data.employer_name ?? '',
       contact: [data.contact_person, data.supplier_phone].filter(Boolean).join(' , '),
     },
+    contactPerson: data.contact_person ?? '',
     items,
     extraDiscAmt: 0, // WO has no separate header-level override discount
     shippingAmt: 0, // WO has no shipping concept

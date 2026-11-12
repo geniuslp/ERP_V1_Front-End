@@ -55,8 +55,10 @@ const CSS = `
   /* Fixed column widths (see WO_COLS) so every table on every page — items 1–9 and item 10 chunks — shares the same value
      column width; the pagination measures the item 10 lines with exactly this width. */
   table.wo-table{width:100%;border-collapse:collapse;table-layout:fixed;font-family:'Cordia New',sans-serif;}
-  table.wo-table td{vertical-align:top;padding:5px 4px;font-size:12pt;}
-  td.wo-no{font-weight:700;}
+  table.wo-table td{vertical-align:top;padding:2px 4px;font-size:12pt;line-height:1.15;}
+  /* Item numbers sit right against the label text (right-aligned, no right padding: the gap to the text is the label's 4px ≈ one space), away from the left edge where the pages are bound. */
+  table.wo-table td.wo-no{font-weight:700;text-align:right;padding-right:0;}
+  table.wo-table td.wo-label{padding-left:4px;}
   td.wo-value{font-weight:700;}
   td.wo-label{font-weight:600;white-space:nowrap;}
   td.wo-value{}
@@ -251,7 +253,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.1 เงินล่วงหน้า {data.advance_pct ?? 0}% (เป็นเงิน {thb(data.advance_amount)} บาท)</td>
+        <td className="sub">7.1 จ่ายเงินล่วงหน้า {data.advance_deduct_pct ?? 0}% (เป็นเงิน {thb(data.advance_deduct_amount)} บาท)</td>
       </tr>
       <tr>
         <td />
@@ -266,7 +268,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.4 หักคืนเงินล่วงหน้า {data.advance_deduct_pct ?? 0}%</td>
+        <td className="sub">7.4 หักเงินคืนล่วงหน้า {data.advance_deduct_pct ?? 0}%</td>
       </tr>
       <tr>
         <td />

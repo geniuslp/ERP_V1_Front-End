@@ -41,7 +41,7 @@ const PROJECT_TEXT_PREFIX = '__text__:'
 // ออกจากฟอร์มนี้ (ยังไม่แตะ column เดิมใน DB/backend). ADVANCE_PCT_OPTIONS ยังใช้
 // กับ advance_deduct_pct ("หักคืนเงินล่วงหน้า") อยู่ จึงคงไว้ — RETENTION_PCT_OPTIONS
 // เคยใช้กับ retention_pct เพียงจุดเดียว ตัดออกไปพร้อมกัน.
-const ADVANCE_PCT_VALUES = [5, 10, 15, 20, 30]
+const ADVANCE_PCT_VALUES = [5, 10, 15, 20, 30, 50]
 const ADVANCE_PCT_OPTIONS = ADVANCE_PCT_VALUES.map((v) => ({ value: v, label: `${v}%` }))
 
 const MENU_CODE = 'MENU_WO_CREATE'
@@ -796,7 +796,7 @@ const WorkOrderCreatePage: React.FC = () => {
                         style={{ marginBottom: 0 }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <Button onClick={openPrPicker}>{selectedPr ? 'เปลี่ยน PR' : 'ดึงข้อมูลจาก PR'}</Button>
+                          <Button type="primary" onClick={openPrPicker}>{selectedPr ? 'เปลี่ยน PR' : 'ดึงข้อมูลจาก PR'}</Button>
                           {selectedPr && (
                             <Tag color="blue" closable onClose={(e) => { e.preventDefault(); setSelectedPr(null) }} style={{ margin: 0, fontSize: 13 }}>
                               {selectedPr.no}
@@ -1007,7 +1007,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   contractAmount={watchedContractAmount}
                   advanceAmount={advanceAmount}
                   advancePct={displayedAdvancePct}
-                  // 7.1 เงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
+                  // 7.1 จ่ายเงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
                   advanceSlot={
                     <Row gutter={[16, 0]}>
                       {/* Both values live in the form store; the Select below only edits them. */}
@@ -1015,7 +1015,7 @@ const WorkOrderCreatePage: React.FC = () => {
                       <Form.Item name="advance_deduct_amount" hidden><InputNumber /></Form.Item>
                       <Col {...FIELD_SPAN}>
                         <Form.Item
-                          label={<span style={labelStyle}>หักคืนเงินล่วงหน้า (%)</span>}
+                          label={<span style={labelStyle}>หักเงินคืนล่วงหน้า (%)</span>}
                           style={{ marginBottom: 0 }}
                           extra={advancePctOption === undefined && advanceAmount > 0
                             ? `สัดส่วนปัจจุบัน ${displayedAdvancePct.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% (คำนวณจากจำนวนเงินที่หัก)`

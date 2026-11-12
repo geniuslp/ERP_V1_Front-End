@@ -44,6 +44,7 @@ export interface WOPOData {
   // (relabeled "Employer :" in POInfoBox below) since none of PO's other 4
   // box rows fit it without being misleading.
   supplier: { name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string }
+  contactPerson?: string // supplier's signer (contact_person), shown as "Contact :" next to the tel.
   items: WOPOItem[]
   // PO's extraDiscAmt is a separate HEADER-level override discount on top of
   // per-line discounts (subtotal already nets per-line disc via lineAmt).
@@ -262,21 +263,32 @@ const POHeader = ({data,pageNum,totalPages}:{data:WOPOData;pageNum:number;totalP
   </div>
 )
 
-// Trimmed to exactly 3 fields per task: ผู้รับจ้าง (supplier_name), WO No.,
-// Currency. PO's original print never rendered a currency field of its own
-// (no `currency` on POData, nothing in PurchaseOrderPrint's info box) and WO
-// has no currency field either — "THB" here is a fixed constant, matching
-// how PO would display it if it had one at all.
-const CURRENCY = 'THB'
-
+// Info box copied from PurchaseOrderPrint's POInfoBox (same labels and layout); only "PO No" is "WO No". Values come from
+// the WO where it has them; WO has no payment term, quotation no. (the contract description is shown there) or department,
+// so those stay blank / mapped as in WorkOrderPrintView.
 const POInfoBox = ({data}:{data:WOPOData}) => (
   <div className="po-box" style={{display:'flex',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
     <div style={{width:'50%',borderRight:'1px solid #000',padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
-      <div><b>ผู้รับจ้าง :</b>&nbsp;{data.supplier.name}</div>
+      <div><b>Supplier :</b>&nbsp;{data.supplier.name}</div>
+      <div style={{display:'flex'}}><span style={{whiteSpace:'nowrap'}}><b>Address :&nbsp;</b></span><span>{data.supplier.address1}</span></div>
+      {data.supplier.address2&&<div style={{paddingLeft:52}}>{data.supplier.address2}</div>}
+      {data.supplier.address3&&<div style={{paddingLeft:52}}>{data.supplier.address3}</div>}
+      <div><b>Term of Payment :</b>&nbsp;</div>
+      <div><b>Contact :</b>&nbsp;{data.contactPerson || '-'}&nbsp;&nbsp;<b>Tel. :</b>&nbsp;{data.tel || '-'}</div>
     </div>
     <div style={{flex:1,padding:'3px 8px',display:'flex',flexDirection:'column',lineHeight:'1.2'}}>
-      <div><b>WO No :</b>&nbsp;{formatPoNoWithRevision(data.poNo ?? '', data.revisionRound)}</div>
-      <div><b>Currency :</b>&nbsp;{CURRENCY}</div>
+      <div style={{display:'flex',gap:8}}>
+        <span style={{fontSize:'14pt',fontWeight:700}}><b>WO No :</b>&nbsp;{formatPoNoWithRevision(data.poNo ?? '', data.revisionRound)}</span>
+      </div>
+      <div><b>PR No. :</b>&nbsp;{data.prNo}</div>
+      <div><b>Quotation No. :</b>&nbsp;{data.quotationNo}</div>
+      <div style={{display:'flex',gap:8}}>
+        <b>Project Name :</b>&nbsp;{data.project}
+      </div>
+      <div style={{display:'flex',gap:8}}>
+        <span><b>Job Type :</b>&nbsp;{data.job}</span>
+        <span><b>Department :</b>&nbsp;</span>
+      </div>
     </div>
   </div>
 )
