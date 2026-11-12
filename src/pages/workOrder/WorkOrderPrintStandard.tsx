@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { formatNote, type NoteLine } from '@/utils/formatNote'
 import logo from '@/components/asset/Genius Logo-01.jpg'
 import { numberToThaiText } from '@/utils/thaiBahtText'
+import { signerNameFontPt } from '@/utils/signerName'
 import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
@@ -67,13 +68,15 @@ const CSS = `
 
   /* Cost Code line — simple text display, not a full item table. */
 
-  /* Signature block — 4 equal-width columns, fixed height, pinned to bottom. */
-  .wo-std-auth{border:1px solid #000;display:flex;height:26mm;margin-top:auto;}
-  .wo-std-auth-col{flex:1;border-right:1px solid #000;display:flex;flex-direction:column;}
-  .wo-std-auth-col:last-child{border-right:none;}
-  .wo-std-auth-sign{flex:1;}
-  .wo-std-auth-label{border-top:1px solid #000;text-align:center;font-family:'Cordia New',sans-serif;
-    font-size:11.5pt;line-height:1.3;padding:3px 4px;}
+  /* Signature block — same as the PO print: sign area (creator name / approver signature) over the label, date below. */
+  .po-box{border:1px solid #000;}
+  .auth-col{flex:1;border-right:1px solid #000;display:flex;flex-direction:column;}
+  .auth-col:last-child{border-right:none;}
+  .auth-body{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;text-align:center;padding:2px 3px;height:6mm;}
+  .auth-head{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
+    padding:2px 4px;font-family:'Cordia New',sans-serif;font-size:12pt;border-top:none;border-bottom:1px solid #000;}
+  .auth-date{text-align:center;font-family:'Cordia New',sans-serif;font-size:12pt;line-height:1.0;padding:1px 4px;}
 `
 
 // The signature block's 4 columns per the finalized spec — replaces PO's
@@ -120,7 +123,7 @@ const PartyLine = ({ data }: { data: WOPrintDataLite }) => (
     {/* Text before the company is left-aligned; "บริษัท … ผู้ว่าจ้าง" sits flush right on the same line (wraps below, still right-aligned, when too long).
         employer_name is stored with "บริษัท" already in it, so the word is added only when it is missing (no "บริษัท บริษัท"). */}
     {/* marginTop pulls the line up toward the "ข้อตกลงในสัญญา" label in the header (which stays level with the date). */}
-    <div className="wo-std-party-line" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12, marginTop: -6 }}>
+    <div className="wo-std-party-line" style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12, marginTop: -6, marginBottom: '5mm' }}>
       <span>ผู้รับจ้าง สัญญาว่าจะทำตามรายละเอียดที่ระบุไว้ต่อไปนี้ทั้งหมด โดยรับผิดชอบต่อ</span>
       <span style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {data.employer_name?.trim().startsWith('บริษัท') ? data.employer_name.trim() : <>บริษัท {val(data.employer_name)}</>} ผู้ว่าจ้าง
@@ -240,7 +243,8 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td className="wo-label">มูลค่าสัญญา (ไม่รวม VAT)</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">
-          {thb(data.contract_amount)} บาท{data.contract_amount ? ` (${numberToThaiText(data.contract_amount)})` : ''} &nbsp;&nbsp;VAT {data.vat_rate ?? 0}% &nbsp;&nbsp;หัก ณ ที่จ่าย {data.wht_rate ?? 0}%
+          <div>{thb(data.contract_amount)} บาท{data.contract_amount ? ` (${numberToThaiText(data.contract_amount)})` : ''}</div>
+          <div>VAT {data.vat_rate ?? 0}% &nbsp;&nbsp;หัก ณ ที่จ่าย {data.wht_rate ?? 0}%</div>
         </td>
       </tr>
 
@@ -268,7 +272,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.4 หักเงินคืนล่วงหน้า {data.advance_deduct_pct ?? 0}%</td>
+        <td className="sub">7.4 หักเงินคืนล่วงหน้า {(data.revision_round ?? 0) > 0 && (data.advance_deduct_pct ?? 0) > 0 ? `${data.advance_deduct_pct}%` : '-'}</td>
       </tr>
       <tr>
         <td />
@@ -336,19 +340,39 @@ const OtherTermsTable = ({ lines, cont, lineRef }: { lines: NoteLine[]; cont: bo
   </table>
 )
 
-const AuthBlock = ({ data }: { data: WOPrintDataLite }) => (
-  <div className="wo-std-auth">
-    {AUTH_COLS.map((label) => (
-      <div key={label} className="wo-std-auth-col">
-        <div className="wo-std-auth-sign" />
-        <div className="wo-std-auth-label">
-          <div>{label}</div>
-          <div>({fmtDate(data.wo_date)})</div>
-        </div>
+// Same as the PO print's signature block: 34mm, the creator's username in the first box, the approver's signature
+// (image, else name) and approval date in the "ผู้มีอำนาจลงนามอนุมัติ" box, and the document date under every label.
+const AuthBlock = ({ data }: { data: WOPrintDataLite }) => {
+  const sig = data.approval_signature
+  const creator = data.created_by_username?.trim()
+  return (
+    <div style={{ height: '34mm', display: 'flex', flexDirection: 'column', marginTop: 'auto' }}>
+      <div className="po-box" style={{ display: 'flex', flex: 1 }}>
+        {AUTH_COLS.map((label, i) => {
+          const isApprover = i === 2
+          const s = isApprover ? sig : null
+          const showCreator = i === 0 && !!creator
+          return (
+            <div key={label} className="auth-col">
+              <div className="auth-head" style={showCreator ? { position: 'relative' } : undefined}>
+                {s?.signature_data_url
+                  ? <img src={s.signature_data_url} alt={label} style={{ maxHeight: 75, maxWidth: '90%', height: 'auto', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
+                  : s?.full_name
+                    ? <div style={{ textAlign: 'center', fontSize: `${signerNameFontPt(s.full_name, 48)}pt` }}>{s.full_name}</div>
+                    : showCreator && <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', lineHeight: 1, fontSize: `${signerNameFontPt(creator, 48)}pt` }}>{creator}</div>}
+              </div>
+              <div className="auth-body">
+                <div style={{ fontWeight: 600 }}>{label}</div>
+                {s?.approved_at && <div>{dayjs(s.approved_at).format('DD/MM/YYYY')}</div>}
+              </div>
+              <div className="auth-date">({fmtDate(data.wo_date)})</div>
+            </div>
+          )
+        })}
       </div>
-    ))}
-  </div>
-)
+    </div>
+  )
+}
 
 interface Props { data: Partial<WorkOrder>; onReady?: () => void }
 
@@ -418,12 +442,18 @@ const WorkOrderPrintStandard: React.FC<Props> = ({ data, onReady }) => {
   // browser has actually finished loading/decoding the image — the source of
   // an intermittent missing-logo-on-print bug.
   const [logoReady, setLogoReady] = useState(false)
+  const sigUrl = data.approval_signature?.signature_data_url
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => setLogoReady(true)
-    img.onerror = () => { console.warn('[WO] logo image failed to load, printing without it'); setLogoReady(true) }
-    img.src = logo
-  }, [])
+    const sources = [logo, sigUrl].filter((s): s is string => !!s)
+    let loaded = 0
+    const onDone = () => { loaded += 1; if (loaded === sources.length) setLogoReady(true) }
+    sources.forEach((src) => {
+      const img = new Image()
+      img.onload = onDone
+      img.onerror = () => { console.warn('[WO] an image failed to load, printing without it'); onDone() }
+      img.src = src
+    })
+  }, [sigUrl])
 
   // Measuring pass: item 10 is laid out once, hidden, at its real width; every line's real height decides the pages.
   useEffect(() => {

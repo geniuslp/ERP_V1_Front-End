@@ -101,11 +101,22 @@ export interface WOListItem {
   updated_at: string
 }
 
+// Signature of the approver, as GET /work-order/:id returns it for an APPROVED WO (same shape as PO's).
+export interface WOApprovalSignature {
+  user_id?: number
+  full_name?: string
+  approved_at?: string | null
+  signature_data_url?: string
+}
+
 export interface WorkOrder {
   id: number
   wo_no: string
   wo_date: string
   ref_no?: string
+  // Print only: the creator's username (first signature box) and the approver's signature (APPROVED only), like PO's print-data.
+  created_by_username?: string | null
+  approval_signature?: WOApprovalSignature | null
 
   employer_name: string
   project_code?: string | null

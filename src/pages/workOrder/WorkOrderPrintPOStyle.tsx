@@ -5,6 +5,9 @@ import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, type DiscType } from '@/utils/poCalc'
 import { thaiBahtText } from '@/utils/thaiBahtText'
 import { formatPoNoWithRevision } from '@/utils/poNo'
+import { signerNameFontPt } from '@/utils/signerName'
+import dayjs from 'dayjs'
+import type { WOApprovalSignature } from '@/types/workOrder'
 
 const NAVY = '#1F4E79'
 const BK   = '#000000'
@@ -44,6 +47,9 @@ export interface WOPOData {
   // (relabeled "Employer :" in POInfoBox below) since none of PO's other 4
   // box rows fit it without being misleading.
   supplier: { name:string; address1:string; address2?:string; address3?:string; termOfPayment:string; contact:string }
+  // Signature block, like PO's print: creator username (first box) and the approver's signature (APPROVED only).
+  createdByUsername?: string
+  approvalSignature?: WOApprovalSignature | null
   contactPerson?: string // supplier's signer (contact_person), shown as "Contact :" next to the tel.
   items: WOPOItem[]
   // PO's extraDiscAmt is a separate HEADER-level override discount on top of
@@ -342,18 +348,31 @@ const POFooter = ({data}:{data:WOPOData}) => {
           </div>
         </div>
       </div>
-      {/* Same signature block as the WO contract form (WorkOrderPrintStandard.tsx's AuthBlock): sign space on top,
-          label + date under a rule, 26mm high. No top border — the totals box above already closes with one. */}
-      <div className="wo-po-auth">
-        {AUTH_COLS.map((col,i)=>(
-          <div key={i} className="wo-po-auth-col">
-            <div className="wo-po-auth-sign" />
-            <div className="wo-po-auth-label">
-              <div>{col.label}</div>
-              <div>({data.poDate})</div>
-            </div>
-          </div>
-        ))}
+      {/* Same signature block as the PO print: 34mm, creator username in the first box, the approver's signature (image,
+          else name) and approval date in the "ผู้มีอำนาจลงนามอนุมัติ" box, the document date under every label. */}
+      <div style={{height:'34mm',display:'flex',flexDirection:'column'}}>
+        <div className="po-box" style={{display:'flex',flex:1}}>
+          {AUTH_COLS.map((col,i)=>{
+            const sig = i === 2 ? data.approvalSignature : null
+            const creator = i === 0 ? data.createdByUsername?.trim() : ''
+            return (
+              <div key={i} className="auth-col">
+                <div className="auth-head" style={creator && !sig?.signature_data_url && !sig?.full_name ? {position:'relative'} : undefined}>
+                  {sig?.signature_data_url
+                    ? <img src={sig.signature_data_url} alt={col.label} style={{maxHeight:75,maxWidth:'90%',height:'auto',width:'auto',objectFit:'contain',display:'block',margin:'0 auto 8px'}} />
+                    : sig?.full_name
+                      ? <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>
+                      : creator && <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',lineHeight:1,fontSize:`${signerNameFontPt(creator,48)}pt`}}>{creator}</div>}
+                </div>
+                <div className="auth-body">
+                  <div style={{fontWeight:600}}>{col.label}</div>
+                  {sig?.approved_at && <div>{dayjs(sig.approved_at).format('DD/MM/YYYY')}</div>}
+                </div>
+                <div className="auth-date">({data.poDate})</div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </>
   )
@@ -391,11 +410,17 @@ const WorkOrderPrintPOStyle: React.FC<Props> = ({ data: rawData, onReady }) => {
   // browser has actually finished loading/decoding the image — the source of
   // an intermittent missing-logo-on-print bug.
   useEffect(()=>{
-    const img = new Image()
-    img.onload = () => setLogoReady(true)
-    img.onerror = () => { console.warn('[WO-PO] logo image failed to load, printing without it'); setLogoReady(true) }
-    img.src = logo
-  },[])
+    const sources = [logo, data.approvalSignature?.signature_data_url].filter((s): s is string => !!s)
+    let loaded = 0
+    const onDone = () => { loaded += 1; if (loaded === sources.length) setLogoReady(true) }
+    sources.forEach((src) => {
+      const img = new Image()
+      img.onload = onDone
+      img.onerror = () => { console.warn('[WO-PO] an image failed to load, printing without it'); onDone() }
+      img.src = src
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[data.approvalSignature?.signature_data_url])
 
   useEffect(()=>{
     if(pages!==null) return
