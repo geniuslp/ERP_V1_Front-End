@@ -9,7 +9,11 @@
 // if the trailing rows would crowd it out, as many trailing rows as fit together with the footer become the
 // final page and the rest stay on the page before it, so the footer is on the last page, at the bottom,
 // whether the document is one page or several.
-export const paginateRows = (heights: number[], avail: number, footerH: number): number[][] => {
+//
+// inOrder = true (PO print): rows keep their order and each page is filled top-down. The footer only forces ONE
+// trailing row onto the last page (instead of pulling as many trailing rows as fit next to the footer), so earlier pages
+// stay full and the last page is not a clump of rows.
+export const paginateRows = (heights: number[], avail: number, footerH: number, inOrder = false): number[][] => {
   const pages: number[][] = []
   let cur: number[] = []
   let used = 0
@@ -26,6 +30,13 @@ export const paginateRows = (heights: number[], avail: number, footerH: number):
 
   const last = pages[pages.length - 1]
   const lastUsed = last.reduce((a, i) => a + heights[i], 0)
+  if (inOrder) {
+    if (last.length > 1 && lastUsed + footerH > avail) {
+      pages.pop()
+      pages.push(last.slice(0, -1), [last[last.length - 1]])
+    }
+    return pages
+  }
   if (last.length > 0 && lastUsed + footerH > avail) {
     const tail: number[] = []
     let t = footerH

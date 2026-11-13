@@ -106,7 +106,7 @@ const MemoCreateEditPage: React.FC = () => {
   const [jobNames, setJobNames] = useState<Record<string, string>>({})
   const watchedProject: string | undefined = Form.useWatch('project_code', form)
   // Project dropdown: GET /master/projects/options (all ACTIVE projects); the memo's own project is merged in when it is CLOSED/INACTIVE.
-  const { options: projects, projects: projectRows, loading: projectsLoading } = useProjectOptions({}, watchedProject)
+  const { options: projects, projects: projectRows, loading: projectsLoading } = useProjectOptions({ scope: 'related' }, watchedProject)
   const [approvers, setApprovers] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [approversLoading, setApproversLoading] = useState(false)
   const [requesters, setRequesters] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])

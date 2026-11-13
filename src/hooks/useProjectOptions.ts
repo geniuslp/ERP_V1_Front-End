@@ -25,6 +25,8 @@ export interface ProjectOptionsParams {
   include_inactive?: boolean
   warehouse_only?: boolean
   exclude_warehouse?: boolean
+  // 'related': a Project-department user (not Board / admin) gets only the projects they are responsible for or involved in.
+  scope?: 'related'
 }
 
 export interface ProjectSelectOption {
@@ -43,7 +45,7 @@ const cache = new Map<string, { at: number; rows: ProjectOptionRow[] }>()
 const inflight = new Map<string, Promise<ProjectOptionRow[]>>()
 
 const cacheKey = (p: ProjectOptionsParams) =>
-  JSON.stringify([p.search ?? '', !!p.include_closed, !!p.include_inactive, !!p.warehouse_only, !!p.exclude_warehouse])
+  JSON.stringify([p.search ?? '', !!p.include_closed, !!p.include_inactive, !!p.warehouse_only, !!p.exclude_warehouse, p.scope ?? ''])
 
 const loadProjectOptions = (token: string, p: ProjectOptionsParams): Promise<ProjectOptionRow[]> => {
   const key = cacheKey(p)
@@ -60,6 +62,7 @@ const loadProjectOptions = (token: string, p: ProjectOptionsParams): Promise<Pro
         include_inactive: p.include_inactive || undefined,
         warehouse_only: p.warehouse_only || undefined,
         exclude_warehouse: p.exclude_warehouse || undefined,
+        scope: p.scope || undefined,
       },
     })
     .then((res) => {

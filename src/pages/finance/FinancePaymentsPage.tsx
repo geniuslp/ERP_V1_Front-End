@@ -101,7 +101,7 @@ const FinancePaymentsPage: React.FC = () => {
   const [status, setStatus] = useState('')
   // เลขที่เอกสาร (WO tab) — sent as `search` (backend: ILIKE on the document number).
   const [docNo, setDocNo] = useState('')
-  // WO tab: ร้านค้า and AP Voucher No. search boxes (the โครงการ/แผนก box is projectCode).
+  // WO tab: ร้านค้า and Voucher Number search boxes (the โครงการ/แผนก box is projectCode).
   const [supplier, setSupplier] = useState('')
   const [apVoucher, setApVoucher] = useState('')
   // PC tab: ผู้ขอเบิก search box.
@@ -136,7 +136,7 @@ const FinancePaymentsPage: React.FC = () => {
       const result = await financeService.list(accessToken, {
         doc_type: type,
         project_code: filters.projectCode || undefined,
-        supplier: type === 'WO' ? filters.supplier.trim() || undefined : undefined,
+        supplier: type === 'WO' || type === 'PO' ? filters.supplier.trim() || undefined : undefined,
         ap_voucher: type === 'WO' ? filters.apVoucher.trim() || undefined : undefined,
         requester: type === 'PC' ? filters.requester.trim() || undefined : undefined,
         payee: type === 'PC' ? filters.payee.trim() || undefined : undefined,
@@ -249,9 +249,9 @@ const FinancePaymentsPage: React.FC = () => {
       onHeaderCell: () => ({ width: payeeColWidth, onResize: handleResize(setPayeeColWidth) }),
       render: (v: string | null | undefined) => (v ? <Tooltip title={v}><span>{v}</span></Tooltip> : <span style={{ color: '#9ca3af' }}>—</span>),
     }] : []),
-    // AP Voucher No.: WO only — comma-joined from the WO's contractor-log bills.
+    // Voucher Number (ap_voucher_no): WO only — comma-joined from the WO's contractor-log bills.
     ...(docType === 'WO' ? [{
-      title: 'AP (AP Voucher No.)',
+      title: 'Voucher Number',
       dataIndex: 'ap_voucher_nos',
       key: 'ap_voucher_nos',
       width: apColWidth,
@@ -354,16 +354,14 @@ const FinancePaymentsPage: React.FC = () => {
         />
 
         <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-          {docType === 'WO' && (
-            <Input
-              placeholder="เลขที่ WO"
-              value={docNo}
-              onChange={(e) => setDocNo(e.target.value)}
-              onPressEnter={() => fetchList(1)}
-              style={{ width: 180 }}
-              allowClear
-            />
-          )}
+          <Input
+            placeholder={docType === 'PC' ? 'เลขที่เงินสดย่อย' : `เลขที่ ${docType}`}
+            value={docNo}
+            onChange={(e) => setDocNo(e.target.value)}
+            onPressEnter={() => fetchList(1)}
+            style={{ width: 180 }}
+            allowClear
+          />
           <Input
             placeholder={docType === 'WO' ? 'โครงการ/แผนก' : 'โครงการ'}
             value={projectCode}
@@ -400,18 +398,20 @@ const FinancePaymentsPage: React.FC = () => {
               />
             </>
           )}
+          {(docType === 'WO' || docType === 'PO') && (
+            <Input
+              placeholder="ร้านค้า"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              onPressEnter={() => fetchList(1)}
+              style={{ width: 180 }}
+              allowClear
+            />
+          )}
           {docType === 'WO' && (
             <>
               <Input
-                placeholder="ร้านค้า"
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-                onPressEnter={() => fetchList(1)}
-                style={{ width: 180 }}
-                allowClear
-              />
-              <Input
-                placeholder="AP (AP Voucher No.)"
+                placeholder="Voucher Number"
                 value={apVoucher}
                 onChange={(e) => setApVoucher(e.target.value)}
                 onPressEnter={() => fetchList(1)}

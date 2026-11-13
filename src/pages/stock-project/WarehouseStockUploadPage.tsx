@@ -258,6 +258,9 @@ const WarehouseStockUploadPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
 
+  // Prices are shown only when the API says so (Supply Chain / Finance / Board / admin); default hidden.
+  const [showPrice, setShowPrice] = useState(false)
+
   const load = useCallback(async (p: number) => {
     if (!warehouse || !accessToken) { setRows([]); setTotal(0); return }
     setLoading(true)
@@ -267,6 +270,7 @@ const WarehouseStockUploadPage: React.FC = () => {
         params: { warehouse_code: warehouse, search: search || undefined, page: p, page_size: pageSize },
       })
       const d = res.data?.data
+      setShowPrice(d?.show_price === true)
       setRows(Array.isArray(d?.data) ? d.data : [])
       setTotal(d?.total ?? 0)
       setPage(p)
@@ -290,7 +294,7 @@ const WarehouseStockUploadPage: React.FC = () => {
     { title: 'รายละเอียดคลัง', dataIndex: 'store_description', render: (v?: string | null) => v || '-' },
     { title: 'คงเหลือ', dataIndex: 'qty_on_hand', width: 110, align: 'center', render: fmt },
     { title: 'หน่วย', dataIndex: 'unit', width: 90, align: 'center', render: (v?: string | null) => v || '-' },
-    { title: 'ราคา', dataIndex: 'unit_cost', width: 120, align: 'center', render: fmtPrice },
+    ...(showPrice ? [{ title: 'ราคา', dataIndex: 'unit_cost', width: 120, align: 'center' as const, render: fmtPrice }] : []),
   ]
 
   const uploadButton = (mode: Mode, icon: React.ReactNode, primary: boolean) => (

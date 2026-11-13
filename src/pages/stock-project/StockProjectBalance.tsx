@@ -47,6 +47,8 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
   const [source, setSource] = useState<Source | null>(null)
+  // Prices (unit cost) are shown only when the API says so (Supply Chain / Finance / Board / admin); default hidden.
+  const [showPrice, setShowPrice] = useState(false)
   const [rows, setRows] = useState<BalanceRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -90,6 +92,7 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
         const d = res.data?.data ?? res.data
         if (!cancelled) {
           setSource(d?.source ?? null)
+          setShowPrice(d?.show_price === true)
           // Backend envelope (stockPageData): rows are under `data`, cost per unit is `unit_cost`.
           const list: any[] = Array.isArray(d?.data) ? d.data : Array.isArray(d?.rows) ? d.rows : []
           setRows(list.map((r) => ({ ...r, last_unit_cost: r.last_unit_cost ?? r.unit_cost })))
@@ -121,7 +124,7 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
         { title: 'รายละเอียดคลัง', dataIndex: 'store_description', key: 'store_description', render: (v?: string | null) => v || '-' },
         { title: 'ปริมาณ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', width: 110, align: 'center' as const, render: fmt },
         { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 90, align: 'center' as const },
-        { title: 'ราคา', dataIndex: 'last_unit_cost', key: 'last_unit_cost', width: 120, align: 'center' as const, render: fmtPrice },
+        ...(showPrice ? [{ title: 'ราคา', dataIndex: 'last_unit_cost', key: 'last_unit_cost', width: 120, align: 'center' as const, render: fmtPrice }] : []),
       ]
     : [
         { title: 'รหัสวัสดุ', dataIndex: 'mat_code', key: 'mat_code' },
@@ -129,7 +132,7 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
         { title: 'รหัสต้นทุน', dataIndex: 'cost_code', key: 'cost_code', render: (v?: string | null) => formatCostCodeDisplay(v ?? '') || '-' },
         { title: 'หน่วย', dataIndex: 'unit', key: 'unit', width: 80 },
         { title: 'ปริมาณ', dataIndex: 'qty_on_hand', key: 'qty_on_hand', align: 'right' as const, render: fmt },
-        { title: 'ต้นทุนล่าสุด/หน่วย', dataIndex: 'last_unit_cost', key: 'last_unit_cost', align: 'right' as const, render: fmt },
+        ...(showPrice ? [{ title: 'ต้นทุนล่าสุด/หน่วย', dataIndex: 'last_unit_cost', key: 'last_unit_cost', align: 'right' as const, render: fmt }] : []),
         { title: 'อัปเดตล่าสุด', dataIndex: 'updated_at', key: 'updated_at', render: (v?: string | null) => <DateTimeText value={v} empty="-" /> },
       ]
 

@@ -1,3 +1,4 @@
+import { BLOCK_CARD_STYLE } from '@/constants/blockStyle'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button, Col, DatePicker, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Tooltip, message,
@@ -12,9 +13,9 @@ const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
 const labelStyle: React.CSSProperties = { color: '#374151', fontSize: 13, marginBottom: 4 }
 const fieldStyle: React.CSSProperties = { width: '100%', borderRadius: 8 }
+// Same block look as the outer cards (blue border, thick blue left edge, navy shadow); shared by every sub-block below.
 const subCardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 10,
+  ...BLOCK_CARD_STYLE,
   padding: 16,
   marginBottom: 16,
 }
@@ -701,10 +702,10 @@ const WOContractorBillTab: React.FC<Props> = ({
   })
 
   const handleSave = async (status: BillStatus) => {
-    // A saved (not draft) payment needs the AP voucher and at least one invoice with every field filled in.
+    // A saved (not draft) payment needs the voucher number and at least one invoice with every field filled in.
     if (status === 'SAVED') {
       const problems: string[] = []
-      if (!f.ap_voucher_no.trim()) problems.push('AP Voucher No.')
+      if (!f.ap_voucher_no.trim()) problems.push('Voucher Number')
       if (invoices.length === 0) {
         problems.push('ใบกำกับภาษี / INVOICE NO. (อย่างน้อย 1 รายการ)')
       } else {
@@ -754,7 +755,7 @@ const WOContractorBillTab: React.FC<Props> = ({
   const billColumns: ColumnsType<BillListItem> = [
     { title: 'ประเภท', dataIndex: 'bill_type', render: (v: BillType) => BILL_TYPE_LABEL[v] },
     { title: 'งวดที่', dataIndex: 'installment_no', width: 90, render: (v) => v ?? '—' },
-    { title: 'AP Voucher No.', dataIndex: 'ap_voucher_no', render: (v) => v || '—' },
+    { title: 'Voucher Number', dataIndex: 'ap_voucher_no', render: (v) => v || '—' },
     { title: 'จ่ายสุทธิ', dataIndex: 'net_amount', align: 'right', render: (v: number) => money(Number(v)) },
     {
       title: 'สถานะ', dataIndex: 'status', width: 100,
@@ -856,7 +857,7 @@ const WOContractorBillTab: React.FC<Props> = ({
           </Col>
           <Col {...FIELD_SPAN}>
             <Tooltip title="ฝ่ายบัญชีเป็นผู้กรอก">
-              <div style={labelStyle}>AP Voucher No.*</div>
+              <div style={labelStyle}>Voucher Number*</div>
               <Input
                 style={{ ...fieldStyle, background: '#fef9c3' }}
                 status={tried && !f.ap_voucher_no.trim() ? 'error' : undefined}

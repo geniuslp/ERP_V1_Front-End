@@ -354,7 +354,7 @@ const ProjectListPage: React.FC = () => {
     try {
       const res = await axios.get(`${BASE_URL}/master/projects`, {
         headers: authHeader,
-        params: { search: search || undefined, status, page_size: 100 },
+        params: { search: search || undefined, status, page_size: 100, sort: 'code_desc' },
       })
       const raw = Array.isArray(res.data) ? res.data : res.data?.data?.data ?? res.data?.data ?? []
       setData((Array.isArray(raw) ? raw : []).map(mapProject))
