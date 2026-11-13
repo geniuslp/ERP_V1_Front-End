@@ -381,12 +381,8 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
     const rowEls = data.items.map((_, i) => refRows.current[i])
     if (rowEls.some((el) => !el)) return
     const heights = rowEls.map((el) => px2mm(el!.getBoundingClientRect().height))
-    // The last page's rows use the "spaced" table (a little more padding per row): re-check with that extra.
-    let idxPages = paginateRows(heights, avail, fMm)
-    const lastIds = idxPages[idxPages.length - 1]
-    if (lastIds.reduce((a, i) => a + heights[i] + SPACED_ROW_EXTRA_MM, 0) + fMm > avail) {
-      idxPages = paginateRows(heights.map((h) => h + SPACED_ROW_EXTRA_MM), avail, fMm)
-    }
+    // Every page uses the same row spacing; rows keep their order and a page that is full continues on the next one.
+    const idxPages = paginateRows(heights, avail, fMm, true)
     const result: PRItem[][] = idxPages.map((ids) => ids.map((i) => data.items[i]))
     if (result.length === 0) result.push([])
     setPages(result)
@@ -428,7 +424,7 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
             {isLast ? (
               <>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <table className="pr-tbl-inner pr-tbl-spaced" style={{ width: '100%', height: '100%' }}>{TABLE_COLS}{TABLE_HEAD}
+                  <table className="pr-tbl-inner" style={{ width: '100%', height: '100%' }}>{TABLE_COLS}{TABLE_HEAD}
                     <tbody>
                       {rows.map((row, i) => <ItemRow key={i} row={row} />)}
                       <FillerTr />
@@ -439,8 +435,12 @@ const PRPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
               </>
             ) : (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <table className="pr-tbl" style={{ flex: 1, height: '100%' }}>{TABLE_COLS}{TABLE_HEAD}
-                  <tbody className="stretch">{rows.map((row, i) => <ItemRow key={i} row={row} />)}</tbody>
+                {/* Rows stay compact and in order; a filler row carries the column lines down to the bottom of the page. */}
+                <table className="pr-tbl-inner" style={{ width: '100%', height: '100%' }}>{TABLE_COLS}{TABLE_HEAD}
+                  <tbody>
+                    {rows.map((row, i) => <ItemRow key={i} row={row} />)}
+                    <FillerTr />
+                  </tbody>
                 </table>
               </div>
             )}
