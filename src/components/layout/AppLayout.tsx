@@ -55,6 +55,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const push = usePushNotifications(!!user)
 
   const handleTogglePush = async () => {
+    // TEMPORARY diagnostics (remove once iPhone push works): shows what this device reports.
+    try {
+      const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true
+      message.info({
+        duration: 8,
+        content: `state=${push.state} | perm=${'Notification' in window ? Notification.permission : 'n/a'} | pushMgr=${'PushManager' in window} | sw=${'serviceWorker' in navigator} | standalone=${standalone}`,
+      })
+    } catch { /* ignore */ }
     if (push.state === 'needs-install') {
       Modal.info({
         title: 'เปิดการแจ้งเตือนบน iPhone / iPad',
