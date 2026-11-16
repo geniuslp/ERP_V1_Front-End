@@ -80,7 +80,7 @@ export function usePushNotifications(enabled: boolean) {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
         setState(permission === 'denied' ? 'denied' : 'off')
-        return 'ไม่ได้รับอนุญาตให้แจ้งเตือน'
+        return `ไม่ได้รับอนุญาตให้แจ้งเตือน (permission: ${permission})`
       }
       const { data: k } = await api.get('/notifications/push/public-key')
       if (!k?.enabled) {
@@ -99,7 +99,8 @@ export function usePushNotifications(enabled: boolean) {
       setState('on')
       return null
     } catch (e: any) {
-      return e?.response?.data?.message || 'เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+      const detail = e?.response?.data?.message || `${e?.name ?? 'Error'}: ${e?.message ?? ''}`
+      return `เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง (${detail})`
     } finally {
       setBusy(false)
     }
