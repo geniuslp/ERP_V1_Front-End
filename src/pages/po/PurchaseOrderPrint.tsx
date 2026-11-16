@@ -81,7 +81,8 @@ export interface POData {
   // poNo itself never changes; compose the "#R{n}" suffix from this instead.
   revisionRound?: number
   // purchase_order.status (approval status, NOT status_receive) — drives the
-  // "DRAFT" print watermark only. Optional because older callers may not pass it.
+  // "DRAFT" print watermark only (any status in PO_NOT_APPROVED_STATUSES). Optional because older callers may not
+  // pass it; without it no watermark is printed.
   status?: string
   // Only populated when the PO's status is APPROVED (backend rule, resolvePOApprovalSignature).
   // null/absent renders the "Authorized Signature" box exactly as it was before.
@@ -169,6 +170,10 @@ function normalizeData(raw: POData): POData {
 // requirement, amt-type discounts don't belong on this line's Total at all;
 // they're rolled up into the summary box's header-level "Special Discount"
 // instead (see calcSummary's `disc`), so the money isn't silently dropped.
+// A PO that is not (currently) approved prints with the "DRAFT" watermark: still a draft, waiting for approval
+// (first time or after an edit of an approved PO) or rejected. APPROVED and later statuses print clean.
+const PO_NOT_APPROVED_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'PENDING_REAPPROVAL', 'REJECTED']
+
 const lineAmt = (it:POItem) => {
   const b = it.qty*it.pricePerUnit
   return it.discType==='amt' ? b : b-calcDisc(b,it.disc,'pct')
@@ -577,7 +582,7 @@ const PurchaseOrderPrint: React.FC<Props> = ({ data: rawData, onReady }) => {
         const rows = [...pageItems]
         return (
           <div key={pageIdx} className="po-page">
-            {data.status === 'DRAFT' && <div className="po-watermark">DRAFT</div>}
+            {data.status && PO_NOT_APPROVED_STATUSES.includes(data.status) && <div className="po-watermark">DRAFT</div>}
             <POHeader data={data} pageNum={pageIdx+1} totalPages={totalPages}/>
             <POInfoBox data={data}/>
             {isLast?(

@@ -77,6 +77,7 @@ interface PriceHistoryRow {
   project_name?: string | null
   po_date: string
   unit_price: number
+  qty_ordered?: number | null
   po_no: string
 }
 
@@ -102,13 +103,15 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
   const [supplierColWidth, setSupplierColWidth] = useState(226)
   const [projectColWidth, setProjectColWidth] = useState(240)
   const [dateColWidth, setDateColWidth] = useState(150)
+  const [qtyColWidth, setQtyColWidth] = useState(110)
   const [priceColWidth, setPriceColWidth] = useState(150)
   const handleMatCodeColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setMatCodeColWidth(data.size.width)
   const handleNameColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setNameColWidth(data.size.width)
   const handleSupplierColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setSupplierColWidth(data.size.width)
   const handleProjectColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setProjectColWidth(data.size.width)
   const handleDateColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setDateColWidth(data.size.width)
-  const handlePriceColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setPriceColWidth(data.size.width)
+  const handleQtyColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setQtyColWidth(data.size.width)
+  const handlePriceColResize =(_e: React.SyntheticEvent, data: ResizeCallbackData) => setPriceColWidth(data.size.width)
 
   useEffect(() => {
     if (!matCode) return
@@ -226,6 +229,16 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
             align: 'center' as const,
             onHeaderCell: () => ({ width: dateColWidth, onResize: handleDateColResize }),
             render: (v: string) => (v ? dayjs(v).format('DD/MM/YYYY') : '—'),
+          },
+          {
+            // Quantity ordered on that PO line — a count, so shown as-is (no forced .00).
+            title: 'จำนวน',
+            dataIndex: 'qty_ordered',
+            width: qtyColWidth,
+            align: 'right' as const,
+            onHeaderCell: () => ({ width: qtyColWidth, onResize: handleQtyColResize }),
+            render: (v: number | null | undefined) =>
+              v == null ? '—' : Number(v).toLocaleString('th-TH', { maximumFractionDigits: 4 }),
           },
           {
             title: 'ราคา/หน่วย',
