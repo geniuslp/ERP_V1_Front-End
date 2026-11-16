@@ -1,6 +1,6 @@
 import PanelTabs from '@/components/common/PanelTabs'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Upload, Typography, Switch, Row, Col } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Popconfirm, message, Upload, Typography, Switch, Row, Col, Grid, Pagination, Empty, Spin } from 'antd'
 import type { UploadProps } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, DownloadOutlined, InboxOutlined, CheckOutlined, WarningOutlined, ImportOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -176,6 +176,9 @@ const parseExcelRows = (raw: Record<string, unknown>[]): ExcelRow[] =>
 
 const SupplierPage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  // Same breakpoint PageHeader uses: below md the list is a card per supplier instead of a wide scrolling table.
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.md === false
   const [data, setData] = useState<SupplierRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -953,9 +956,10 @@ const SupplierPage: React.FC = () => {
       />
 
       <Card
+        className="supplier-list-card"
         style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}
         extra={
-          <Space>
+          <Space wrap>
             <Input
               placeholder="ค้นหาชื่อร้านค้า / บริษัท"
               allowClear
@@ -976,20 +980,98 @@ const SupplierPage: React.FC = () => {
           </Space>
         }
       >
-        <Table
-          rowKey="key"
-          loading={loading || searching}
-          dataSource={data}
-          columns={columns}
-          size="small"
-          scroll={{ x: 1048 }}
-          pagination={{
-            current: currentPage,
-            pageSize,
-            showTotal: (t) => `ทั้งหมด ${t} รายการ`,
-            onChange: (page, size) => { setCurrentPage(page); setPageSize(size) },
-          }}
-        />
+        {isMobile ? (
+          <Spin spinning={loading || searching}>
+            {data.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบข้อมูลผู้ขาย" />
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>ทั้งหมด {data.length} รายการ</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {data.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((r, i) => (
+                    <div
+                      key={r.key}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #e5e9f2',
+                        borderLeft: '3px solid #2563eb',
+                        borderRadius: 10,
+                        padding: '12px 12px 10px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>#{(currentPage - 1) * pageSize + i + 1}</div>
+                          <Text strong style={{ fontSize: 15, color: '#1e3a8a', wordBreak: 'break-word' }}>{r.supplier_name}</Text>
+                        </div>
+                        <Space size={6} style={{ flexShrink: 0 }}>
+                          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} aria-label="แก้ไข" />
+                          <Popconfirm title="ยืนยันการลบ?" onConfirm={() => handleDelete(r.id)}>
+                            <Button size="small" danger icon={<DeleteOutlined />} aria-label="ลบ" />
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'auto minmax(0, 1fr)',
+                          columnGap: 12,
+                          rowGap: 4,
+                          marginTop: 10,
+                          paddingTop: 8,
+                          borderTop: '1px solid #eef1f7',
+                          fontSize: 13,
+                        }}
+                      >
+                        <span style={{ color: '#6b7280' }}>ผู้ติดต่อ</span>
+                        <span style={{ wordBreak: 'break-word' }}>{r.sales_person || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>เบอร์โทร</span>
+                        <span>{r.sales_person_phone ? <a href={`tel:${r.sales_person_phone}`}>{r.sales_person_phone}</a> : '-'}</span>
+                        <span style={{ color: '#6b7280' }}>อีเมล</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.contact_email ? <a href={`mailto:${r.contact_email}`}>{r.contact_email}</a> : '-'}
+                        </span>
+                        <span style={{ color: '#6b7280' }}>เครดิต</span>
+                        <span>{r.payment_terms || '-'}</span>
+                        {r.remarks ? (
+                          <>
+                            <span style={{ color: '#6b7280' }}>หมายเหตุ</span>
+                            <span style={{ color: '#6b7280', wordBreak: 'break-word' }}>{r.remarks}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                  <Pagination
+                    simple
+                    current={currentPage}
+                    pageSize={pageSize}
+                    total={data.length}
+                    showSizeChanger={false}
+                    onChange={(page, size) => { setCurrentPage(page); setPageSize(size) }}
+                  />
+                </div>
+              </>
+            )}
+          </Spin>
+        ) : (
+          <Table
+            rowKey="key"
+            loading={loading || searching}
+            dataSource={data}
+            columns={columns}
+            size="small"
+            scroll={{ x: 1048 }}
+            pagination={{
+              current: currentPage,
+              pageSize,
+              showTotal: (t) => `ทั้งหมด ${t} รายการ`,
+              onChange: (page, size) => { setCurrentPage(page); setPageSize(size) },
+            }}
+          />
+        )}
       </Card>
 
       {/* Upload panel */}

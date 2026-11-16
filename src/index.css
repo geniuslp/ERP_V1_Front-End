@@ -316,6 +316,50 @@ body {
     min-height: 36px;
   }
 
+  /* Master > Supplier list: the card header holds search + 3 buttons in one non-wrapping row, which pushed
+     "เพิ่มผู้ขาย" past the right edge where body overflow-x:hidden makes it unreachable. Wrap it instead. */
+  .supplier-list-card > .ant-card-head .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra {
+    margin-inline-start: 0;
+    width: 100%;
+    padding: 0;
+  }
+  /* Toolbar layout: search on its own row, "เพิ่มผู้ขาย" (primary) full width right under it, then
+     Export / Bulk import side by side. */
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-space {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+    width: 100%;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-space-item {
+    min-width: 0;
+    order: 3;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-space-item:first-child {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-space-item:last-child {
+    grid-column: 1 / -1;
+    order: 2;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-input-affix-wrapper {
+    width: 100% !important;
+  }
+  .supplier-list-card > .ant-card-head .ant-card-extra .ant-btn {
+    width: 100%;
+    height: auto;
+    min-height: 40px;
+    padding-block: 6px;
+    white-space: normal;
+    line-height: 1.3;
+    font-size: 13px;
+  }
+
   .login-card {
     padding: 32px 22px !important;
     max-width: calc(100vw - 32px) !important;
