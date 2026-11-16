@@ -141,7 +141,7 @@ const AppRoutes: React.FC = () => (
                 <RequirePermission menuCode="MENU_PR_STATUS" action="read"><PRStatusPage /></RequirePermission>
               } />
               <Route path="/pr/:id" element={
-                <RequirePermission menuCode="MENU_PR_STATUS" action="read"><PRDetailPage /></RequirePermission>
+                <RequirePermission menuCode="MENU_PR_STATUS" action="read" alsoMenuCodes={['MENU_PR_APPROVAL', 'MENU_PR_HISTORY']}><PRDetailPage /></RequirePermission>
               } />
               <Route path="/pr/approval" element={
                 <RequirePermission menuCode="MENU_PR_APPROVAL" action="read"><PRApprovalListPage /></RequirePermission>

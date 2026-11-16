@@ -9,12 +9,15 @@ interface RequirePermissionProps {
   action: PermissionAction
   children: React.ReactNode
   fallback?: React.ReactNode
+  /** Extra menu codes that also open this route (same action); any one of them is enough. */
+  alsoMenuCodes?: string[]
 }
 
-const RequirePermission: React.FC<RequirePermissionProps> = ({ menuCode, action, children, fallback }) => {
+const RequirePermission: React.FC<RequirePermissionProps> = ({ menuCode, action, children, fallback, alsoMenuCodes }) => {
   const { can, loading } = usePermissionContext()
   if (loading) return <Skeleton active />
-  if (!can(menuCode, action)) return <>{fallback ?? <ForbiddenPage />}</>
+  const allowed = can(menuCode, action) || (alsoMenuCodes ?? []).some((m) => can(m, action))
+  if (!allowed) return <>{fallback ?? <ForbiddenPage />}</>
   return <>{children}</>
 }
 
