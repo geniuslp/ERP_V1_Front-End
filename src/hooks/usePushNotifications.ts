@@ -75,15 +75,17 @@ export function usePushNotifications(enabled: boolean) {
   const enable = useCallback(async (): Promise<string | null> => {
     setBusy(true)
     try {
-      const { data: k } = await api.get('/notifications/push/public-key')
-      if (!k?.enabled) {
-        setServerEnabled(false)
-        return 'ระบบยังไม่เปิดใช้การแจ้งเตือนบนมือถือ'
-      }
+      // iOS only accepts the permission request as the very first async step of the tap. Any awaited network call
+      // before it makes iOS answer "denied" without asking, and it remembers that. Keep this line first.
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
         setState(permission === 'denied' ? 'denied' : 'off')
         return 'ไม่ได้รับอนุญาตให้แจ้งเตือน'
+      }
+      const { data: k } = await api.get('/notifications/push/public-key')
+      if (!k?.enabled) {
+        setServerEnabled(false)
+        return 'ระบบยังไม่เปิดใช้การแจ้งเตือนบนมือถือ'
       }
       const reg = await getRegistration()
       let sub = await reg.pushManager.getSubscription()
