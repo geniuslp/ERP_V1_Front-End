@@ -13,14 +13,24 @@ self.addEventListener('push', (event) => {
   }
   const title = data.title || 'ERP'
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      icon: 'brand/icon-192.png',
-      badge: 'brand/favicon-64.png',
-      tag: data.tag || undefined, // a newer notification of the same document replaces the older one
-      renotify: !!data.tag,
-      data: { link: data.link || '' },
-    }),
+    (async () => {
+      // This device is looking at the app right now: the in-page toast already shows it, so skip the banner.
+      // (Other devices of the same user still get theirs.) Any doubt -> show it.
+      try {
+        const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        if (wins.some((c) => c.url.startsWith(self.registration.scope) && c.visibilityState === 'visible')) return
+      } catch (e) {
+        /* show the banner */
+      }
+      await self.registration.showNotification(title, {
+        body: data.body || '',
+        icon: 'brand/icon-192.png',
+        badge: 'brand/favicon-64.png',
+        tag: data.tag || undefined, // a newer notification of the same document replaces the older one
+        renotify: !!data.tag,
+        data: { link: data.link || '' },
+      })
+    })(),
   )
 })
 
