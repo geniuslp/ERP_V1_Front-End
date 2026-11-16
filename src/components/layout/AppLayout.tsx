@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Layout, Avatar, Dropdown, Button, Grid, notification } from 'antd'
-import { UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined } from '@ant-design/icons'
+import { Layout, Avatar, Dropdown, Button, Grid, notification, Modal, message } from 'antd'
+import { UserOutlined, LogoutOutlined, SettingOutlined, LockOutlined, BellOutlined } from '@ant-design/icons'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { logout } from '@/store/slices/authSlice'
@@ -11,6 +11,7 @@ import ChangePasswordModal from './ChangePasswordModal'
 import { APP_ENV } from '@/config/env'
 import { useMyPendingApprovalCount } from '@/hooks/useMyPendingApprovalCount'
 import { useNotifications } from '@/hooks/useNotifications'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import type { AppNotification } from '@/hooks/useNotifications'
 import NotificationBell from './NotificationBell'
 import { useDisableInputAutofill } from '@/hooks/useDisableInputAutofill'
@@ -51,6 +52,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   // A new notification usually means the pending-approval numbers changed too, so refetch them.
   const pendingCounts = useMyPendingApprovalCount(`${location.pathname}#${lastPushId}`)
   useDisableInputAutofill()
+  const push = usePushNotifications(!!user)
+
+  const handleTogglePush = async () => {
+    if (push.state === 'needs-install') {
+      Modal.info({
+        title: 'เปิดการแจ้งเตือนบน iPhone / iPad',
+        content: 'กดปุ่มแชร์ใน Safari เลือก "เพิ่มไปยังหน้าจอโฮม" แล้วเปิดระบบจากไอคอนนั้น จากนั้นเลือกเมนูนี้อีกครั้ง',
+      })
+      return
+    }
+    if (push.state === 'denied') {
+      message.warning('การแจ้งเตือนถูกบล็อกอยู่ กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์ของเว็บไซต์นี้')
+      return
+    }
+    const err = push.state === 'on' ? await push.disable() : await push.enable()
+    if (err) message.error(err)
+    else message.success(push.state === 'on' ? 'ปิดการแจ้งเตือนบนอุปกรณ์นี้แล้ว' : 'เปิดการแจ้งเตือนบนอุปกรณ์นี้แล้ว')
+  }
 
   const handleLogout = () => {
     dispatch(logout())
@@ -61,6 +80,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { key: 'profile', icon: <UserOutlined />, label: 'โปรไฟล์' },
     { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่า' },
     { key: 'change-password', icon: <LockOutlined />, label: 'เปลี่ยนรหัสผ่าน', onClick: () => setPwModalOpen(true) },
+    ...(push.state === 'unsupported' || !push.serverEnabled
+      ? []
+      : [{
+          key: 'push-notifications',
+          icon: <BellOutlined />,
+          label: push.state === 'on' ? 'ปิดการแจ้งเตือนบนอุปกรณ์นี้' : 'เปิดการแจ้งเตือนบนอุปกรณ์นี้',
+          disabled: push.busy,
+          onClick: handleTogglePush,
+        }]),
     // Menu item widths only exist on the desktop bar.
     ...(isNarrow ? [] : [{ key: 'reset-nav-widths', label: 'รีเซ็ตความกว้างเมนู', onClick: resetTopNavWidths }]),
     { type: 'divider' as const },
