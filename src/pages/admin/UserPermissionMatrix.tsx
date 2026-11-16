@@ -92,6 +92,30 @@ const UserPermissionMatrix: React.FC = () => {
     can_delete: row.role_can_delete,
   })
 
+  // What the user gets today without any override: role layer first, then department, else denied
+  // (same per-column precedence as the backend's RequireMenuPermission).
+  const inheritedPerm = (row: EffectivePermission): AnyPerm => ({
+    can_read: row.role_can_read ?? row.dept_can_read ?? false,
+    can_write: row.role_can_write ?? row.dept_can_write ?? false,
+    can_update: row.role_can_update ?? row.dept_can_update ?? false,
+    can_delete: row.role_can_delete ?? row.dept_can_delete ?? false,
+  })
+
+  const hasOverride = (row: EffectivePermission): boolean =>
+    row.user_can_read !== null || row.user_can_write !== null || row.user_can_update !== null || row.user_can_delete !== null
+
+  // The state a draft is compared against: the saved override if one exists, otherwise the inherited
+  // permissions. Seeding from inherited (not null) keeps a one-field edit from zeroing the other columns.
+  const baselinePerm = (row: EffectivePermission): AnyPerm =>
+    hasOverride(row)
+      ? {
+          can_read: row.user_can_read,
+          can_write: row.user_can_write,
+          can_update: row.user_can_update,
+          can_delete: row.user_can_delete,
+        }
+      : inheritedPerm(row)
+
   const customPerm = (row: EffectivePermission): AnyPerm => {
     const draft = draftCustom[row.menu_id]
     if (draft) return draft as AnyPerm
@@ -121,17 +145,12 @@ const UserPermissionMatrix: React.FC = () => {
       if (row.parent_id === null) continue
       const draft = draftCustom[row.menu_id]
       if (!draft) continue
-      const orig: AnyPerm = {
-        can_read: row.user_can_read,
-        can_write: row.user_can_write,
-        can_update: row.user_can_update,
-        can_delete: row.user_can_delete,
-      }
+      const orig = baselinePerm(row)
       if (
-        draft.can_read !== orig.can_read ||
-        draft.can_write !== orig.can_write ||
-        draft.can_update !== orig.can_update ||
-        draft.can_delete !== orig.can_delete
+        (draft.can_read ?? false) !== (orig.can_read ?? false) ||
+        (draft.can_write ?? false) !== (orig.can_write ?? false) ||
+        (draft.can_update ?? false) !== (orig.can_update ?? false) ||
+        (draft.can_delete ?? false) !== (orig.can_delete ?? false)
       ) {
         ids.push(row.menu_id)
       }
@@ -172,7 +191,7 @@ const UserPermissionMatrix: React.FC = () => {
 
   const handleToggle = (menuId: number, row: EffectivePermission, field: PermField, value: boolean) => {
     setDraftCustom((prev) => {
-      const current: AnyPerm = prev[menuId] as AnyPerm ?? customPerm(row)
+      const current: AnyPerm = (prev[menuId] as AnyPerm | undefined) ?? baselinePerm(row)
       const autoEnablesRead = field !== 'read' && value && !current.can_read
       let next: AnyPerm
 
