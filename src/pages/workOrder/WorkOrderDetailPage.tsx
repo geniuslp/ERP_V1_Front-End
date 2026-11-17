@@ -188,7 +188,9 @@ const WorkOrderDetailPage: React.FC = () => {
             {(wo.status === 'APPROVED' || wo.status === 'PENDING_REAPPROVAL') && (
               <WOEditApprovedButton woId={wo.id} woNo={wo.wo_no} />
             )}
-            {(wo.status === 'PENDING_APPROVAL' || wo.status === 'PENDING_REAPPROVAL') && (
+            {/* Approve / reject only when this page was opened from the approval list (?for_approval=true).
+                Opened from the general WO list it is view-only. */}
+            {forApproval && (wo.status === 'PENDING_APPROVAL' || wo.status === 'PENDING_REAPPROVAL') && (
               <>
                 <PermissionButton
                   menuCode={MENU_CODE}
