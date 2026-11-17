@@ -44,6 +44,14 @@ const PROJECT_TEXT_PREFIX = '__text__:'
 const ADVANCE_PCT_VALUES = [5, 10, 15, 20, 30, 50]
 const ADVANCE_PCT_OPTIONS = ADVANCE_PCT_VALUES.map((v) => ({ value: v, label: `${v}%` }))
 
+// Header "อัตราหัก ณ ที่จ่าย": the same 1 / 3 / 5 the line-level WHT select offers, each with what the rate is for.
+// Contract-type defaults come from the backend (3 for labour+material / labour only / service, 5 for rental).
+const WHT_RATE_MEANING: Record<number, string> = {
+  1: 'ค่าขนส่ง',
+  3: 'ค่าจ้างทำของ / ค่าบริการ',
+  5: 'ค่าเช่า',
+}
+
 const MENU_CODE = 'MENU_WO_CREATE'
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -212,6 +220,16 @@ const WorkOrderCreatePage: React.FC = () => {
   const [whtDefaults, setWhtDefaults] = useState<Record<string, number>>({})
   const contractType: string | undefined = Form.useWatch('contract_type', form)
   const defaultWhtRate = (contractType && whtDefaults[contractType]) || 3
+  const watchedHeaderWht: number | null | undefined = Form.useWatch('wht_rate', form)
+  const whtHeaderOptions = [
+    ...Object.entries(WHT_RATE_MEANING).map(([rate, meaning]) => ({
+      value: Number(rate), label: `${rate}% — ${meaning}`, shortLabel: `${rate}%`,
+    })),
+    // A saved rate outside 1/3/5 (older documents) stays selectable instead of silently vanishing.
+    ...(watchedHeaderWht != null && !(Number(watchedHeaderWht) in WHT_RATE_MEANING)
+      ? [{ value: Number(watchedHeaderWht), label: `${watchedHeaderWht}% (ค่าเดิม)`, shortLabel: `${watchedHeaderWht}%` }]
+      : []),
+  ]
 
   // Last signer value this page filled in from sales_person — lets a later supplier change
   // replace its own auto-fill but never anything the user typed or a saved value.
@@ -290,7 +308,9 @@ const WorkOrderCreatePage: React.FC = () => {
   const [taxOpen, setTaxOpen] = useState(false)
   const [useDisc, setUseDisc] = useState(false)
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
-  const [useVat, setUseVat] = useState(false)
+  // VAT is ticked by default on a new WO (the user unticks it when not needed). Edit mode overwrites this with the
+  // saved wo.use_vat when the document loads, so an existing WO keeps whatever it was saved with.
+  const [useVat, setUseVat] = useState(true)
   const [useWht, setUseWht] = useState(false)
 
   // Payment-conditions rows (งวดงาน/เงินประกัน/ค่าปรับ) — same "plain React state,
@@ -438,6 +458,7 @@ const WorkOrderCreatePage: React.FC = () => {
           description: l.description ?? '',
           remark: l.remarks ?? '',
           qty: l.qty,
+          unit: l.unit ?? null,
           unit_price: l.unit_price,
           disc: l.disc ?? 0,
           disc_type: l.disc_type ?? 'pct',
@@ -555,6 +576,7 @@ const WorkOrderCreatePage: React.FC = () => {
         description: item.description || undefined,
         remarks: item.remark?.trim() || null,
         qty: item.qty,
+        unit: item.unit || null,
         unit_price: item.unit_price,
         // erp-api's WorkOrderLineInput json key is `disc`, not `discount` (PO's
         // shape) — see WorkOrderLine's doc comment in types/workOrder.ts.
@@ -718,6 +740,7 @@ const WorkOrderCreatePage: React.FC = () => {
               cost_code: item.cost_code,
               description: item.description || undefined,
               qty: item.qty,
+              unit: item.unit || null,
               unit_price: item.unit_price,
               disc: item.disc ?? 0,
               disc_type: item.disc_type ?? discType,
@@ -986,8 +1009,21 @@ const WorkOrderCreatePage: React.FC = () => {
                       </Form.Item>
                     </Col>
                     <Col {...FIELD_SPAN}>
-                      <Form.Item label={<span style={labelStyle}>อัตราหัก ณ ที่จ่าย (%)</span>} name="wht_rate">
-                        <InputNumber style={fieldStyle} min={0} max={100} />
+                      <Form.Item
+                        label={<span style={labelStyle}>อัตราหัก ณ ที่จ่าย (%)</span>}
+                        name="wht_rate"
+                        extra={
+                          watchedHeaderWht != null && WHT_RATE_MEANING[Number(watchedHeaderWht)]
+                            ? <span style={{ fontSize: 12, color: '#2563eb' }}>({WHT_RATE_MEANING[Number(watchedHeaderWht)]})</span>
+                            : undefined
+                        }
+                      >
+                        <Select
+                          style={fieldStyle}
+                          placeholder="เลือกอัตรา"
+                          optionLabelProp="shortLabel"
+                          options={whtHeaderOptions}
+                        />
                       </Form.Item>
                     </Col>
                   </Row>

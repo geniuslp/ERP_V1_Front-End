@@ -21,11 +21,16 @@ export interface WOLineItem {
   // Per-line รายละเอียด (free text, max 1000) — same as PR's row detail; edited in the row expanded by the 📄 icon.
   remark?: string
   qty: number
+  // Per-line หน่วย, picked from WO_UNIT_OPTIONS (null/absent = not chosen).
+  unit?: string | null
   unit_price: number
   disc?: number
   disc_type?: 'pct' | 'amt'
   wht_rate?: 1 | 3 | 5 | null
 }
+
+// หน่วย choices for a WO line. Stored as the text itself in work_order_line.unit.
+export const WO_UNIT_OPTIONS = ['เหมา', 'งาน', 'รอบ', 'ครั้ง', 'ตรม', 'เครื่อง'].map((u) => ({ value: u, label: u }))
 
 interface WOItemsTableProps {
   items: WOLineItem[]
@@ -297,6 +302,26 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
           value={r.qty}
           style={{ width: '100%' }}
           onChange={(v) => updateItem(r.key, 'qty', v ?? 0)}
+        />
+      ),
+    },
+    {
+      title: 'หน่วย',
+      key: 'unit',
+      width: 110,
+      align: 'center' as const,
+      render: (_: unknown, r: WOLineItem) => (
+        <Select
+          size="small"
+          allowClear
+          placeholder="เลือกหน่วย"
+          style={{ width: '100%' }}
+          value={r.unit || undefined}
+          // A saved unit outside the list (older / imported data) stays selectable instead of vanishing.
+          options={r.unit && !WO_UNIT_OPTIONS.some((o) => o.value === r.unit)
+            ? [...WO_UNIT_OPTIONS, { value: r.unit, label: r.unit }]
+            : WO_UNIT_OPTIONS}
+          onChange={(v) => updateItem(r.key, 'unit', v ?? null)}
         />
       ),
     },

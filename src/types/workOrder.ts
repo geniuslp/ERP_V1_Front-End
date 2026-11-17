@@ -83,6 +83,7 @@ export interface WorkOrderLine {
   disc_type?: 'pct' | 'amt'
   wht_rate?: number | null
   remarks?: string | null // per-line รายละเอียด
+  unit?: string | null // per-line หน่วย (เหมา, งาน, รอบ, ครั้ง, ตรม, เครื่อง)
 }
 
 export interface WOListItem {
