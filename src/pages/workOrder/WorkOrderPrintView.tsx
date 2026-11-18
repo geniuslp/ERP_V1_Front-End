@@ -1,6 +1,6 @@
 import React from 'react'
 import dayjs from 'dayjs'
-import { WO_CONTRACT_DESCRIPTION_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
+import { formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
 // Both templates are now literal PurchaseOrderPrint.tsx duplicates edited in
@@ -47,15 +47,13 @@ function mapWorkOrderToPOStyle(data: WOPrintData, jobNames: Record<string, strin
     poNo: data.wo_no ?? '',
     revisionRound: data.revision_round,
     poDate: data.wo_date ? dayjs(data.wo_date).format('DD/MM/YYYY') : '',
-    prNo: data.ref_no ?? '',
+    prNo: data.pr_no ?? '',
     deliveryDate: '', // no WO equivalent (delivery concept doesn't apply)
     project: formatWOProject(data),
     deliveryPlace: '', // no WO equivalent
     job: formatWorkSystem(data.work_system, jobNames),
     contractDelivery: '', // no WO equivalent
-    quotationNo: data.contract_description
-      ? (WO_CONTRACT_DESCRIPTION_LABEL[data.contract_description as keyof typeof WO_CONTRACT_DESCRIPTION_LABEL] ?? data.contract_description)
-      : '',
+    quotationNo: data.ref_no ?? '',
     tel: data.supplier_phone ?? '',
     supplier: {
       name: data.supplier_name ?? '',
