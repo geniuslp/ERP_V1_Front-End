@@ -18,12 +18,14 @@ const cardStyle: React.CSSProperties = {
 
 const refTypeColor: Record<string, string> = {
   PO: 'blue',
+  PO_RETURN: 'red',
   MOVEMENT_ISSUE: 'orange',
   MOVEMENT_TRANSFER: 'purple',
 }
 
 const refTypeLabel: Record<string, string> = {
   PO: 'รับเข้า PO',
+  PO_RETURN: 'คืน PO',
   MOVEMENT_ISSUE: 'ตัดเบิก',
   MOVEMENT_TRANSFER: 'โอนข้ามโครงการ',
 }
@@ -289,6 +291,7 @@ const ICProjectCostTransactionPage: React.FC = () => {
             style={{ width: 200 }}
             options={[
               { value: 'PO', label: 'รับเข้า PO' },
+              { value: 'PO_RETURN', label: 'คืน PO' },
               { value: 'MOVEMENT_ISSUE', label: 'ตัดเบิก' },
               { value: 'MOVEMENT_TRANSFER', label: 'โอนข้ามโครงการ' },
             ]}
