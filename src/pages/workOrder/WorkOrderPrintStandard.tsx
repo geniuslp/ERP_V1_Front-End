@@ -267,7 +267,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.3 หักเงินประกันผลงาน {data.retention_pct ?? 0}%{data.retention_remarks ? ` ${data.retention_remarks}` : ''}</td>
+        <td className="sub">7.3 หักเงินประกันผลงาน {data.retention_pct ? `${data.retention_pct}%` : 'ไม่มี'}{data.retention_remarks ? ` ${data.retention_remarks}` : ''}</td>
       </tr>
       <tr>
         <td />
