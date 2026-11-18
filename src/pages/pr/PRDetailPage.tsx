@@ -102,6 +102,8 @@ interface PRDetail {
   // GET /pr/:id's requester_signature — null when DRAFT (backend rule) or the
   // requester has no signature uploaded.
   requesterSignature: { fullName: string; signatureDataUrl: string } | null
+  // GET /pr/:id's approved_at: time of the LATEST approval (absent while draft / pending / rejected).
+  approvedAt: string | null
   lines: PRLineItem[]
   // GET /pr/:id nests attachments by source doc. `pr` is always present
   // (`[]` at minimum); `memo` key is entirely absent from the JSON when
@@ -139,6 +141,7 @@ const mapPR = (raw: any): PRDetail => ({
     fullName:         raw.requester_signature.full_name ?? '',
     signatureDataUrl: raw.requester_signature.signature_data_url ?? '',
   } : null,
+  approvedAt: raw.approved_at ?? null,
   lines: (raw.lines ?? []).map((l: any) => ({
     id:               l.id,
     lineNo:           l.line_no            ?? 0,
@@ -416,6 +419,7 @@ const PRDetailPage: React.FC = () => {
       status: pr.status,
       requesterName: pr.requesterUsername || (pr.requestedBy && pr.requestedBy !== '—' ? pr.requestedBy : undefined),
       requesterSignature: pr.requesterSignature,
+      approvedAt: pr.approvedAt ? dayjs(pr.approvedAt).format('DD/MM/YYYY') : undefined,
       items: pr.lines.map((l) => ({
         no: String(l.lineNo),
         costCode: l.costCode ?? '',

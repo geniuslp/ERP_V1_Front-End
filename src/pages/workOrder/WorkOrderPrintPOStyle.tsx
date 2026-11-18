@@ -366,9 +366,9 @@ const POFooter = ({data}:{data:WOPOData}) => {
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>
-                  {sig?.approved_at && <div>{dayjs(sig.approved_at).format('DD/MM/YYYY')}</div>}
                 </div>
-                <div className="auth-date">({data.poDate})</div>
+                {/* Approver: the date of the LATEST approval (a re-approval after an edit replaces the first one), not the document date. */}
+                <div className="auth-date">({sig?.approved_at ? dayjs(sig.approved_at).format('DD/MM/YYYY') : data.poDate})</div>
               </div>
             )
           })}

@@ -63,6 +63,9 @@ export interface PRData {
   // rule) or the requester has never uploaded a signature. Only PRDetailPage's
   // print call site has this; PRCreatePage's unsaved-print never passes it.
   requesterSignature?: PRUserSignature | null
+  // DD/MM/YYYY of the LATEST approval (a re-approval after an edit replaces the first one); printed under "Authorized
+  // Signature" instead of the document date. Absent while the PR is not approved.
+  approvedAt?: string
   // Who opened the PR: the username (e.g. Weerayooth.k), printed under "ผู้ขอซื้อ / Requester" even when there is
   // no signature image (DRAFT, or the requester never uploaded one). Falls back to the signature's full name.
   requesterName?: string
@@ -312,7 +315,7 @@ const PRFooter = ({ data }: { data: PRData }) => (
             <div className="auth-body">
               <div style={{ fontWeight: 600 }}>{col.label}</div>
             </div>
-            <div className="auth-date">({data.prDate})</div>
+            <div className="auth-date">({col.label === 'Authorized Signature' && data.approvedAt ? data.approvedAt : data.prDate})</div>
           </div>
         ))}
       </div>

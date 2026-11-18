@@ -363,9 +363,9 @@ const AuthBlock = ({ data }: { data: WOPrintDataLite }) => {
               </div>
               <div className="auth-body">
                 <div style={{ fontWeight: 600 }}>{label}</div>
-                {s?.approved_at && <div>{dayjs(s.approved_at).format('DD/MM/YYYY')}</div>}
               </div>
-              <div className="auth-date">({fmtDate(data.wo_date)})</div>
+              {/* Approver: the date of the LATEST approval (a re-approval after an edit replaces the first one), not the document date. */}
+              <div className="auth-date">({s?.approved_at ? dayjs(s.approved_at).format('DD/MM/YYYY') : fmtDate(data.wo_date)})</div>
             </div>
           )
         })}
