@@ -26,17 +26,20 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 12px rgba(15,45,94,0.08)',
 }
 
-// Row tint by status — mapping unchanged, only the shared palette (src/index.css's
-// .row-tint-* classes, see src/constants/rowTint.ts) changed. Only the 3 statuses
-// below get a tint; DRAFT/CANCELLED are left plain. "Rejected" also covers a
-// would-be "partial" bucket since Memo has no such status in the real DB enum
-// (DRAFT/PENDING_APPROVAL/APPROVED/REJECTED/CANCELLED only).
-const ROW_TINT_CATEGORY: Record<string, string> = {
-  PENDING_APPROVAL: ROW_TINT_CLASS.gray,
-  APPROVED:         ROW_TINT_CLASS.green,
-  REJECTED:         ROW_TINT_CLASS.red,
+// Row tint (palette: src/index.css's .row-tint-* classes, see src/constants/rowTint.ts).
+// An APPROVED memo is tinted by how many of its lines have been pulled into a live PR (GET /memo?include_used=true gives
+// total_lines / taken_lines): none → gray, some → orange, all → green. REJECTED stays red; every other status
+// (DRAFT / PENDING_APPROVAL / CANCELLED) is left plain.
+const getRowClassName = (record: Memo): string => {
+  const status = String(record.status ?? '').toUpperCase()
+  if (status === 'REJECTED') return ROW_TINT_CLASS.red
+  if (status !== 'APPROVED') return ''
+  const total = Number((record as any).total_lines ?? 0)
+  const taken = Number((record as any).taken_lines ?? 0)
+  if (total > 0 && taken >= total) return ROW_TINT_CLASS.green
+  if (taken > 0) return ROW_TINT_CLASS.orange
+  return ROW_TINT_CLASS.gray
 }
-const getRowClassName = (status?: string): string => ROW_TINT_CATEGORY[status ?? ''] ?? ''
 
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
 const PROJECT_COLUMN_DEFAULT_WIDTH = 240
@@ -162,6 +165,7 @@ const MemoListPage: React.FC = () => {
           all_users: 'true', // status check shows everyone's memos (approval page stays limited to the assigned approver)
           search: search || undefined,
           status:  status  || undefined,
+          include_used: 'true', // adds total_lines / taken_lines per memo (row tint = how much has been pulled into PRs)
           date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
           date_to:   range?.[1] ? range[1].format('YYYY-MM-DD') : undefined,
         },
@@ -413,8 +417,9 @@ const MemoListPage: React.FC = () => {
 
         <RowTintLegend
           items={[
-            { ...ROW_TINT_SWATCH.gray, label: 'รออนุมัติ' },
-            { ...ROW_TINT_SWATCH.green, label: 'อนุมัติแล้ว' },
+            { ...ROW_TINT_SWATCH.gray, label: 'อนุมัติแล้ว ยังไม่ถูกนำไปเปิด PR' },
+            { ...ROW_TINT_SWATCH.orange, label: 'เปิด PR ไม่ครบทุกรายการ' },
+            { ...ROW_TINT_SWATCH.green, label: 'เปิด PR ครบทุกรายการ' },
             { ...ROW_TINT_SWATCH.red, label: 'ถูกปฏิเสธ' },
           ]}
         />
@@ -428,7 +433,7 @@ const MemoListPage: React.FC = () => {
           dataSource={data}
           size="small"
           scroll={{ x: 1400 }}
-          rowClassName={(record) => getRowClassName(record.status)}
+          rowClassName={(record) => getRowClassName(record)}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
