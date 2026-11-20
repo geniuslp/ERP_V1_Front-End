@@ -114,7 +114,7 @@ const PRApprovalListPage: React.FC = () => {
     },
     {
       // The PR's own remarks (header remarks field, same `remarks` GET /pr returns for PRHistoryPage).
-      title: 'หมายเหตุผู้ขออนุมัติ', dataIndex: 'remarks', key: 'remarks', ellipsis: true,
+      title: 'หมายเหตุ', dataIndex: 'remarks', key: 'remarks', ellipsis: true,
       render: (v: string | null | undefined) => v || '-',
     },
     {
