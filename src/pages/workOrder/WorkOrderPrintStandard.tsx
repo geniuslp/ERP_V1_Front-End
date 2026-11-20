@@ -185,7 +185,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td />
         <td className="wo-label">ชื่อโครงการ</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(formatWOProject(data))}</td>
+        <td className="wo-value" style={{ fontSize: '11.5pt' }}>{val(formatWOProject(data))}</td>
       </tr>
 
       <tr>
@@ -210,7 +210,8 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
         <td />
         <td className="wo-label">&nbsp;&nbsp;โทรศัพท์ติดต่อได้ที่</td>
         <td className="wo-colon">:</td>
-        <td className="wo-value">{val(data.supplier_phone)}</td>
+        {/* Inline style on purpose: table.wo-table td{font-size:12pt} outranks a font-size on .wo-value. 10pt = the 5/6 height ratio measured on the printed PDF (phone digits 6px vs 5px for the amount / dates). */}
+        <td className="wo-value" style={{ fontSize: '10.3pt' ,fontWeight: 'bold' }}>{val(data.supplier_phone)}</td>
       </tr>
 
       <tr>
@@ -272,7 +273,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.4 หักเงินคืนล่วงหน้า {(data.revision_round ?? 0) > 0 && (data.advance_deduct_pct ?? 0) > 0 ? `${data.advance_deduct_pct}%` : '-'}</td>
+        <td className="sub">7.4 หักเงินคืนล่วงหน้า {(data.revision_round ?? 0) > 0 && (data.advance_deduct_pct ?? 0) > 0 ? `${data.advance_deduct_pct}%` : 'ไม่มี'}</td>
       </tr>
       <tr>
         <td />
@@ -321,7 +322,7 @@ const OtherTermsTable = ({ lines, cont, lineRef }: { lines: NoteLine[]; cont: bo
         <td className="wo-label">เงื่อนไขอื่นๆ ระบุเพิ่มเติม{cont ? ' (ต่อ)' : ''}</td>
         <td className="wo-colon">:</td>
         <td className="wo-value">
-          {lines.length === 0 ? val('') : (
+          {lines.length === 0 ? 'ไม่มี' : (
             <div style={{ overflowWrap: 'anywhere' }}>
               {lines.map((l, i) => (
                 <div

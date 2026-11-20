@@ -45,6 +45,8 @@ const getRowClassName = (status?: string, poConversionStatus?: string, hasRemain
   if (status === 'COMPLETED' || status === 'FULFILLED') {
     const done = hasRemaining != null ? !hasRemaining : poConversionStatus === 'FULLY_CONVERTED'
     if (done) return ROW_TINT_CLASS.green
+    // Some lines already pulled into a PO (even one still awaiting approval) → partial.
+    if (poConversionStatus === 'PARTIALLY_CONVERTED') return ROW_TINT_CLASS.orange
   }
   return ROW_TINT_CATEGORY[status ?? ''] ?? ''
 }

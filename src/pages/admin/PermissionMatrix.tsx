@@ -7,6 +7,7 @@ import PermissionGrid, { PermissionModuleGroup } from '@/components/permission/P
 import PermissionCell from '@/components/permission/PermissionCell'
 import DepartmentSelect from '@/components/common/DepartmentSelect'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
+import { leafMenusUnder, topAncestorId } from '@/utils/menuTree'
 import type {
   PermField,
   PermMenu,
@@ -53,7 +54,8 @@ const FIELD_KEY_ROLE: Record<PermField, keyof RoleMenuPermission> = {
 function buildModuleGroups(menus: PermMenu[]): PermissionModuleGroup[] {
   const topLevel = menus.filter((m) => m.parent_id === null).sort((a, b) => a.order - b.order)
   return topLevel.map((top) => {
-    const children = menus.filter((m) => m.parent_id === top.id).sort((a, b) => a.order - b.order)
+    // Leaf menus at any depth below the module (a sub-group such as "รายงาน OF" contributes its pages, not itself).
+    const children = leafMenusUnder(menus, top.id)
     // Top-level items with no children are themselves leaf/actionable rows
     return {
       moduleId: top.id,
@@ -770,14 +772,17 @@ const UserTab: React.FC<{ token: string }> = ({ token }) => {
   }
 
   const moduleGroups = useMemo(() => {
-    const leafRows = effectivePerms.filter((ep) => ep.parent_id !== null)
+    // Leaf rows only (a sub-group such as "รายงาน OF" has no checkboxes of its own), grouped by their
+    // top-level module so a page two levels deep still lands under it.
+    const hasChild = new Set(menus.map((m) => m.parent_id))
+    const leafRows = effectivePerms.filter((ep) => ep.parent_id !== null && !hasChild.has(ep.menu_id))
     const parentNames = new Map<number, string>()
     effectivePerms.forEach((ep) => {
       if (ep.parent_id === null) parentNames.set(ep.menu_id, ep.menu_name)
     })
     const grouped = new Map<number, EffectivePermission[]>()
     leafRows.forEach((ep) => {
-      const pid = ep.parent_id!
+      const pid = topAncestorId(menus, ep.menu_id) ?? ep.parent_id!
       if (!grouped.has(pid)) grouped.set(pid, [])
       grouped.get(pid)!.push(ep)
     })

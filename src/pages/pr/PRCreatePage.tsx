@@ -158,6 +158,10 @@ const PRCreatePage: React.FC = () => {
   const attachmentsRef = useRef<AttachedFile[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [existingAttachments, setExistingAttachments] = useState<UploadedFile[]>([])
+  // Status of the PR as loaded in edit mode. Existing attachments may only be removed
+  // before approval (DRAFT / PENDING_APPROVAL / REJECTED); once approved they are locked.
+  const [loadedStatus, setLoadedStatus] = useState('')
+  const canRemoveExistingAttachments = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(loadedStatus)
   // Files attached to the linked Memo (read-only here — owned by the Memo,
   // never resubmitted as part of this PR's own `attachments` on save).
   const [memoAttachments, setMemoAttachments] = useState<UploadedFile[]>([])
@@ -349,6 +353,7 @@ const PRCreatePage: React.FC = () => {
         if (ignore) return
         const raw = res.data?.data ?? res.data
         setPrNumber(raw.pr_no ?? '')
+        setLoadedStatus(raw.status ?? raw.pr?.status ?? '')
         const pos = mapLinkedPos(raw.linked_pos ?? raw.pr?.linked_pos)
         setLinkedPos(pos)
         setEditBlockedMessage(
@@ -1187,6 +1192,16 @@ const PRCreatePage: React.FC = () => {
                         >
                           {f.file_name}
                         </span>
+                        {canRemoveExistingAttachments && (
+                          <DeleteOutlined
+                            style={{ color: '#93c5fd', cursor: 'pointer', flexShrink: 0 }}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setExistingAttachments((prev) => prev.filter((x) => x.file_path !== f.file_path))
+                            }}
+                          />
+                        )}
                       </a>
                     ))}
                   </div>

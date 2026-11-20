@@ -15,7 +15,7 @@ const btnStyle: CSSProperties = {
   color: '#fff',
 }
 
-const TableScrollEnd = ({ children }: { children: ReactNode }) => {
+const TableScrollEnd = ({ children, alwaysShow = false }: { children: ReactNode; alwaysShow?: boolean }) => {
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLElement | null>(null)
   const [canRight, setCanRight] = useState(false)
@@ -61,11 +61,11 @@ const TableScrollEnd = ({ children }: { children: ReactNode }) => {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      {(canRight || canLeft) && (
+      {(alwaysShow || canRight || canLeft) && (
       <div style={{ display: 'flex', flexDirection: 'row-reverse', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-        {canRight && (
+        {(alwaysShow || canRight) && (
           <Tooltip title="เลื่อนไปขวาสุด" placement="left">
-            <Button shape="circle" size="small" icon={<DoubleRightOutlined />} style={btnStyle} onClick={() => goTo(true)} />
+            <Button shape="circle" size="small" icon={<DoubleRightOutlined />} style={btnStyle} disabled={!canRight} onClick={() => goTo(true)} />
           </Tooltip>
         )}
         {canLeft && (

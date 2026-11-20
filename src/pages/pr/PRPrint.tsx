@@ -274,7 +274,7 @@ const ItemRow = ({ row, rowRef }: { row: PRItem; rowRef?: React.Ref<HTMLTableRow
         <div><FormattedNote value={row.remark} /></div>
       )}
     </td>
-    <td style={{ textAlign: 'center' }}>{row.qty || ''}</td>
+    <td style={{ textAlign: 'center' }}>{row.qty ?? ''}</td>
     <td style={{ textAlign: 'center' }}>{row.unit}</td>
   </tr>
 )

@@ -10,6 +10,7 @@ import dayjs from 'dayjs'
 import axios from 'axios'
 import { Resizable, type ResizeCallbackData } from 'react-resizable'
 import 'react-resizable/css/styles.css'
+import TableScrollEnd from '@/components/common/TableScrollEnd'
 import MaterialPickerModal from '@/components/common/MaterialPickerModal'
 import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/CostCodeSelectionModal'
 import type { Material } from '@/types'
@@ -78,6 +79,8 @@ interface PriceHistoryRow {
   po_date: string
   unit_price: number
   qty_ordered?: number | null
+  unit_name?: string | null
+  remarks?: string | null
   po_no: string
 }
 
@@ -90,7 +93,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
-  const pageSize = 10
+  const pageSize = 50
 
   const rangePresets: { label: string; value: [dayjs.Dayjs, dayjs.Dayjs] }[] = [
     { label: '3 เดือน', value: [dayjs().subtract(3, 'month'), dayjs()] },
@@ -98,6 +101,10 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
     { label: '1 ปี', value: [dayjs().subtract(1, 'year'), dayjs()] },
   ]
 
+  const [unitColWidth, setUnitColWidth] = useState(90)
+  const [remarkColWidth, setRemarkColWidth] = useState(260)
+  const handleUnitColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setUnitColWidth(data.size.width)
+  const handleRemarkColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => setRemarkColWidth(data.size.width)
   const [matCodeColWidth, setMatCodeColWidth] = useState(150)
   const [nameColWidth, setNameColWidth] = useState(300)
   const [supplierColWidth, setSupplierColWidth] = useState(226)
@@ -158,7 +165,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
       open={!!matCode}
       onCancel={onClose}
       footer={<Button onClick={onClose}>ปิด</Button>}
-      width={1280}
+      width={2048}
       style={{ maxWidth: '95vw' }}
       destroyOnClose
     >
@@ -172,6 +179,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
           presets={rangePresets}
         />
       </div>
+      <TableScrollEnd alwaysShow>
       <Table
         rowKey={(r: PriceHistoryRow) => `${r.po_no}-${r.po_date}`}
         loading={loading}
@@ -181,8 +189,9 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
         scroll={{ x: 'max-content' }}
         columns={[
           {
-            title: 'รหัสวัสดุ',
-            dataIndex: 'mat_code',
+            // PO that bought the item at that time (replaces the material-code column).
+            title: 'เลขที่ PO',
+            dataIndex: 'po_no',
             width: matCodeColWidth,
             onHeaderCell: () => ({ width: matCodeColWidth, onResize: handleMatCodeColResize }),
           },
@@ -241,12 +250,28 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
               v == null ? '—' : Number(v).toLocaleString('th-TH', { maximumFractionDigits: 4 }),
           },
           {
+            title: 'หน่วย',
+            dataIndex: 'unit_name',
+            width: unitColWidth,
+            align: 'center' as const,
+            onHeaderCell: () => ({ width: unitColWidth, onResize: handleUnitColResize }),
+            render: (v: string | null | undefined) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+          },
+          {
             title: 'ราคา/หน่วย',
             dataIndex: 'unit_price',
             width: priceColWidth,
             align: 'right' as const,
             onHeaderCell: () => ({ width: priceColWidth, onResize: handlePriceColResize }),
             render: (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2 }),
+          },
+          {
+            title: 'หมายเหตุ',
+            dataIndex: 'remarks',
+            ellipsis: true,
+            width: remarkColWidth,
+            onHeaderCell: () => ({ width: remarkColWidth, onResize: handleRemarkColResize }),
+            render: (v: string | null | undefined) => v || <span style={{ color: '#9ca3af' }}>—</span>,
           },
         ]}
         pagination={{
@@ -258,6 +283,7 @@ const PriceHistoryModal: React.FC<{ matCode: string | null; onClose: () => void 
         }}
         locale={{ emptyText: range ? 'ไม่พบประวัติการซื้อในช่วงเวลานี้' : 'ไม่พบประวัติการซื้อ' }}
       />
+      </TableScrollEnd>
     </Modal>
   )
 }

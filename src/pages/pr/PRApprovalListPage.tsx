@@ -32,6 +32,7 @@ interface PRApprovalRow {
   job_code?: string | null
   approver_name?: string | null
   reject_reason?: string | null
+  remarks?: string | null
 }
 
 const STATUS_TAG: Record<string, { color: string; label: string }> = {
@@ -112,8 +113,9 @@ const PRApprovalListPage: React.FC = () => {
       },
     },
     {
-      title: 'หมายเหตุผู้ขออนุมัติ', dataIndex: 'reject_reason', key: 'reject_reason', ellipsis: true,
-      render: (v: string | null | undefined, r) => (r.status === 'REJECTED' && v ? v : '-'),
+      // The PR's own remarks (header remarks field, same `remarks` GET /pr returns for PRHistoryPage).
+      title: 'หมายเหตุผู้ขออนุมัติ', dataIndex: 'remarks', key: 'remarks', ellipsis: true,
+      render: (v: string | null | undefined) => v || '-',
     },
     {
       title: '', key: 'action', width: 140,

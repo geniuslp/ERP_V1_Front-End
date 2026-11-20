@@ -23,6 +23,14 @@ const isCreateMenu = (menuCode: string) => menuCode.endsWith('_CREATE')
 // Children whose route needs a :param and has no standalone target — shown disabled, like the sidebar did.
 export const PARAM_REQUIRED_MENU_CODES = ['MENU_IC_PO_RECEIVE', 'MENU_IC_PO_RETURN']
 
+// "รายงาน OF" pages that are listed in the menu but not built yet: shown greyed out, not clickable.
+// Remove a code from this list when its page is added (the route already has to exist in App.tsx).
+export const COMING_SOON_MENU_CODES = ['MENU_OF_RPT_PR_ITEMS', 'MENU_OF_RPT_PETTY_CASH', 'MENU_OF_RPT_DELETED']
+export const COMING_SOON_TITLE = 'ยังไม่เปิดใช้งาน'
+
+// Groups shown as one numbered entry whose pages slide out to the side on hover (desktop dropdown).
+export const FLYOUT_GROUP_CODES = ['MENU_OF_REPORT']
+
 export function useNavTree() {
   const { can, hasRole, loading, menus } = usePermissionContext()
 
@@ -105,13 +113,14 @@ export function shortLabel(node: Pick<PermMenu, 'menu_code' | 'menu_name'>): str
 // ── Sub-menu colour groups (colours live in the CSS of TopNavMenu.tsx) ─────────────────────────
 // Matched by menu_code PREFIX inside a main menu, first rule wins, so future entries of the same
 // kind pick the colour up automatically: PR green, PO amber, WO blue, petty cash purple.
-export type NavColor = 'pr' | 'po' | 'wo' | 'petty' | 'memo' | 'ic' | 'budget' | 'stock'
+export type NavColor = 'pr' | 'po' | 'wo' | 'petty' | 'memo' | 'ic' | 'budget' | 'stock' | 'of'
 // Main menus whose whole dropdown shares one colour (also the fallback for entries no prefix rule matches,
 // e.g. IC's "คลัง" whose menu_code is not MENU_-prefixed).
 const NAV_ROOT_COLOR: Record<string, NavColor> = { MENU_MEMO: 'memo', MENU_IC: 'ic' }
 const NAV_COLOR_RULES: Record<string, { prefix: string; color: NavColor }[]> = {
   MENU_PR: [
     { prefix: 'MENU_PETTY_CASH', color: 'petty' },
+    { prefix: 'MENU_OF_', color: 'of' }, // "รายงาน OF" group and its pages
     { prefix: 'MENU_PR', color: 'pr' },
   ],
   MENU_IC: [{ prefix: 'master-stock', color: 'stock' }], // "คลัง" (its menu_code is not MENU_-prefixed)
@@ -129,13 +138,19 @@ export function navColor(rootCode: string, menuCode: string): NavColor | undefin
 // ── Numbering ──────────────────────────────────────────────────────────────────────────────────
 /** 1, 2, 3... for the clickable entries of ONE main menu, in display order (group headings are not numbered).
  *  Each main menu starts again at 1. */
-export function numberLeaves(top: NavNode): Map<string, number> {
-  const out = new Map<string, number>()
+export function numberLeaves(top: NavNode): Map<string, string> {
+  const out = new Map<string, string>()
   let n = 0
   const visit = (nodes: NavNode[]) => {
     for (const c of nodes) {
-      if (c.children.length > 0) visit(c.children)
-      else out.set(c.menu_code, ++n)
+      if (c.children.length > 0) {
+        if (FLYOUT_GROUP_CODES.includes(c.menu_code)) {
+          // a flyout group is itself one numbered entry ("7."); its pages are 7.1, 7.2, ...
+          const g = ++n
+          out.set(c.menu_code, `${g}.`)
+          c.children.forEach((x, i) => out.set(x.menu_code, `${g}.${i + 1}`))
+        } else visit(c.children)
+      } else out.set(c.menu_code, `${++n}.`)
     }
   }
   visit(top.children)

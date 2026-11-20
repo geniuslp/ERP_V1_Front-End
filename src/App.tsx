@@ -25,6 +25,7 @@ const PRStatusPage = lazy(() => import('@/pages/pr/PRStatusPage'))
 const PRDetailPage = lazy(() => import('@/pages/pr/PRDetailPage'))
 const PRApprovalListPage = lazy(() => import('@/pages/pr/PRApprovalListPage'))
 const PRHistoryPage = lazy(() => import('@/pages/pr/PRHistoryPage'))
+const PRReducePage = lazy(() => import('@/pages/reports/of/PRReducePage'))
 const POCreatePage = lazy(() => import('@/pages/po/POCreatePage'))
 const POStatusPage = lazy(() => import('@/pages/po/POStatusPage'))
 const POHistoryPage = lazy(() => import('@/pages/po/POHistoryPage'))
@@ -148,6 +149,9 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/pr/history" element={
                 <RequirePermission menuCode="MENU_PR_HISTORY" action="read"><PRHistoryPage /></RequirePermission>
+              } />
+              <Route path="/reports/of/pr-reduce" element={
+                <RequirePermission menuCode="MENU_OF_RPT_PR_REDUCE" action="read"><PRReducePage /></RequirePermission>
               } />
               <Route path="/po/create" element={
                 <RequirePermission menuCode="MENU_PO_CREATE" action="write"><POCreatePage key="po-create" /></RequirePermission>

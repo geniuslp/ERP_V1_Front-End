@@ -79,6 +79,7 @@ interface MemoDetail {
   requestedBy: string
   requestedByUsername?: string // printed under the requester signature
   requestedById: number
+  approverId?: number | null
   approverName?: string
   department?: string
   deliveryLocation?: string
@@ -157,6 +158,7 @@ const mapMemo = (raw: any): MemoDetail => {
     requestedBy:   raw.requested_by_name ?? '',
     requestedByUsername: raw.requested_by_username ?? '',
     requestedById: raw.requested_by   ?? 0,
+    approverId:    raw.approver_id ?? raw.approverId ?? null,
     approverName:  raw.approver_name ?? raw.approverName,
     department:    raw.department,
     deliveryLocation: raw.delivery_location,
@@ -368,7 +370,12 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
   }
 
   const isOwner   = memo && user && String(memo.requestedById) === String(user.id)
-  const canEdit   = memo && ['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(String(memo.status).toUpperCase()) && isOwner
+  // The approver the memo is assigned to may also edit it, but only while it waits for their approval.
+  const isAssignedApprover = memo && user && memo.approverId != null && String(memo.approverId) === String(user.id)
+  const canEdit   = memo && (
+    (['DRAFT', 'REJECTED', 'PENDING_APPROVAL'].includes(String(memo.status).toUpperCase()) && isOwner) ||
+    (String(memo.status).toUpperCase() === 'PENDING_APPROVAL' && isAssignedApprover)
+  )
 
   const columns = [
     { title: '#', key: 'no', align: 'center' as const, render: (_: any, __: any, idx: number) => idx + 1, width: 50 },

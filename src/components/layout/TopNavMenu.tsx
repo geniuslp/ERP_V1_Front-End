@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 import { DownOutlined, LeftOutlined, MenuOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
 import {
-  NO_ACCESS_TITLE, PARAM_REQUIRED_MENU_CODES, TOPNAV_MAX_WIDTH, TOPNAV_MIN_WIDTH, TOPNAV_WIDTHS_RESET_EVENT,
+  COMING_SOON_MENU_CODES, COMING_SOON_TITLE, FLYOUT_GROUP_CODES, NO_ACCESS_TITLE, PARAM_REQUIRED_MENU_CODES, TOPNAV_MAX_WIDTH, TOPNAV_MIN_WIDTH, TOPNAV_WIDTHS_RESET_EVENT,
   findActive, navColor, numberLeaves, loadTopNavWidths, saveTopNavWidths, shortLabel, useNavTree, type NavNode,
 } from './topNavData'
 
@@ -53,8 +53,13 @@ const CSS = `
 .tn-child.tn-c-ic    { --tn-c: #be123c; --tn-c-bg: #fff1f2; --tn-c-dk: #fda4af; }
 .tn-child.tn-c-budget { --tn-c: #4d7c0f; --tn-c-bg: #f7fee7; --tn-c-dk: #bef264; }
 .tn-child.tn-c-stock { --tn-c: #c2410c; --tn-c-bg: #fff7ed; --tn-c-dk: #fdba74; }
+.tn-child.tn-c-of    { --tn-c: #4338ca; --tn-c-bg: #eef2ff; --tn-c-dk: #a5b4fc; }
 .tn-child[class*="tn-c-"] { color: var(--tn-c); box-shadow: inset 3px 0 0 var(--tn-c); }
 .tn-child[class*="tn-c-"]:hover, .tn-child[class*="tn-c-"].tn-child-active { background: var(--tn-c-bg); color: var(--tn-c); }
+.tn-fly-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box; border: 0;
+  background: transparent; font: inherit; text-align: left; }
+.tn-fly-row[aria-expanded="true"] { background: #eff6ff; }
+.tn-fly-row .tn-chev { font-size: 10px; }
 .tn-child:hover { background: #eff6ff; }
 .tn-child.tn-child-active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
 .tn-child[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
@@ -72,6 +77,7 @@ const CSS = `
 .tn-drawer-item.tn-c-ic    { --tn-c: #fda4af; }
 .tn-drawer-item.tn-c-budget { --tn-c: #bef264; }
 .tn-drawer-item.tn-c-stock { --tn-c: #fdba74; }
+.tn-drawer-item.tn-c-of    { --tn-c: #a5b4fc; }
 .tn-drawer-item[class*="tn-c-"] { color: var(--tn-c); box-shadow: inset 3px 0 0 var(--tn-c); }
 .tn-drawer-sub .tn-drawer-item { padding-left: 32px; font-size: 14px; }
 .tn-drawer-sub .tn-drawer-item[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
@@ -125,6 +131,11 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
 
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const flyRef = useRef<HTMLDivElement>(null)
+  const pinned = useRef(false) // a click on a flyout row keeps the dropdown + flyout open until an outside click / Esc
+  const flyRowEls = useRef(new Map<string, HTMLElement>())
+  const [flyCode, setFlyCode] = useState<string | null>(null)
+  const [flyPos, setFlyPos] = useState<{ left: number; top: number } | null>(null)
   const [needsArrows, setNeedsArrows] = useState(false)
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
@@ -143,8 +154,34 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
   const closeDropdown = useCallback(() => {
     window.clearTimeout(openT.current)
     window.clearTimeout(closeT.current)
+    pinned.current = false
     setOpenCode(null)
+    setFlyCode(null)
   }, [])
+
+  // The flyout belongs to the open dropdown: it goes away whenever the dropdown closes or switches.
+  useEffect(() => { setFlyCode(null); pinned.current = false }, [openCode])
+
+  const openFly = useCallback((code: string) => {
+    window.clearTimeout(closeT.current)
+    const row = flyRowEls.current.get(code)
+    if (!row) return
+    const r = row.getBoundingClientRect()
+    setFlyPos({ left: r.right - 2, top: r.top - 8 })
+    setFlyCode(code)
+  }, [])
+
+  // keep the flyout inside the viewport once it is measured
+  useLayoutEffect(() => {
+    if (!flyCode || !flyPos || !flyRef.current) return
+    const el = flyRef.current
+    const row = flyRowEls.current.get(flyCode)
+    const rowR = row?.getBoundingClientRect()
+    let left = flyPos.left
+    if (left + el.offsetWidth > window.innerWidth - 8 && rowR) left = Math.max(8, rowR.left - el.offsetWidth + 2)
+    const top = Math.max(8, Math.min(flyPos.top, window.innerHeight - el.offsetHeight - 8))
+    if (left !== flyPos.left || top !== flyPos.top) setFlyPos({ left, top })
+  }, [flyCode, flyPos])
 
   // ── Strip measuring: arrows only when the items are wider than the bar's middle part ──
   const measure = useCallback(() => {
@@ -283,7 +320,7 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
     if (!openCode) return
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node
-      if (panelRef.current?.contains(t)) return
+      if (panelRef.current?.contains(t) || flyRef.current?.contains(t)) return
       if (itemEls.current.get(openCode)?.contains(t)) return
       closeDropdown()
     }
@@ -302,12 +339,14 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
 
   // ── Open / close with a 150ms hover delay ──
   const scheduleOpen = (code: string) => {
+    if (pinned.current) return
     window.clearTimeout(closeT.current)
     if (openCode === code) return
     window.clearTimeout(openT.current)
     openT.current = window.setTimeout(() => { openedByHover.current = true; setOpenCode(code) }, 150)
   }
   const scheduleClose = () => {
+    if (pinned.current) return
     window.clearTimeout(openT.current)
     window.clearTimeout(closeT.current)
     closeT.current = window.setTimeout(() => setOpenCode(null), 150)
@@ -393,16 +432,45 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
   const openNode = openCode ? tree.find((n) => n.menu_code === openCode) : undefined
 
   // dropdown entries are numbered 1, 2, 3... per main menu
-  const entryNumbers = openNode ? numberLeaves(openNode) : new Map<string, number>()
+  const entryNumbers = openNode ? numberLeaves(openNode) : new Map<string, string>()
+  const flyNode = flyCode ? openNode?.children.find((c) => c.menu_code === flyCode) : undefined
+
+  const renderFlyRow = (g: NavNode) => (
+    <button
+      key={g.id}
+      type="button"
+      data-nav-entry
+      role="menuitem"
+      aria-haspopup="menu"
+      aria-expanded={flyCode === g.menu_code}
+      className={`tn-child tn-fly-row${openNode && navColor(openNode.menu_code, g.menu_code) ? ` tn-c-${navColor(openNode.menu_code, g.menu_code)}` : ''}`}
+      ref={(el) => { if (el) flyRowEls.current.set(g.menu_code, el); else flyRowEls.current.delete(g.menu_code) }}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') openFly(g.menu_code) }}
+      onClick={() => {
+        // click pins the flyout (stays open when the mouse leaves); click again releases it
+        if (flyCode === g.menu_code && pinned.current) { pinned.current = false; setFlyCode(null) }
+        else { pinned.current = true; window.clearTimeout(closeT.current); openFly(g.menu_code) }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault(); e.stopPropagation(); openFly(g.menu_code)
+          window.setTimeout(() => flyRef.current?.querySelector<HTMLElement>('[data-nav-entry]:not([aria-disabled="true"])')?.focus(), 0)
+        }
+      }}
+    >
+      <span>{`${entryNumbers.get(g.menu_code) ?? ''} ${g.menu_name}`}</span>
+      <RightOutlined className="tn-chev" />
+    </button>
+  )
   const renderEntry = (n: NavNode) => {
-    const label = `${entryNumbers.get(n.menu_code) ?? ''}. ${n.menu_name}`
+    const label = `${entryNumbers.get(n.menu_code) ?? ''} ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
     const color = openNode ? navColor(openNode.menu_code, n.menu_code) : undefined
     const colorCls = color ? ` tn-c-${color}` : ''
-    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
+    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || COMING_SOON_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
         <span key={n.id} data-nav-entry role="menuitem" aria-disabled="true" tabIndex={-1} className={`tn-child${colorCls}`}
-          title={n.noAccess ? NO_ACCESS_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
+          title={n.noAccess ? NO_ACCESS_TITLE : COMING_SOON_MENU_CODES.includes(n.menu_code) ? COMING_SOON_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
           {label}
         </span>
       )
@@ -554,19 +622,51 @@ const DesktopBar: React.FC<BarProps> = ({ tree, loading, active, brand, right })
           style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
           onPointerEnter={(e) => { if (e.pointerType === 'mouse') window.clearTimeout(closeT.current) }}
           onPointerLeave={(e) => { if (e.pointerType === 'mouse') scheduleClose() }}
+          onPointerOver={(e) => { if (flyCode && !pinned.current && e.pointerType === 'mouse' && !(e.target as HTMLElement).closest('.tn-fly-row')) setFlyCode(null) }}
           onKeyDown={onPanelKeyDown}
         >
           <div className="tn-panel-title">{openNode.menu_name}</div>
           {openNode.children.map((c) =>
             c.children.length > 0 ? (
-              <div key={c.id} role="group" aria-label={c.menu_name}>
-                <div className="tn-group-head">{c.menu_name}</div>
-                {c.children.map(renderEntry)}
-              </div>
+              FLYOUT_GROUP_CODES.includes(c.menu_code) ? (
+                renderFlyRow(c)
+              ) : (
+                <div key={c.id} role="group" aria-label={c.menu_name}>
+                  <div className="tn-group-head">{c.menu_name}</div>
+                  {c.children.map(renderEntry)}
+                </div>
+              )
             ) : (
               renderEntry(c)
             ),
           )}
+        </div>,
+        document.body,
+      )}
+
+      {openNode && flyNode && createPortal(
+        <div
+          ref={flyRef}
+          className="tn-panel"
+          role="menu"
+          aria-label={flyNode.menu_name}
+          style={{ left: flyPos?.left ?? 0, top: flyPos?.top ?? 0, visibility: flyPos ? 'visible' : 'hidden', zIndex: DROPDOWN_Z + 1 }}
+          onPointerEnter={(e) => { if (e.pointerType === 'mouse') window.clearTimeout(closeT.current) }}
+          onPointerLeave={(e) => { if (e.pointerType === 'mouse') scheduleClose() }}
+          onKeyDown={(e) => {
+            const entries = Array.from(flyRef.current?.querySelectorAll<HTMLElement>('[data-nav-entry]:not([aria-disabled="true"])') ?? [])
+            const idx = entries.indexOf(document.activeElement as HTMLElement)
+            if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); entries[(idx + 1) % entries.length]?.focus() }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); entries[(idx - 1 + entries.length) % entries.length]?.focus() }
+            else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+              e.preventDefault(); e.stopPropagation()
+              flyRowEls.current.get(flyNode.menu_code)?.focus()
+              setFlyCode(null)
+            }
+          }}
+        >
+          <div className="tn-panel-title">{flyNode.menu_name}</div>
+          {flyNode.children.map(renderEntry)}
         </div>,
         document.body,
       )}
@@ -595,15 +695,15 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const renderLeaf = (n: NavNode, nums: Map<string, number>, rootCode: string) => {
-    const label = `${nums.get(n.menu_code) ?? ''}. ${n.menu_name}`
+  const renderLeaf = (n: NavNode, nums: Map<string, string>, rootCode: string) => {
+    const label = `${nums.get(n.menu_code) ?? ''} ${n.menu_name}`
     const isActive = active.leafCode === n.menu_code
     const color = navColor(rootCode, n.menu_code)
     const colorCls = color ? ` tn-c-${color}` : ''
-    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
+    if (n.noAccess || PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) || COMING_SOON_MENU_CODES.includes(n.menu_code) || !n.menu_path) {
       return (
         <span key={n.id} className={`tn-drawer-item${colorCls}`} aria-disabled="true"
-          title={n.noAccess ? NO_ACCESS_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
+          title={n.noAccess ? NO_ACCESS_TITLE : COMING_SOON_MENU_CODES.includes(n.menu_code) ? COMING_SOON_TITLE : PARAM_REQUIRED_MENU_CODES.includes(n.menu_code) ? 'กรุณาเลือกโครงการก่อน' : n.menu_name}>
           {label}
         </span>
       )
@@ -684,7 +784,7 @@ const NarrowBar: React.FC<BarProps & { drawerFooter: React.ReactNode }> = ({ tre
                           return n.children.map((c) =>
                             c.children.length > 0 ? (
                               <div key={c.id}>
-                                <div className="tn-drawer-head">{c.menu_name}</div>
+                                <div className="tn-drawer-head">{FLYOUT_GROUP_CODES.includes(c.menu_code) ? `${nums.get(c.menu_code) ?? ''} ${c.menu_name}` : c.menu_name}</div>
                                 {c.children.map((x) => renderLeaf(x, nums, n.menu_code))}
                               </div>
                             ) : (

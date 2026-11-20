@@ -518,10 +518,10 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         ) : (
           <InputNumber
             size="small"
-            min={1}
+            min={r.isExisting ? 0 : 1}
             value={r.qtyPR}
             style={{ width: '100%' }}
-            onChange={(v) => updateItem(r.key, 'qtyPR', v || 1)}
+            onChange={(v) => updateItem(r.key, 'qtyPR', r.isExisting ? (v ?? 0) : (v || 1))}
           />
         ),
     },
