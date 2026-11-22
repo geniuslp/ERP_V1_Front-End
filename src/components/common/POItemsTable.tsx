@@ -765,7 +765,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         value={r.description ?? ''}
         placeholder="เพิ่มรายละเอียดสำหรับรายการนี้..."
         autoSize={{ minRows: 2 }}
-        maxLength={1000}
+        maxLength={3000}
         showCount
         onChange={(e) => updateItem(r.key, 'description', e.target.value)}
       />

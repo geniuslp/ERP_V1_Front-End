@@ -143,19 +143,26 @@ const val = (v: React.ReactNode) =>
 const noteVal = (v?: string | null, inline = false) =>
   val(v ? <FormattedNote value={v} style={inline ? { display: 'inline-block', verticalAlign: 'top' } : undefined} /> : v)
 
-// 7.2: the first line stays right after "7.2 เงินงวดสัญญา :"; the lines under it (7.2.1, 7.2.2 ...) start on their own
-// line, indented by ONE tab only (not pushed under the label's text).
+// 7.2: the label ("7.2 เงินงวดสัญญา :") sits on the left and ALL the terms form one column right after it, so every
+// term starts at exactly the same x as the first one (a "-" bullet lines up under the "-" above it, a wrapped long line
+// hangs under its own text, not under the label). A line is pushed in further only when it is deeper than the first
+// line (e.g. "-" bullets under a numbered first line).
 const InstallmentNote = ({ value }: { value?: string | null }) => {
   const lines = formatNote(value)
-  if (lines.length === 0) return val('')
-  const [first, ...rest] = lines
+  const baseIndent = lines[0]?.indent ?? 0
   return (
-    <span style={{ overflowWrap: 'anywhere', fontWeight: 700 }}>
-      {first.text}
-      {rest.map((l, i) => (
-        <div key={i} style={{ paddingLeft: l.indent ? '3.4em' : '2em', minHeight: l.text === '' ? '0.8em' : undefined }}>{l.text}</div>
-      ))}
-    </span>
+    <div style={{ display: 'flex', alignItems: 'flex-start', columnGap: '0.4em' }}>
+      <span style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}>7.2 เงินงวดสัญญา :</span>
+      <div style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontWeight: 700 }}>
+        {lines.length === 0
+          ? val('')
+          : lines.map((l, i) => (
+              <div key={i} style={{ paddingLeft: l.indent > baseIndent ? '1.4em' : 0, minHeight: l.text === '' ? '0.8em' : undefined }}>
+                {l.text}
+              </div>
+            ))}
+      </div>
+    </div>
   )
 }
 
@@ -263,7 +270,7 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.2 เงินงวดสัญญา : <InstallmentNote value={data.progress_payment_note} /></td>
+        <td className="sub"><InstallmentNote value={data.progress_payment_note} /></td>
       </tr>
       <tr>
         <td />

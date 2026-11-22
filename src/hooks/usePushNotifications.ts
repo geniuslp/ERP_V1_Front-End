@@ -99,7 +99,10 @@ export function usePushNotifications(enabled: boolean) {
       setState('on')
       return null
     } catch (e: any) {
-      return e?.response?.data?.message || 'เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+      // The real cause (service worker register / push service / API status) goes after the Thai text so a
+      // screenshot of the toast is enough to tell which step failed.
+      const detail = e?.response ? `API ${e.response.status}` : [e?.name, e?.message].filter(Boolean).join(': ')
+      return e?.response?.data?.message || `เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง${detail ? ` (${detail})` : ''}`
     } finally {
       setBusy(false)
     }

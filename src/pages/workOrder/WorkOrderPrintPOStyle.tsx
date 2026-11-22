@@ -288,8 +288,10 @@ const POInfoBox = ({data}:{data:WOPOData}) => (
       </div>
       <div><b>PR No. :</b>&nbsp;{data.prNo}</div>
       <div><b>Quotation No. :</b>&nbsp;{data.quotationNo}</div>
-      <div style={{display:'flex',gap:8}}>
-        <b>Project Name :</b>&nbsp;{data.project}
+      {/* Label never wraps; a long name wraps inside its own column so the 2nd line starts under the 1st line's text. */}
+      <div style={{display:'flex'}}>
+        <span style={{whiteSpace:'nowrap',flex:'0 0 auto'}}><b>Project Name :&nbsp;</b></span>
+        <span style={{minWidth:0,overflowWrap:'anywhere'}}>{data.project}</span>
       </div>
       <div style={{display:'flex',gap:8}}>
         <span><b>Job Type :</b>&nbsp;{data.job}</span>

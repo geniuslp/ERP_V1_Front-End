@@ -736,7 +736,7 @@ const MemoCreateEditPage: React.FC = () => {
             </Col>
             <Col xs={24}>
               <Form.Item label="หมายเหตุ" name="note">
-                <Input.TextArea rows={3} maxLength={1000} showCount />
+                <Input.TextArea rows={3} maxLength={100} showCount />
               </Form.Item>
             </Col>
           </Row>

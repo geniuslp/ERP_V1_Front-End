@@ -1686,6 +1686,8 @@ const POCreatePage: React.FC = () => {
             </div>
             <Input.TextArea
               rows={3}
+              maxLength={3000}
+              showCount
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
               disabled={isEdit && !canEdit}

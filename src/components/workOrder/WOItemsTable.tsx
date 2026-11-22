@@ -32,6 +32,16 @@ export interface WOLineItem {
 // หน่วย choices for a WO line. Stored as the text itself in work_order_line.unit.
 export const WO_UNIT_OPTIONS = ['เหมา', 'งาน', 'รอบ', 'ครั้ง', 'ตรม', 'เครื่อง'].map((u) => ({ value: u, label: u }))
 
+// Maps a unit coming from another document (a PR line's unit_name) onto one of the WO dropdown choices.
+// Ignores spaces and dots ("ตร.ม." -> "ตรม"). Returns null when it is not one of the choices, so the line
+// stays empty and the user picks from the dropdown instead of getting a value the dropdown cannot show.
+export const matchWoUnit = (raw?: string | null): string | null => {
+  const norm = (s: string) => s.replace(/[\s.]/g, '')
+  const key = raw ? norm(raw) : ''
+  if (!key) return null
+  return WO_UNIT_OPTIONS.find((o) => norm(o.value) === key)?.value ?? null
+}
+
 interface WOItemsTableProps {
   items: WOLineItem[]
   onChange: (items: WOLineItem[]) => void
@@ -410,7 +420,7 @@ const WOItemsTable: React.FC<WOItemsTableProps> = ({
                 value={r.remark ?? ''}
                 placeholder="เพิ่มรายละเอียดสำหรับรายการนี้..."
                 autoSize={{ minRows: 2 }}
-                maxLength={1000}
+                maxLength={3000}
                 showCount
                 onChange={(e) => updateItem(r.key, 'remark', e.target.value)}
               />

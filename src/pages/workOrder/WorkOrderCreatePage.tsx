@@ -10,7 +10,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
-import WOItemsTable, { type WOLineItem } from '@/components/workOrder/WOItemsTable'
+import WOItemsTable, { matchWoUnit, type WOLineItem } from '@/components/workOrder/WOItemsTable'
 import WOPRPickerModal from '@/components/workOrder/WOPRPickerModal'
 import WOAttachmentPanel, { type WOAttachmentHandle } from '@/components/workOrder/WOAttachmentPanel'
 import WOPaymentConditionsSection, {
@@ -273,7 +273,8 @@ const WorkOrderCreatePage: React.FC = () => {
         message.info(`Job ${src.job_code} ของ PR นี้ไม่ใช่งานระบบของ WO กรุณาเลือกงานระบบเอง`)
       }
       // Tab 2: one line per PR line — cost code, material (+ spec) as the description, requested qty.
-      // WO lines carry no unit, so the unit is not copied; the price is left for the user to fill in.
+      // The unit is copied only when the PR's unit is one of the WO dropdown choices (matchWoUnit); otherwise it is
+      // left empty for the user to pick. The price is left for the user to fill in.
       setItems(src.lines.map((l, i) => ({
         key: `pr-${src.pr_id}-${i}`,
         no: i + 1,
@@ -282,6 +283,7 @@ const WorkOrderCreatePage: React.FC = () => {
         description: [l.mat_name, l.spec_name].filter(Boolean).join(' '),
         remark: l.remarks ?? '',
         qty: l.qty_requested,
+        unit: matchWoUnit(l.unit_name),
         unit_price: 0,
         disc: 0,
         disc_type: discType,
@@ -967,7 +969,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   <Row gutter={[16, 0]}>
                     <Col {...FIELD_SPAN_WIDE}>
                       <Form.Item label={<span style={labelStyle}>ลักษณะของสัญญา</span>} name="contract_description" style={{ marginBottom: 0 }}>
-                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={2000} showCount placeholder="เช่น RENOVATION FAC-S 1 & 2" />
+                        <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={3000} showCount placeholder="เช่น RENOVATION FAC-S 1 & 2" />
                       </Form.Item>
                     </Col>
                   </Row>
@@ -1051,7 +1053,7 @@ const WorkOrderCreatePage: React.FC = () => {
                       <Form.Item name="advance_deduct_amount" hidden><InputNumber /></Form.Item>
                       <Col {...FIELD_SPAN}>
                         <Form.Item
-                          label={<span style={labelStyle}>หักเงินคืนล่วงหน้า (%)</span>}
+                          label={<span style={labelStyle}>เงินล่วงหน้า (%)</span>}
                           style={{ marginBottom: 0 }}
                           extra={advancePctOption === undefined && advanceAmount > 0
                             ? `สัดส่วนปัจจุบัน ${displayedAdvancePct.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% (คำนวณจากจำนวนเงินที่หัก)`
@@ -1091,7 +1093,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   // 7.2 เงินงวดสัญญา — free text (progress_payment_note), shown on the detail page and the print.
                   progressSlot={
                     <Form.Item name="progress_payment_note" style={{ marginBottom: 0 }}>
-                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={2000} placeholder="ระบุเงื่อนไขการจ่ายเงินงวดสัญญา" />
+                      <Input.TextArea style={fieldStyle} autoSize={{ minRows: 3 }} maxLength={3000} placeholder="ระบุเงื่อนไขการจ่ายเงินงวดสัญญา" />
                     </Form.Item>
                   }
                   // 7.5 เงื่อนไขการจ่ายเงิน (อื่นๆ) — other_deduction_note, rendered after 7.4 inside card 7.

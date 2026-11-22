@@ -619,7 +619,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
         value={r.remark ?? ''}
         placeholder="เพิ่มรายละเอียดสำหรับรายการนี้..."
         autoSize={{ minRows: 2 }}
-        maxLength={1000}
+        maxLength={3000}
         showCount
         onChange={(e) => updateItem(r.key, 'remark', e.target.value)}
       />
@@ -687,6 +687,8 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
           </div>
           <Input.TextArea
             rows={3}
+            maxLength={3000}
+            showCount
             value={remark}
             onChange={(e) => onRemarkChange?.(e.target.value)}
             style={{ borderRadius: 8, fontSize: 13 }}
