@@ -569,3 +569,11 @@ body {
   .wo-detail-actions > .ant-btn { width: 100%; }
   .wo-detail-actions > .wo-span-2 { grid-column: 1 / -1; order: -1; }
 }
+
+/* Notification bell popover on phones: stick the panel to the right edge of the screen (it used to hang off the bell,
+   which sits left of the avatar, so part of the list was cut off). The arrow is hidden because it would point at the
+   wrong spot once the panel is moved. */
+@media (max-width: 575px) {
+  .notif-pop-mobile { left: auto !important; right: 8px !important; }
+  .notif-pop-mobile .ant-popover-arrow { display: none; }
+}

@@ -27,7 +27,7 @@ const NotificationBell: React.FC<Props> = ({ items, attention, unread, pendingTo
   const [open, setOpen] = useState(false)
 
   const content = (
-    <div style={{ width: 360, maxWidth: '86vw' }}>
+    <div style={{ width: 360, maxWidth: 'calc(100vw - 40px)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px 8px' }}>
         <span style={{ fontWeight: 600, color: '#0f2d5e' }}>
           การแจ้งเตือน{pendingTotal > 0 ? ` · รออนุมัติ ${pendingTotal} รายการ` : ''}
@@ -79,7 +79,8 @@ const NotificationBell: React.FC<Props> = ({ items, attention, unread, pendingTo
   )
 
   return (
-    <Popover content={content} trigger="click" placement="bottomRight" open={open} onOpenChange={setOpen} arrow>
+    <Popover content={content} trigger="click" placement="bottomRight" open={open} onOpenChange={setOpen} arrow
+      overlayClassName="notif-pop-mobile">
       <Badge count={attention} size="small" overflowCount={99}>
         <Button type="text" className="tn-icon-btn" aria-label="การแจ้งเตือน" icon={<BellOutlined style={{ fontSize: 18 }} />} />
       </Badge>
