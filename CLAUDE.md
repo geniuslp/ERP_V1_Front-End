@@ -899,6 +899,20 @@ Routes ใน `App.tsx`: `/work-order/contractor-log` (สร้างใหม�
 - The codes no longer spell `subject_code || job_code` for cost_job lookups, so SQL function `job_cost_key(code)` maps a job code back to the old key (MS→MP, EE→ME, SN→MS, FF→MF, GS→MG, AC→MH); backend joins (`pr_approval.go`, `ic_project_movement.go`, `stock_by_project.go`) go through it. The cost side (`cost_job.job_code` P/E/S/F/G/H, `filterJobCode` in `constants/jobTypes.ts`) is unchanged.
 - No more `startsWith('M')` checks: use `isTradeJobCode()` (`constants/jobTypes.ts`) ↔ `IsTradeJobCode` (`job_type.go`). `JobNeedsShare` is now an explicit list (FS/FP/FB/G/OH do not) because `FF` also starts with F.
 
+## 🔴 WO 7.1 vs 7.4 — two different things, never derive one from the other (2026-11-23, owner's rule)
+
+- **7.1 เงินล่วงหน้า (%)** = the advance paid to the contractor (`work_order.advance_deduct_pct` / `advance_deduct_amount`).
+- **7.4 หักเงินคืนล่วงหน้า (%)** = ONLY the advance that is taken back because the **contract value was reduced**. It is its own
+  value, **typed by the user** when a reduction happens (`work_order.advance_return_pct`, SQL 063, default 0 = "ไม่มี").
+  **7.1 has nothing to do with 7.4.**
+- Do NOT compute 7.4 from 7.1, from `revision_round`, or from a "remaining advance" figure. An earlier version did
+  (read-only card + print line derived from 7.1) and printed a percentage the system never held — it was removed.
+- Where it lives: input in `WorkOrderCreatePage.tsx` (`returnSlot` of `WOPaymentConditionsSection`), shown on
+  `WorkOrderDetailPage.tsx` and printed as 7.4 in `WorkOrderPrintStandard.tsx` ("ไม่มี" when 0). Backend: `work_order.go` /
+  `models.go`; on PUT an omitted `advance_return_pct` keeps the stored value.
+- Deploy order: SQL 063 → backend → frontend (an old backend silently drops the field).
+- The contractor-bill tab still uses 7.1 (advance) for its own ADVANCE deduction logic; that is separate from 7.4.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

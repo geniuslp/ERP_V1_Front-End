@@ -161,9 +161,9 @@ interface WOPaymentConditionsSectionProps {
   progressSlot?: React.ReactNode
   // 7.5 หักอื่นๆ content (Form.Items live in the page's form); rendered after 7.4.
   otherSlot?: React.ReactNode
-  // 7.4 หักเงินคืนจ่ายล่วงหน้า (read-only): the fixed advance amount and the % displayed in 7.1.
-  advanceAmount?: number | null
-  advancePct?: number | null
+  // 7.4 หักเงินคืนล่วงหน้า content (Form.Item advance_return_pct lives in the page's form): typed by the user only
+  // when the contract value is reduced.
+  returnSlot?: React.ReactNode
 }
 
 // 7.3 เงินประกัน: % of contract offered for new selections. A stored value outside this list
@@ -189,8 +189,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   advanceSlot,
   progressSlot,
   otherSlot,
-  advanceAmount,
-  advancePct,
+  returnSlot,
 }) => {
   const base = Number(contractAmount) || 0
 
@@ -209,12 +208,6 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       remarks: patch.remarks ?? (cur.remarks ?? ''),
     }])
   }
-
-  // 7.4 หักเงินคืนจ่ายล่วงหน้า — display only, never sent in the payload.
-  const advPct = Number(advancePct) || 0
-  const advAmount = round2(Number(advanceAmount) || 0)
-  const remainAmount = round2(base - advAmount)
-  const remainPct = round2(100 - advPct)
 
   // ── ค่าปรับ (penalties) ──
   const addPenalty = () => {
@@ -350,19 +343,8 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
         </Row>
       </Card>
 
-      <Card title="7.4 หักเงินคืนจ่ายล่วงหน้า" size="small" style={subCardStyle}>
-        <Row gutter={[16, 8]}>
-          {[
-            { label: 'เงินล่วงหน้าที่หัก (บาท)', value: `${money2(advAmount)} บาท` },
-            { label: 'คงเหลือ (บาท)', value: `${money2(remainAmount)} บาท` },
-            { label: 'คงเหลือ (%)', value: `${remainPct.toLocaleString('th-TH', { maximumFractionDigits: 2 })} %` },
-          ].map((f) => (
-            <Col key={f.label} xs={24} md={8}>
-              <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{f.label}</div>
-              <Input readOnly value={f.value} style={{ textAlign: 'right' }} />
-            </Col>
-          ))}
-        </Row>
+      <Card title="7.4 หักเงินคืนล่วงหน้า" size="small" style={subCardStyle}>
+        {returnSlot}
       </Card>
 
       {otherSlot && (

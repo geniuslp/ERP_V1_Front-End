@@ -280,7 +280,8 @@ const NumberedFieldsInner = ({ data, jobNames }: { data: WOPrintDataLite; jobNam
       <tr>
         <td />
         <td colSpan={2} />
-        <td className="sub">7.4 หักเงินคืนล่วงหน้า {(data.revision_round ?? 0) > 0 && (data.advance_deduct_pct ?? 0) > 0 ? `${data.advance_deduct_pct}%` : 'ไม่มี'}</td>
+        {/* 7.4 is typed by the user only when the contract value was reduced (work_order.advance_return_pct). */}
+        <td className="sub">7.4 หักเงินคืนล่วงหน้า {(data.advance_return_pct ?? 0) > 0 ? `${data.advance_return_pct}%` : 'ไม่มี'}</td>
       </tr>
       <tr>
         <td />

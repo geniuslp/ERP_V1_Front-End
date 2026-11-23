@@ -150,6 +150,8 @@ export interface WorkOrder {
   retention_remarks?: string | null
   advance_deduct_pct?: number
   advance_deduct_amount?: number
+  // 7.4 หักเงินคืนล่วงหน้า (%): typed by the user when the contract value is reduced; 0/undefined = ไม่มี.
+  advance_return_pct?: number
   other_deduction_note?: string
 
   start_date?: string

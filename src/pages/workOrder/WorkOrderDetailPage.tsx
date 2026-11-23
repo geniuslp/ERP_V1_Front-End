@@ -264,7 +264,7 @@ const WorkOrderDetailPage: React.FC = () => {
           <Descriptions.Item label="เงินล่วงหน้า">{wo.advance_pct != null ? `${wo.advance_pct}%` : '—'}</Descriptions.Item>
           <Descriptions.Item label="จำนวนเงินล่วงหน้า">{wo.advance_amount != null ? money(wo.advance_amount) : '—'}</Descriptions.Item>
           <Descriptions.Item label="เงินประกันผลงาน">{wo.retention_pct ? `${wo.retention_pct}%` : 'ไม่มี'}</Descriptions.Item>
-          <Descriptions.Item label="หักคืนเงินล่วงหน้า">{wo.advance_deduct_pct != null ? `${wo.advance_deduct_pct}%` : '—'}</Descriptions.Item>
+          <Descriptions.Item label="หักเงินคืนล่วงหน้า">{(wo.advance_return_pct ?? 0) > 0 ? `${wo.advance_return_pct}%` : 'ไม่มี'}</Descriptions.Item>
           <Descriptions.Item label="หมายเหตุการจ่ายตามความคืบหน้า" span={cols}>{wo.progress_payment_note || '—'}</Descriptions.Item>
           <Descriptions.Item label="รายการหักอื่นๆ" span={cols}>{wo.other_deduction_note || '—'}</Descriptions.Item>
         </Descriptions>

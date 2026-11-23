@@ -1043,8 +1043,6 @@ const WorkOrderCreatePage: React.FC = () => {
                   penalties={penalties}
                   onPenaltiesChange={setPenalties}
                   contractAmount={watchedContractAmount}
-                  advanceAmount={advanceAmount}
-                  advancePct={displayedAdvancePct}
                   // 7.1 จ่ายเงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
                   advanceSlot={
                     <Row gutter={[16, 0]}>
@@ -1086,6 +1084,21 @@ const WorkOrderCreatePage: React.FC = () => {
                             readOnly
                             value={advanceAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  }
+                  // 7.4 หักเงินคืนล่วงหน้า — typed by the user only when the contract value is reduced (default 0 = ไม่มี).
+                  returnSlot={
+                    <Row gutter={[16, 0]}>
+                      <Col {...FIELD_SPAN}>
+                        <Form.Item
+                          label={<span style={labelStyle}>หักเงินคืนล่วงหน้า (%)</span>}
+                          name="advance_return_pct"
+                          style={{ marginBottom: 0 }}
+                          extra="กรอกเฉพาะเมื่อมีการลดยอดสัญญา"
+                        >
+                          <InputNumber style={fieldStyle} min={0} max={100} precision={2} placeholder="0.00" addonAfter="%" />
                         </Form.Item>
                       </Col>
                     </Row>

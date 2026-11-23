@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Empty, Grid, Input, InputNumber, Modal, Select, Space, Spin, Switch, Table, Typography, message } from 'antd'
-import { CloseOutlined, SearchOutlined } from '@ant-design/icons'
+import { CloseOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
+import { useJobTypes } from '@/hooks/useJobTypeNames'
+import PRReducePrint, { type PRReducePrintData } from './PRReducePrint'
 import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
@@ -26,6 +28,15 @@ interface PRRow {
   project_name: string | null
   requested_by: string
   remarks: string | null
+  dept_code: string | null
+  dept_name: string | null
+}
+
+interface ReductionBatch {
+  reduced_at: string
+  reduced_by_name: string
+  reason: string
+  items: { line_no: number; cost_code: string | null; mat_code: string; material: string; unit_name: string | null; qty_decrement: number }[]
 }
 
 interface LineRow {
@@ -67,6 +78,8 @@ const InfoItem: React.FC<{ label: string; value: React.ReactNode }> = ({ label, 
 
 const PRReducePage: React.FC = () => {
   const screens = Grid.useBreakpoint()
+  const jobTypes = useJobTypes()
+  const authUser = useAppSelector((s) => s.auth.user)
   const isMobile = !screens.md
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const headers = { Authorization: `Bearer ${accessToken}` }
@@ -92,6 +105,12 @@ const PRReducePage: React.FC = () => {
   const [decrement, setDecrement] = useState<Record<number, number | null>>({})
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
+  // after a successful save: the document that can be printed, and whether the print is running
+  const [savedDoc, setSavedDoc] = useState<PRReducePrintData | null>(null)
+  // the document being printed (just saved, or picked from the PR's reduction history)
+  const [printDoc, setPrintDoc] = useState<PRReducePrintData | null>(null)
+  // earlier reductions of the selected PR, oldest first (one entry per save)
+  const [reductions, setReductions] = useState<ReductionBatch[]>([])
 
   const loadPrs = useCallback(async () => {
     setPrLoading(true)
@@ -132,12 +151,64 @@ const PRReducePage: React.FC = () => {
     }
   }, [accessToken])
 
+  const loadReductions = useCallback(async (prId: number) => {
+    try {
+      const res = await axios.get(`${BASE_URL}/reports/of/pr-reduce/prs/${prId}/reductions`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      setReductions(res.data?.data ?? [])
+    } catch {
+      setReductions([]) // history is optional: the print button just does not appear
+    }
+  }, [accessToken])
+
   // Picking a document (re)opens the modal with a clean slate: no leftover ticks, quantities or remark.
   const selectPr = (pr: PRRow) => {
     setSelectedPr(pr)
     resetForm()
     setLines([])
+    setReductions([])
     loadLines(pr.id)
+    loadReductions(pr.id)
+  }
+
+  // Print document for a header + the reduced lines (shared by "just saved" and "from history").
+  const buildDoc = (pr: PRRow, p: { date: string; reason: string; preparedBy: string; items: PRReducePrintData['items'] }): PRReducePrintData => {
+    const jobName = jobTypes.find((j) => j.job_code === pr.job_code)?.job_name
+    return {
+      prNo: pr.pr_no,
+      date: p.date,
+      project: pr.project_code ? `${pr.project_code} ${pr.project_name ?? ''}`.trim() : '',
+      dept: pr.dept_code ? `${pr.dept_code}${pr.dept_name ? ` ${pr.dept_name}` : ''}` : '',
+      system: pr.job_code ? `${pr.job_code}${jobName ? ` ${jobName}` : ''}` : '',
+      orderType: pr.order_type ? ORDER_TYPE_LABEL[pr.order_type] ?? pr.order_type : '',
+      reason: p.reason,
+      preparedBy: p.preparedBy,
+      items: p.items,
+    }
+  }
+  // One print for the whole PR: every reduction ever saved on it, merged. A line reduced twice shows the total taken
+  // off; the date is the latest reduction, the remark lists each distinct reason, the preparer each distinct name.
+  const printAllReductions = () => {
+    if (!selectedPr || reductions.length === 0) return
+    const byLine = new Map<string, PRReducePrintData['items'][number] & { lineNo: number }>()
+    reductions.forEach((b) =>
+      b.items.forEach((it) => {
+        const key = `${it.line_no}|${it.mat_code}`
+        const cur = byLine.get(key)
+        if (cur) cur.qty += it.qty_decrement
+        else byLine.set(key, { lineNo: it.line_no, no: '', costCode: it.cost_code ?? '', matCode: it.mat_code, desc: it.material, qty: it.qty_decrement, unit: it.unit_name ?? '' })
+      }),
+    )
+    const items = [...byLine.values()].sort((a, b) => a.lineNo - b.lineNo).map(({ lineNo: _l, ...rest }, i) => ({ ...rest, no: String(i + 1) }))
+    const reasons = [...new Set(reductions.map((b) => b.reason.trim()).filter(Boolean))]
+    const names = [...new Set(reductions.map((b) => b.reduced_by_name).filter(Boolean))]
+    setPrintDoc(buildDoc(selectedPr, {
+      date: dayjs(reductions[reductions.length - 1].reduced_at).format('DD/MM/YYYY'),
+      reason: reasons.length > 1 ? reasons.map((r, i) => `${i + 1}. ${r}`).join('\n') : reasons[0] ?? '',
+      preparedBy: names.join(', '),
+      items,
+    }))
   }
 
   const closeModal = () => {
@@ -182,8 +253,18 @@ const PRReducePage: React.FC = () => {
         { headers },
       )
       message.success('บันทึกการลดยอดเรียบร้อย')
+      // Snapshot of exactly what was reduced, taken BEFORE the form is reset, for the print.
+      setSavedDoc(buildDoc(selectedPr, {
+        date: dayjs().format('DD/MM/YYYY'),
+        reason: reason.trim(),
+        preparedBy: authUser?.fullName || authUser?.full_name || authUser?.username || '',
+        items: chosen.map((l, i) => ({
+          no: String(i + 1), costCode: l.cost_code ?? '', matCode: l.mat_code, desc: l.material,
+          qty: Number(decrement[l.line_id]), unit: l.unit_name ?? '',
+        })),
+      }))
       resetForm()
-      await Promise.all([loadLines(selectedPr.id), loadPrs()])
+      await Promise.all([loadLines(selectedPr.id), loadReductions(selectedPr.id), loadPrs()])
     } catch (e: any) {
       message.error(errText(e, 'บันทึกการลดยอดไม่สำเร็จ'))
     } finally {
@@ -348,10 +429,15 @@ const PRReducePage: React.FC = () => {
                 <InfoItem label="โครงการ" value={selectedPr.project_code ? `${selectedPr.project_code} ${selectedPr.project_name ?? ''}`.trim() : '-'} />
               </div>
             </div>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-              เปิด "เลือก" ที่รายการที่ต้องการลดยอด แล้วกรอกจำนวนที่ลด (ลดได้ไม่เกินยอดคงเหลือ)
-              {lines.length > 0 && <> — เลือกแล้ว {pickedCount} จาก {lines.length} รายการ</>}
-            </Typography.Text>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                เปิด "เลือก" ที่รายการที่ต้องการลดยอด แล้วกรอกจำนวนที่ลด (ลดได้ไม่เกินยอดคงเหลือ)
+                {lines.length > 0 && <> — เลือกแล้ว {pickedCount} จาก {lines.length} รายการ</>}
+              </Typography.Text>
+              {reductions.length > 0 && (
+                <Button icon={<PrinterOutlined />} onClick={printAllReductions} loading={!!printDoc}>พิมพ์ใบลดยอด</Button>
+              )}
+            </div>
             {isMobile ? (
               <Spin spinning={linesLoading}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -420,6 +506,32 @@ const PRReducePage: React.FC = () => {
           </>
         )}
       </Modal>
+
+      <Modal
+        open={!!savedDoc}
+        title="บันทึกการลดยอดเรียบร้อย"
+        centered
+        maskClosable={false}
+        onCancel={() => setSavedDoc(null)}
+        footer={[
+          <Button key="close" onClick={() => setSavedDoc(null)}>ปิด</Button>,
+          <Button key="print" type="primary" icon={<PrinterOutlined />} loading={!!printDoc} onClick={() => setPrintDoc(savedDoc)}>
+            พิมพ์ใบลดยอด
+          </Button>,
+        ]}
+      >
+        {savedDoc && <div>ลดยอด {savedDoc.items.length} รายการของ {savedDoc.prNo} แล้ว ต้องการพิมพ์ใบลดยอดของการบันทึกครั้งนี้หรือไม่</div>}
+      </Modal>
+
+      {printDoc && (
+        <PRReducePrint
+          data={printDoc}
+          onReady={() => {
+            window.print()
+            setPrintDoc(null)
+          }}
+        />
+      )}
     </div>
   )
 }
