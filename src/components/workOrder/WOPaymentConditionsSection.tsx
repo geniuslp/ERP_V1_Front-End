@@ -164,6 +164,8 @@ interface WOPaymentConditionsSectionProps {
   // 7.4 หักเงินคืนล่วงหน้า content (Form.Item advance_return_pct lives in the page's form): typed by the user only
   // when the contract value is reduced.
   returnSlot?: React.ReactNode
+  // The % typed in 7.4 (advance_return_pct): the three amounts under it are just contract_amount x % (nothing else).
+  returnPct?: number | null
 }
 
 // 7.3 เงินประกัน: % of contract offered for new selections. A stored value outside this list
@@ -190,6 +192,7 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
   progressSlot,
   otherSlot,
   returnSlot,
+  returnPct,
 }) => {
   const base = Number(contractAmount) || 0
 
@@ -208,6 +211,12 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
       remarks: patch.remarks ?? (cur.remarks ?? ''),
     }])
   }
+
+  // 7.4 หักเงินคืนล่วงหน้า: the work amount minus the % typed by the user, nothing more (unrelated to 7.1).
+  const retPct = Math.min(Math.max(Number(returnPct) || 0, 0), 100)
+  const retAmount = round2(base * retPct / 100)
+  const retRemainAmount = round2(base - retAmount)
+  const retRemainPct = round2(100 - retPct)
 
   // ── ค่าปรับ (penalties) ──
   const addPenalty = () => {
@@ -345,6 +354,18 @@ const WOPaymentConditionsSection: React.FC<WOPaymentConditionsSectionProps> = ({
 
       <Card title="7.4 หักเงินคืนล่วงหน้า" size="small" style={subCardStyle}>
         {returnSlot}
+        <Row gutter={[16, 8]} style={{ marginTop: 12 }}>
+          {[
+            { label: 'เงินล่วงหน้าที่หัก (บาท)', value: `${money2(retAmount)} บาท` },
+            { label: 'คงเหลือ (บาท)', value: `${money2(retRemainAmount)} บาท` },
+            { label: 'คงเหลือ (%)', value: `${retRemainPct.toLocaleString('th-TH', { maximumFractionDigits: 2 })} %` },
+          ].map((f) => (
+            <Col key={f.label} xs={24} md={8}>
+              <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{f.label}</div>
+              <Input readOnly value={f.value} style={{ textAlign: 'right' }} />
+            </Col>
+          ))}
+        </Row>
       </Card>
 
       {otherSlot && (

@@ -198,6 +198,8 @@ const WorkOrderCreatePage: React.FC = () => {
   // Contract value (ไม่รวม VAT) is the base for the 7.1 / 7.3 percentage amounts.
   const watchedContractAmount: number | undefined = Form.useWatch('contract_amount', form)
   const watchedAdvancePct: number | undefined = Form.useWatch('advance_deduct_pct', form)
+  // 7.4: the % typed by the user (only when the contract value is reduced); drives the amounts shown in card 7.4.
+  const watchedReturnPct: number | undefined = Form.useWatch('advance_return_pct', form)
   // 7.1: the amount (advance_deduct_amount) is the stored value. Create / user-picked %: amount =
   // contract * % / 100. Edit mode keeps a loaded amount fixed when the contract value changes, and the
   // displayed % is derived from it (amount / contract * 100).
@@ -1043,6 +1045,7 @@ const WorkOrderCreatePage: React.FC = () => {
                   penalties={penalties}
                   onPenaltiesChange={setPenalties}
                   contractAmount={watchedContractAmount}
+                  returnPct={watchedReturnPct}
                   // 7.1 จ่ายเงินล่วงหน้า — rendered by the section above 7.2; the Form.Items stay bound to this page's form.
                   advanceSlot={
                     <Row gutter={[16, 0]}>
