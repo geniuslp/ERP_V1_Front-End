@@ -39,7 +39,7 @@ const PAGE_H_MM = 275
 const BOTTOM_BUFFER_MM = 8
 
 const CSS = `
-  .prr-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
+  .prr-portal { font-family:'Cordia New','Sarabun',sans-serif; color:#000; background:#fff;
     position:fixed; top:-9999px; left:-9999px; visibility:hidden; }
   .prr-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   @media print {

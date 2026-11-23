@@ -11,6 +11,7 @@ import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import { useAppSelector } from '@/store'
 import { mockReservations, mockStockItems } from '@/utils/mockStockData'
 import type { Reservation, ReservationStatus } from '@/types/stock'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -158,7 +159,7 @@ const ReservationPage: React.FC = () => {
           <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>Search</Button>
           <Button icon={<ReloadOutlined />} onClick={() => { setStatus(undefined); setSearch('') }}>Reset</Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

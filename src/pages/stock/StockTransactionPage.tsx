@@ -11,6 +11,7 @@ import PageHeader from '@/components/common/PageHeader'
 import QRScanInput from '@/components/stock/QRScanInput'
 import { useAppSelector } from '@/store'
 import type { StockTransaction, StockTransactionType } from '@/types/stock'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -306,7 +307,7 @@ const StockTransactionPage: React.FC = () => {
           </Button>
           <Button icon={<ReloadOutlined />} onClick={() => { setTxnType(undefined); setSearchInput(''); setSearch(''); setRange(null); setPage(1) }}>Reset</Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

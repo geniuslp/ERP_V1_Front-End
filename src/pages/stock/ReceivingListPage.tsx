@@ -7,6 +7,7 @@ import { grnReceivingService, GRN_RECEIVING_MOCK_MODE } from '@/services/grnRece
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import type { ReceivablePoItem } from '@/types'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -117,7 +118,7 @@ const ReceivingListPage: React.FC = () => {
           />
           <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchData(1)}>ค้นหา</Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           loading={loading}
           columns={columns}

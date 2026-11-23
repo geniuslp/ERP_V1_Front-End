@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
 import axios from 'axios'
 import { useAppSelector } from '@/store'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 interface Location {
   id: string
@@ -151,7 +152,7 @@ const LocationPage: React.FC = () => {
           </Button>
         }
       >
-        <Table
+        <ResponsiveTable
           rowKey="key"
           loading={loading}
           dataSource={data}

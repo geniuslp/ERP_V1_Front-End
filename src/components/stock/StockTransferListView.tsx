@@ -11,6 +11,7 @@ import {
   STOCK_TRANSFER_STATUS_COLOR, STOCK_TRANSFER_STATUS_LABEL,
 } from '@/types/stockTransfer'
 import type { StockTransferListItem, StockTransferType } from '@/types/stockTransfer'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -252,7 +253,7 @@ const StockTransferListView: React.FC<Props> = ({
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="transfer_id"
           loading={loading}
           columns={columns}

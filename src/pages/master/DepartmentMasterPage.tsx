@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Form, Input, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag, message } from 'antd'
+import { Alert, Card, Form, Input, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag, message, Grid, Spin, Empty, Pagination } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
@@ -20,6 +20,9 @@ interface FormValues {
 }
 
 const DepartmentMasterPage: React.FC = () => {
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.md === false
+  const [mobilePage, setMobilePage] = useState(1)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
   const [rows, setRows] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
@@ -173,13 +176,55 @@ const DepartmentMasterPage: React.FC = () => {
             placeholder="ค้นหารหัสหรือชื่อแผนก"
             style={{ width: 280 }}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setMobilePage(1) }}
           />
           <Space size={8}>
             <Switch checked={activeOnly} onChange={setActiveOnly} />
             <span>แสดงเฉพาะที่ใช้งาน</span>
           </Space>
         </Space>
+        {isMobile ? (
+          <Spin spinning={loading}>
+            {filtered.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบข้อมูลแผนก" />
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>ทั้งหมด {filtered.length} รายการ</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {filtered.slice((mobilePage - 1) * 20, mobilePage * 20).map((r, i) => (
+                    <div key={r.id} style={{ background: '#fff', border: '1px solid #e5e9f2', borderLeft: '3px solid #2563eb', borderRadius: 10, padding: '12px 12px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>#{(mobilePage - 1) * 20 + i + 1} · {r.dept_code}</div>
+                          <span style={{ fontSize: 15, fontWeight: 600, color: '#1e3a8a', wordBreak: 'break-word' }}>{r.dept_name}</span>
+                        </div>
+                        <Space size={6} style={{ flexShrink: 0 }}>
+                          <PermissionButton action="edit" menuCode={MENU_CODE} size="small" icon={<EditOutlined />} title="แก้ไข" onClick={() => openEdit(r)} />
+                          <ConfirmDeleteButton
+                            menuCode={MENU_CODE}
+                            size="small"
+                            title="ลบ"
+                            text={`ยืนยันการลบแผนก ${r.dept_code} ${r.dept_name}? การลบไม่สามารถย้อนกลับได้`}
+                            onConfirm={() => handleDelete(r)}
+                          />
+                        </Space>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', columnGap: 12, rowGap: 4, marginTop: 10, paddingTop: 8, borderTop: '1px solid #eef1f7', fontSize: 13 }}>
+                        <span style={{ color: '#6b7280' }}>สถานะ</span>
+                        <span><Tag color={r.is_active ? 'green' : 'default'} style={{ margin: 0 }}>{r.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}</Tag></span>
+                        <span style={{ color: '#6b7280' }}>ลำดับแสดงผล</span>
+                        <span>{r.sort_order}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                  <Pagination simple current={mobilePage} pageSize={20} total={filtered.length} showSizeChanger={false} onChange={(p) => setMobilePage(p)} />
+                </div>
+              </>
+            )}
+          </Spin>
+        ) : (
         <Table
           rowKey="id"
           size="small"
@@ -188,6 +233,7 @@ const DepartmentMasterPage: React.FC = () => {
           dataSource={filtered}
           pagination={{ pageSize: 20, showTotal: (t) => `ทั้งหมด ${t} รายการ` }}
         />
+        )}
       </Card>
 
       <Modal

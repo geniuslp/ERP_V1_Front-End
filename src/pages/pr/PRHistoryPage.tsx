@@ -17,6 +17,7 @@ import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
 import DateTimeText from '@/components/common/DateTimeText'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS } from '@/constants/orderTypes'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 // Same convention as PRStatusPage.tsx's edit button — edit is gated by the
 // create page's own menu code, not a history-specific one.
@@ -459,7 +460,7 @@ const PRHistoryPage: React.FC = () => {
         </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} />
         <TableScrollEnd>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           dataSource={items}

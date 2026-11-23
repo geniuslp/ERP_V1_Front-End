@@ -11,6 +11,7 @@ import {
   REQUISITION_STATUS_COLOR, REQUISITION_STATUS_LABEL,
 } from '@/types/requisition'
 import type { RequisitionListItem } from '@/types/requisition'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 const MENU_CODE = 'MENU_STOCK_REQUISITION'
@@ -139,7 +140,7 @@ const MaterialRequisitionListPage: React.FC = () => {
           </PermissionButton>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="borrow_id"
           loading={loading}
           columns={columns}

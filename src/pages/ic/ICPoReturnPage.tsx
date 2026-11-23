@@ -5,6 +5,7 @@ import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import ICPoReturnModal from '@/pages/ic/components/ICPoReturnModal'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -280,7 +281,7 @@ const ICPoReturnPage: React.FC = () => {
           </Select>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           loading={tableLoading}
           columns={columns}

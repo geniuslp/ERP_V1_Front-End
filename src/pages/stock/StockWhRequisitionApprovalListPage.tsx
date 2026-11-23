@@ -7,6 +7,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { stockTransferService } from '@/services/stockTransfer.service'
 import type { StockTransferListItem } from '@/types/stockTransfer'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -159,7 +160,7 @@ const StockWhRequisitionApprovalListPage: React.FC = () => {
         {!loading && total === 0 ? (
           <Empty description="ไม่มีใบเบิกที่รอตรวจสอบในขณะนี้" style={{ padding: '40px 0' }} />
         ) : (
-          <Table
+          <ResponsiveTable
             rowKey="transfer_id"
             loading={loading}
             columns={columns}

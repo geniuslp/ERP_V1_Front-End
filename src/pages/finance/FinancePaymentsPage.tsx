@@ -11,6 +11,7 @@ import { PC_BRANCH_OPTIONS } from '@/constants/pettyCashBranches'
 import { financeService, isRecordPaymentBlocked, RECORD_PAYMENT_BLOCKED_TIP } from '@/services/financeService'
 import FinanceProjectsCell from '@/components/finance/FinanceProjectsCell'
 import type { FinanceDocType, FinancePaymentListItem, ReceivingStatus } from '@/types/finance'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 // Same map+Tag convention as POStatusBadge.tsx's approvalMap/receiveMap —
 // distinct from POReceiveStatus (status_receive, NOT_SENT/SENT/PARTIALLY_
@@ -425,7 +426,7 @@ const FinancePaymentsPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

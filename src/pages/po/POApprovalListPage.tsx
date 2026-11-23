@@ -11,6 +11,7 @@ import { poApprovalService } from '@/services/poApprovalService'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 // TODO: enable when permission system is ready
 // const userDept = useAppSelector((s) => s.auth.user?.department)
@@ -247,7 +248,7 @@ const POApprovalListPage: React.FC = () => {
         </Spin>
       ) : (
         <TableScrollEnd>
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           className="po-approval-table"
           loading={loading}

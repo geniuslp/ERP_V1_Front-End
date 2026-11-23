@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import { useAppSelector } from '@/store'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 import DateTimeText from '@/components/common/DateTimeText'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -152,7 +153,7 @@ const StockProjectBalance: React.FC<Props> = ({ projectCode }) => {
           value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
         />
       </Space>
-      <Table
+      <ResponsiveTable
         rowKey={(r) => `${r.mat_code}|${r.cost_code ?? ''}`}
         loading={loading}
         columns={columns}

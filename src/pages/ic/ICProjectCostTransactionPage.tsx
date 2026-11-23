@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { formatCostCodeDisplay } from '@/utils/costCode'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -336,7 +337,7 @@ const ICProjectCostTransactionPage: React.FC = () => {
           </Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={rowsLoading}
           columns={columns}

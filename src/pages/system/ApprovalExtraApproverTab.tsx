@@ -10,6 +10,7 @@ import { approvalConfigService } from '@/services/approvalConfig.service'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { ApprovalExtraApprover } from '@/types'
 import type { ApprovalDocType } from '@/types/approval.types'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const { TextArea } = Input
 
@@ -184,7 +185,7 @@ const ApprovalExtraApproverTab: React.FC = () => {
         </Button>
       </div>
 
-      <Table
+      <ResponsiveTable
         rowKey="id"
         loading={loading}
         dataSource={approvers}

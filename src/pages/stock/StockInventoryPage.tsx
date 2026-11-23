@@ -7,6 +7,7 @@ import StockStatusTag from '@/components/stock/StockStatusTag'
 import { useAppSelector } from '@/store'
 import { mockInventory, mockStockItems } from '@/utils/mockStockData'
 import type { StockInventory } from '@/types/stock'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -111,7 +112,7 @@ const StockInventoryPage: React.FC = () => {
           <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>Search</Button>
           <Button icon={<ReloadOutlined />} onClick={handleReset}>Reset</Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

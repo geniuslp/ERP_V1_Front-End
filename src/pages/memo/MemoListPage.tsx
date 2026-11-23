@@ -17,6 +17,7 @@ import type { Memo, MemoStatus } from '@/types'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
 import DateTimeText from '@/components/common/DateTimeText'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -425,7 +426,7 @@ const MemoListPage: React.FC = () => {
         />
 
         <TableScrollEnd>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

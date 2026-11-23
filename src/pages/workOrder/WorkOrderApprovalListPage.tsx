@@ -10,6 +10,7 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
 import WOStatusBadge from '@/components/workOrder/WOStatusBadge'
 import type { WOListItem } from '@/types/workOrder'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const { useBreakpoint } = Grid
 
@@ -168,7 +169,7 @@ const WorkOrderApprovalListPage: React.FC = () => {
             </div>
           </Spin>
         ) : (
-          <Table
+          <ResponsiveTable
             rowKey="id"
             loading={loading}
             dataSource={filtered}

@@ -19,6 +19,7 @@ import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 import { ROW_TINT_CLASS, ROW_TINT_SWATCH } from '@/constants/rowTint'
 import RowTintLegend from '@/components/common/RowTintLegend'
 import { ORDER_TYPE_LABEL, ORDER_TYPE_OPTIONS, isOhOrderType } from '@/constants/orderTypes'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 // Same convention as POStatusPage.tsx — edit is gated by the create page's
 // own menu code, not a history-specific one.
@@ -492,7 +493,7 @@ const POHistoryPage: React.FC = () => {
         </Space>
         <RowTintLegend items={ROW_TINT_LEGEND} style={{ marginLeft: 16 }} />
         <TableScrollEnd>
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           loading={loading}
           dataSource={items}

@@ -15,6 +15,7 @@ import { ROUTES } from '@/config/routes'
 import { useAppSelector } from '@/store'
 import { APPROVAL_EMPTY_TEXT } from '@/utils/approvalAccess'
 import DateTimeText from '@/components/common/DateTimeText'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -317,7 +318,7 @@ const MemoApprovalPage: React.FC = () => {
           </Spin>
         ) : (
           <TableScrollEnd>
-          <Table
+          <ResponsiveTable
             rowKey="id"
             loading={loading}
             columns={columns}

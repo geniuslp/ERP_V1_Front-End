@@ -36,7 +36,7 @@ export interface POReportPrintData {
 }
 
 const CSS = `
-  .por-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
+  .por-portal { font-family:'Cordia New','Sarabun',sans-serif; color:#000; background:#fff;
     position:fixed; top:-9999px; left:-9999px; visibility:hidden; }
   .por-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   @media print {

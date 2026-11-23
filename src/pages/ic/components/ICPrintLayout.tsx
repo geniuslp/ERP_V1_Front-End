@@ -53,7 +53,7 @@ const BOTTOM_BUFFER_MM = 8
 const SPACED_ROW_EXTRA_MM = 1.6
 
 export const IC_PRINT_CSS = `
-  .icr-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
+  .icr-portal { font-family:'Cordia New','Sarabun',sans-serif; color:#000; background:#fff;
     position:fixed; top:-9999px; left:-9999px; visibility:hidden; }
   .icr-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   @media print {

@@ -10,6 +10,7 @@ import { useAppSelector } from '@/store'
 import { permissionMatrixService } from '@/services/permissionMatrix.service'
 import type { Department } from '@/types/permission.types'
 import SignatureUpload from '@/components/user/SignatureUpload'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 // GET /master/roles row — id key is `role_id`; dept_code is null for company-wide roles
@@ -465,7 +466,7 @@ const UsersPage: React.FC = () => {
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>เพิ่มผู้ใช้</Button>}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Table dataSource={data} columns={columns} loading={loading} size="small" pagination={{ pageSize: 10 }} />
+        <ResponsiveTable dataSource={data} columns={columns} loading={loading} size="small" pagination={{ pageSize: 10 }} />
       </Card>
       <Modal title={editing ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก" destroyOnClose>
         <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>

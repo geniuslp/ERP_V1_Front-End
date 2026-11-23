@@ -9,6 +9,7 @@ import PageHeader from '@/components/common/PageHeader'
 import StatusBadge from '@/components/common/StatusBadge'
 import { pettyCashService } from '@/services/pettyCashService'
 import type { PettyCashRequisition } from '@/types/pettyCash'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const statusOptions = [
   { value: 'PENDING_APPROVAL', label: 'รออนุมัติ' },
@@ -109,7 +110,7 @@ const PettyCashApprovalListPage: React.FC = () => {
         <Button icon={<ReloadOutlined />} onClick={fetchList} loading={loading}>โหลดใหม่</Button>
       </div>
 
-      <Table
+      <ResponsiveTable
         rowKey="id"
         loading={loading}
         dataSource={filtered}

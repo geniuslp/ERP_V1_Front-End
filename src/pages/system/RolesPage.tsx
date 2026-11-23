@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Card, Table, Button, Modal, Form, Input, Switch, Space, Tag, message } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 interface RoleRecord { key: string; id: string; name: string; description: string; isActive: boolean; userCount: number }
 
@@ -38,7 +39,7 @@ const RolesPage: React.FC = () => {
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setOpen(true) }}>เพิ่มบทบาท</Button>}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Table dataSource={data} columns={columns} size="small" />
+        <ResponsiveTable dataSource={data} columns={columns} size="small" />
       </Card>
       <Modal title={editing ? 'แก้ไขบทบาท' : 'เพิ่มบทบาท'} open={open} onOk={() => form.validateFields().then((v) => { editing ? setData(data.map((d) => d.key === editing.key ? { ...d, ...v } : d)) : setData([...data, { key: Date.now().toString(), id: Date.now().toString(), userCount: 0, ...v }]); message.success('บันทึกเรียบร้อย'); setOpen(false) })} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก">
         <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>

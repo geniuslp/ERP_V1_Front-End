@@ -6,6 +6,7 @@ import axios from 'axios'
 import PageHeader from '@/components/common/PageHeader'
 import OptionCard from '@/components/common/OptionCard'
 import { useAppSelector } from '@/store'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -234,7 +235,7 @@ const ICProjectMovementListPage: React.FC = () => {
       />
 
       <Card style={cardStyle}>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={rowsLoading}
           columns={columns}

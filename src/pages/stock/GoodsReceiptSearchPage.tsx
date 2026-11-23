@@ -5,6 +5,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
@@ -138,7 +139,7 @@ const GoodsReceiptSearchPage: React.FC = () => {
           )}
         />
 
-        <Table<EligiblePO>
+        <ResponsiveTable<EligiblePO>
           style={{ marginTop: 20 }}
           rowKey="po_id"
           loading={fetching}

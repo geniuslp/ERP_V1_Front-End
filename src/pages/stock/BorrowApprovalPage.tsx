@@ -9,6 +9,7 @@ import BorrowStatusBadge from '@/components/stock/BorrowStatusBadge'
 import { useAppSelector } from '@/store'
 import { mockBorrowRequests } from '@/utils/mockStockData'
 import type { BorrowRequest } from '@/types/stock'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -155,7 +156,7 @@ const BorrowApprovalPage: React.FC = () => {
             </div>
           </div>
         )}
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

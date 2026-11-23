@@ -2,7 +2,7 @@ import { BLOCK_CARD_STYLE, BLOCK_HEAD_STYLE } from '@/constants/blockStyle'
 import { formatMoney } from '@/utils/formatMoney'
 import { formatProjectTier } from '@/utils/projectTier'
 import React, { useEffect, useRef, useState } from 'react'
-import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Popconfirm, message, Typography, Modal, Row } from 'antd'
+import { Card, Table, Button, Space, Tooltip, Input, Select, Tag, Popconfirm, message, Typography, Modal, Row, Grid, Spin, Empty, Pagination } from 'antd'
 import type { UploadProps } from 'antd'
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined,
@@ -278,6 +278,9 @@ const panelHead: React.CSSProperties = {
 }
 
 const ProjectListPage: React.FC = () => {
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.md === false
+  const [mobilePage, setMobilePage] = useState(1)
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
@@ -350,6 +353,7 @@ const ProjectListPage: React.FC = () => {
   const validJobCodes = JOB_TYPES.map((jt) => jt.code)
 
   const fetchData = async () => {
+    setMobilePage(1)
     setLoading(true)
     try {
       const res = await axios.get(`${BASE_URL}/master/projects`, {
@@ -606,6 +610,61 @@ const ProjectListPage: React.FC = () => {
           <Button type="primary" icon={<SearchOutlined />} onClick={fetchData}>ค้นหา</Button>
           <Button icon={<ReloadOutlined />} onClick={handleReset}>รีเซต</Button>
         </Space>
+        {isMobile ? (
+          <Spin spinning={loading}>
+            {data.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบข้อมูลโครงการ" />
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>ทั้งหมด {data.length} โครงการ</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {data.slice((mobilePage - 1) * 20, mobilePage * 20).map((r) => (
+                    <div
+                      key={r.id}
+                      style={{ background: '#fff', border: '1px solid #e5e9f2', borderLeft: '3px solid #2563eb', borderRadius: 10, padding: '12px 12px 10px' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <a style={{ color: '#2563eb', fontWeight: 600 }} onClick={() => navigate(`/master/projects/${r.id}/edit`)}>{r.projectCode}</a>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: '#1e3a8a', wordBreak: 'break-word' }}>{r.projectName}</div>
+                        </div>
+                        <Space size={6} style={{ flexShrink: 0 }}>
+                          <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/master/projects/${r.id}/edit`)} aria-label="แก้ไข" />
+                          <Popconfirm title="ลบโครงการนี้?" okText="ลบ" cancelText="ยกเลิก" onConfirm={() => handleDelete(r.id)}>
+                            <Button size="small" danger icon={<DeleteOutlined />} aria-label="ลบ" />
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                      <div
+                        style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', columnGap: 12, rowGap: 4, marginTop: 10, paddingTop: 8, borderTop: '1px solid #eef1f7', fontSize: 13 }}
+                      >
+                        <span style={{ color: '#6b7280' }}>สถานะ</span>
+                        <span><Tag color={statusColor[r.status]} style={{ margin: 0 }}>{statusLabel[r.status]}</Tag></span>
+                        <span style={{ color: '#6b7280' }}>ผู้รับผิดชอบ</span>
+                        <span style={{ wordBreak: 'break-word' }}>{r.responsiblePersonName || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>ที่เกี่ยวข้อง</span>
+                        <span style={{ wordBreak: 'break-word' }}>{r.relatedUsernames || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>มูลค่า</span>
+                        <span>{`${((r.projectKind === 'VO' ? r.voAmount : r.budgetAmount) ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`}</span>
+                        <span style={{ color: '#6b7280' }}>Tier</span>
+                        <span>{formatProjectTier(r.projectTier)}</span>
+                        <span style={{ color: '#6b7280' }}>ระยะเวลา</span>
+                        <span>
+                          {!r.startDate && !r.endDate
+                            ? '-'
+                            : `${r.startDate ? dayjs(r.startDate).format('DD/MM/YY') : '—'} - ${r.endDate ? dayjs(r.endDate).format('DD/MM/YY') : '—'}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                  <Pagination simple current={mobilePage} pageSize={20} total={data.length} showSizeChanger={false} onChange={(p) => setMobilePage(p)} />
+                </div>
+              </>
+            )}
+          </Spin>
+        ) : (
         <TableScrollEnd>
           <Table
             rowKey="id"
@@ -619,6 +678,7 @@ const ProjectListPage: React.FC = () => {
             locale={{ emptyText: 'ไม่พบข้อมูลโครงการ' }}
           />
         </TableScrollEnd>
+        )}
       </Card>
 
       {/* upload panel — mirrors MaterialPage.tsx's inline import section exactly */}

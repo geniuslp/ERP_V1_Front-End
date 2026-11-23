@@ -15,6 +15,7 @@ import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import EditApprovedButton from '@/pages/po/components/EditApprovedButton'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const MENU_CODE = 'MENU_PO_CREATE'
 const { Text } = Typography
@@ -398,7 +399,7 @@ const POStatusPage: React.FC = () => {
           </Col>
         </Row>
 
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           loading={loading}
           dataSource={filteredItems}

@@ -11,6 +11,7 @@ import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
 import { useAppSelector } from '@/store'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const PROJECT_COLUMN_DEFAULT_WIDTH = 140
 
@@ -395,7 +396,7 @@ const PRStatusPage: React.FC = () => {
           </Col>
         </Row>
 
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           dataSource={items}

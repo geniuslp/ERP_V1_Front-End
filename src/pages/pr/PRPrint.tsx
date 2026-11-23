@@ -123,7 +123,7 @@ const BOTTOM_BUFFER_MM = 8
 const SPACED_ROW_EXTRA_MM = 1.6
 
 const CSS = `
-  .pr-portal { font-family:'Sarabun',sans-serif; color:#000; background:#fff;
+  .pr-portal { font-family:'Cordia New','Sarabun',sans-serif; color:#000; background:#fff;
     position:fixed; top:-9999px; left:-9999px; visibility:hidden; }
   .pr-portal * { box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   @media print {
@@ -136,7 +136,7 @@ const CSS = `
   .pr-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .pr-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
     font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
-    white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Sarabun',sans-serif;}
+    white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .pr-box-first{border-bottom:1px solid #000;}
   .pr-box{border:1px solid #000;border-top:none;}
 

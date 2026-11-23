@@ -6,6 +6,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { stockService } from '@/services/stock.service'
 import type { StockItem } from '@/types'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -150,7 +151,7 @@ const QRCodePage: React.FC = () => {
             Print Selected ({selectedKeys.length})
           </Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

@@ -5,6 +5,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { stockTransferService } from '@/services/stockTransfer.service'
 import type { ProjectStockBalanceItem } from '@/types/stockTransfer'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -75,7 +76,7 @@ const ProjectStockBalancePage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={() => { setProjectCode(''); setMatCode(''); fetchData() }}>ล้างตัวกรอง</Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey={(r) => `${r.project_code}-${r.mat_code}`}
           loading={loading}
           columns={columns}

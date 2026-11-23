@@ -7,6 +7,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { stockTransferService } from '@/services/stockTransfer.service'
 import type { StockTransactionHistoryItem } from '@/types/stockTransfer'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -148,7 +149,7 @@ const StockMovementHistoryPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="txn_id"
           loading={loading}
           columns={columns}

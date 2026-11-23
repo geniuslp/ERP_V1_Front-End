@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import type { GRNHistoryItem } from '@/types'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const { useBreakpoint } = Grid
 
@@ -155,7 +156,7 @@ const GRNHistoryPage: React.FC = () => {
             )}
           </div>
         ) : (
-          <Table
+          <ResponsiveTable
             rowKey="grn_id"
             loading={loading}
             columns={columns}

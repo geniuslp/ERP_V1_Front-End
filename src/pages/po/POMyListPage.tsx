@@ -12,6 +12,7 @@ import EditApprovedButton from './components/EditApprovedButton'
 import POStatusBadges from '@/components/po/POStatusBadge'
 import { formatPoNoWithRevision } from '@/utils/poNo'
 import { JOB_TYPES } from '@/constants/jobTypes'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const MENU_CODE = 'MENU_PO_MY'
 
@@ -116,7 +117,7 @@ const POMyListPage: React.FC = () => {
         breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'ใบสั่งซื้อ' }, { title: 'ของฉัน' }]}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Table
+        <ResponsiveTable
           rowKey="po_id"
           loading={loading}
           dataSource={items}

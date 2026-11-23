@@ -13,6 +13,7 @@ import { pettyCashService } from '@/services/pettyCashService'
 import type { PettyCashRequisition } from '@/types/pettyCash'
 import axios from 'axios'
 import { formatMoney } from '@/utils/formatMoney'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 const CREATE_MENU_CODE = 'MENU_PETTY_CASH_CREATE'
@@ -252,7 +253,7 @@ const PettyCashListPage: React.FC = () => {
           </Col>
         </Row>
 
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           dataSource={filtered}

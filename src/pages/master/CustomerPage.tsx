@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Popconfirm, message, Typography, Tag, Switch, Tooltip } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Popconfirm, message, Typography, Tag, Switch, Tooltip, Grid, Spin, Empty, Pagination } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, UploadOutlined,
 } from '@ant-design/icons'
@@ -42,6 +42,8 @@ const EllipsisText: React.FC<{ value?: string | null }> = ({ value }) =>
   ) : <span style={{ color: '#9ca3af' }}>—</span>
 
 const CustomerPage: React.FC = () => {
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.md === false
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -280,6 +282,60 @@ const CustomerPage: React.FC = () => {
           </Button>
         </Space>
 
+        {isMobile ? (
+          <Spin spinning={loading || searching}>
+            {data.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบข้อมูลลูกค้า" />
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>ทั้งหมด {total} รายการ</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {data.map((r, i) => (
+                    <div key={r.key} style={{ background: '#fff', border: '1px solid #e5e9f2', borderLeft: '3px solid #2563eb', borderRadius: 10, padding: '12px 12px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>#{(currentPage - 1) * pageSize + i + 1} · {r.customer_code}</div>
+                          <Text strong style={{ fontSize: 15, color: '#1e3a8a', wordBreak: 'break-word' }}>{r.customer_name}</Text>
+                        </div>
+                        <Space size={6} style={{ flexShrink: 0 }}>
+                          <PermissionButton menuCode={MENU_CODE} action="edit" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} aria-label="แก้ไข" />
+                          {r.is_active && can(MENU_CODE, 'delete') && (
+                            <Popconfirm title="ยืนยันการลบลูกค้านี้?" onConfirm={() => handleDelete(r.cus_id)}>
+                              <Button size="small" danger icon={<DeleteOutlined />} aria-label="ลบ" />
+                            </Popconfirm>
+                          )}
+                        </Space>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', columnGap: 12, rowGap: 4, marginTop: 10, paddingTop: 8, borderTop: '1px solid #eef1f7', fontSize: 13 }}>
+                        <span style={{ color: '#6b7280' }}>สถานะ</span>
+                        <span><Tag color={r.is_active ? 'success' : 'default'} style={{ margin: 0 }}>{r.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}</Tag></span>
+                        <span style={{ color: '#6b7280' }}>เลขผู้เสียภาษี</span>
+                        <span style={{ wordBreak: 'break-word' }}>{r.tax_id || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>ผู้ติดต่อ</span>
+                        <span style={{ wordBreak: 'break-word' }}>{r.contact || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>เบอร์โทร</span>
+                        <span>{(r.contact_phone ?? r.tel) ? <a href={`tel:${r.contact_phone ?? r.tel}`}>{r.contact_phone ?? r.tel}</a> : '-'}</span>
+                        <span style={{ color: '#6b7280' }}>เครดิต</span>
+                        <span>{r.credit_term || '-'}</span>
+                        <span style={{ color: '#6b7280' }}>ที่อยู่</span>
+                        <span style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{r.address || '-'}</span>
+                        {r.remarks ? (
+                          <>
+                            <span style={{ color: '#6b7280' }}>หมายเหตุ</span>
+                            <span style={{ color: '#6b7280', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{r.remarks}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                  <Pagination simple current={currentPage} pageSize={pageSize} total={total} showSizeChanger={false} onChange={(page) => setCurrentPage(page)} />
+                </div>
+              </>
+            )}
+          </Spin>
+        ) : (
         <Table
           rowKey="key"
           loading={loading || searching}
@@ -296,6 +352,7 @@ const CustomerPage: React.FC = () => {
             onChange: (page, size) => { setCurrentPage(page); setPageSize(size) },
           }}
         />
+        )}
       </Card>
 
       <CustomerImportModal

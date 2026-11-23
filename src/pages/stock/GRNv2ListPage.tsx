@@ -6,6 +6,7 @@ import PageHeader from '@/components/common/PageHeader'
 import { grnReceivingService, GRN_RECEIVING_MOCK_MODE } from '@/services/grnReceivingService'
 import GRNQualityBadge from '@/components/stock/GRNQualityBadge'
 import type { GRNv2ListItem } from '@/types'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const cardStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -88,7 +89,7 @@ const GRNv2ListPage: React.FC = () => {
           />
           <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchData(1)}>ค้นหา</Button>
         </Space>
-        <Table
+        <ResponsiveTable
           rowKey="grn_id"
           loading={loading}
           columns={columns}

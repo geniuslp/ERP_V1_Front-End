@@ -8,6 +8,7 @@ import OptionCard from '@/components/common/OptionCard'
 import { useAppSelector } from '@/store'
 import { icService } from '@/services/icService'
 import { formatApproverOption } from '@/utils/formatApproverOption'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -233,7 +234,7 @@ const ICProjectListPage: React.FC = () => {
         {!projectCode ? (
           <Empty description="กรุณาเลือกโครงการ" />
         ) : (
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

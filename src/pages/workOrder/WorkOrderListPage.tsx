@@ -13,6 +13,7 @@ import { formatPoNoWithRevision } from '@/utils/poNo'
 import WorkOrderPrintTrigger from '@/components/workOrder/WorkOrderPrintTrigger'
 import WOEditApprovedButton from '@/components/workOrder/WOEditApprovedButton'
 import type { WOListItem } from '@/types/workOrder'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const MENU_CODE = 'MENU_WO_CREATE'
 
@@ -197,7 +198,7 @@ const WorkOrderListPage: React.FC = () => {
           <Button icon={<ReloadOutlined />} onClick={handleReset}>ล้างตัวกรอง</Button>
         </Space>
 
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}

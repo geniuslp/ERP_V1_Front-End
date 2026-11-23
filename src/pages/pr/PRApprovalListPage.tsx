@@ -9,6 +9,7 @@ import type { ColumnsType } from 'antd/es/table'
 import PageHeader from '@/components/common/PageHeader'
 import { useAppSelector } from '@/store'
 import { APPROVAL_EMPTY_TEXT, FOR_APPROVAL_QUERY } from '@/utils/approvalAccess'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -201,7 +202,7 @@ const PRApprovalListPage: React.FC = () => {
           </Spin>
         ) : (
           <TableScrollEnd>
-          <Table
+          <ResponsiveTable
             rowKey="id"
             loading={loading}
             dataSource={items}

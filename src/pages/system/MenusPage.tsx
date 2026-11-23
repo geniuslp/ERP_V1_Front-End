@@ -5,6 +5,7 @@ import { useAppDispatch, useAppSelector } from '@/store'
 import { addMenu, updateMenu, deleteMenu } from '@/store/slices/menuSlice'
 import { MenuConfig } from '@/types'
 import PageHeader from '@/components/common/PageHeader'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const MenusPage: React.FC = () => {
   const dispatch = useAppDispatch()
@@ -55,7 +56,7 @@ const MenusPage: React.FC = () => {
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>เพิ่มเมนู</Button>}
       />
       <Card style={{ borderRadius: 12, border: 'none', boxShadow: '0 2px 12px rgba(15,45,94,0.08)' }}>
-        <Table dataSource={tableData} columns={columns} size="small" pagination={{ pageSize: 20 }} />
+        <ResponsiveTable dataSource={tableData} columns={columns} size="small" pagination={{ pageSize: 20 }} />
       </Card>
       <Modal title={editing ? 'แก้ไขเมนู' : 'เพิ่มเมนูใหม่'} open={open} onOk={handleOk} onCancel={() => setOpen(false)} okText="บันทึก" cancelText="ยกเลิก">
         <Form autoComplete="off" form={form} layout="vertical" style={{ marginTop: 16 }}>

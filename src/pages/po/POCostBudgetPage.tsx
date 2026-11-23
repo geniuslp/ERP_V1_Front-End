@@ -8,6 +8,7 @@ import PageHeader from '@/components/common/PageHeader'
 import CostBudgetModal from './CostBudgetModal'
 import { useAppSelector } from '@/store'
 import type { ProjectStatus } from '@/types/project'
+import ResponsiveTable from '@/components/common/ResponsiveTable'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL
 
@@ -164,7 +165,7 @@ const POCostBudgetPage: React.FC = () => {
           allowClear
           style={{ width: 280, marginBottom: 16 }}
         />
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={projectsLoading}
           columns={projectColumns}

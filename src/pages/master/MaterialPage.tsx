@@ -2,7 +2,7 @@ import { BLOCK_CARD_STYLE, BLOCK_HEAD_STYLE } from '@/constants/blockStyle'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Modal, Form, Input, Select, Space, Tag,
-  Row, Col, Typography, Statistic, Divider, Upload, message,
+  Row, Col, Typography, Statistic, Divider, Upload, message, Grid, Spin, Empty, Pagination,
 } from 'antd'
 import type { UploadProps } from 'antd'
 import {
@@ -708,6 +708,8 @@ const readFileAsRows = (file: File, groups: GroupRaw[]): Promise<ParsedRow[]> =>
 
 // ── main page ────────────────────────────────────────────────────
 const MaterialPage: React.FC = () => {
+  const screens = Grid.useBreakpoint()
+  const isMobile = screens.md === false
   const navigate = useNavigate()
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
   const [data, setData] = useState<MaterialRecord[]>([])
@@ -1345,6 +1347,75 @@ const MaterialPage: React.FC = () => {
               <Button icon={<ReloadOutlined />} onClick={handleResetFilters}>ล้างตัวกรอง</Button>
             </Row>
           </div>
+          {isMobile ? (
+            <Spin spinning={loading}>
+              {data.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="ไม่พบข้อมูลวัสดุ" />
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>ทั้งหมด {total} รายการ</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {data.map((r, i) => (
+                      <div
+                        key={r.key}
+                        onClick={() => { if (r.materialCode) navigate(`/master/materials/${encodeURIComponent(r.materialCode)}/edit`) }}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #e5e9f2',
+                          borderLeft: '3px solid #2563eb',
+                          borderRadius: 10,
+                          padding: '12px 12px 10px',
+                          cursor: r.materialCode ? 'pointer' : undefined,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>#{(page - 1) * 10 + i + 1}</div>
+                            <Text strong style={{ fontSize: 15, color: '#1e3a8a', wordBreak: 'break-word' }}>
+                              {formatCodeName((r as any).matNameCode, r.materialName)}
+                            </Text>
+                          </div>
+                          <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            disabled={!r.materialCode}
+                            aria-label="รายละเอียด"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/master/materials/${encodeURIComponent(r.materialCode)}/edit`) }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'auto minmax(0, 1fr)',
+                            columnGap: 12,
+                            rowGap: 4,
+                            marginTop: 10,
+                            paddingTop: 8,
+                            borderTop: '1px solid #eef1f7',
+                            fontSize: 13,
+                          }}
+                        >
+                          <span style={{ color: '#6b7280' }}>MateCode</span>
+                          <span style={{ wordBreak: 'break-all' }}><Text code style={{ fontSize: 13 }}>{r.materialCode}</Text></span>
+                          <span style={{ color: '#6b7280' }}>Group</span>
+                          <span>{formatGroupSubgroupCode(r.groupId, r.subGroupCode)}</span>
+                          <span style={{ color: '#6b7280' }}>Spec</span>
+                          <span style={{ wordBreak: 'break-word' }}>{(r.specCode || r.specDescription) ? formatCodeName(r.specCode, r.specDescription) : '-'}</span>
+                          <span style={{ color: '#6b7280' }}>Brand</span>
+                          <span style={{ wordBreak: 'break-word' }}>{(r.brandCode || r.brandName) ? formatCodeName(r.brandCode, r.brandName) : '-'}</span>
+                          <span style={{ color: '#6b7280' }}>Unit</span>
+                          <span>{formatCodeName(r.unitCode, r.unitName)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
+                    <Pagination simple current={page} pageSize={10} total={total} showSizeChanger={false} onChange={(p) => setPage(p)} />
+                  </div>
+                </>
+              )}
+            </Spin>
+          ) : (
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table
               dataSource={data} columns={columns} size="middle"
@@ -1365,6 +1436,7 @@ const MaterialPage: React.FC = () => {
               })}
             />
           </div>
+          )}
         </div>
 
         {/* insert rows */}
