@@ -204,7 +204,11 @@ function calcSummary(data:POData) {
   // up as a discount anywhere.
   const lineAmtDiscSum = sumLineAmtDiscounts(
     data.items.map(it=>({ discType: it.discType, disc: it.disc, qty: it.qty, unitPrice: it.pricePerUnit })))
-  const disc = (data.useDiscount ? data.extraDiscAmt : 0) + lineAmtDiscSum
+  // data.extraDiscAmt is purchase_order.discount_amount, which the backend stores as the SUM OF EVERY LINE'S discount
+  // (pct and amt alike) — there is no separate header-level discount. The pct part is already inside `subtotal`
+  // (lineAmt) and the amt part is already in lineAmtDiscSum, so adding it here subtracted the line discounts a
+  // second time: After Discount could go negative and the amount-in-words came out empty.
+  const disc = lineAmtDiscSum
   const afterDisc = subtotal - disc
   const whtRates = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   const whtRate = whtRates.length>0 ? whtRates[0] : 0
@@ -444,7 +448,7 @@ const POFooter = ({data}:{data:POData}) => {
         </div>
         <div style={{display:'flex'}}>
           <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'6px 8px',borderRight:'1px solid #000',fontSize:'12pt',fontWeight:600,fontFamily:"'Cordia New',sans-serif"}}>
-            ( {thaiBahtText(s.grand)} )
+            ( {thaiBahtText(s.netPay)} ){/* same figure as the Net Amount shown on the right (after withholding tax) */}
           </div>
           <div style={{width:'69.50mm',display:'flex',alignItems:'center',fontSize:'12pt',fontFamily:"'Cordia New',sans-serif"}}>
             <div className="sum-row" style={{width:'100%'}}>
