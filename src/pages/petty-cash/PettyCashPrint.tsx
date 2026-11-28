@@ -1,4 +1,4 @@
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
 import dayjs from 'dayjs'
@@ -85,7 +85,8 @@ export const buildPettyCashPrintData = (pc: PettyCashRequisition): PettyCashPrin
   wht: pc.wht_amount ?? 0,
   netAmount: pc.net_amount ?? 0,
   requester: pc.requested_by_username || pc.requested_by_name || '',
-  approver: pc.approver_name ?? '',
+  // Approval by user ID: the approver's username, only once the document is approved.
+  approver: pc.status === 'APPROVED' ? pc.approver_username || pc.approver_name || '' : '',
   approvedAt: dmy(pc.approved_at),
 })
 
@@ -131,7 +132,7 @@ const CSS = `
   .pcp-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .pcp-measure{width:194mm;}
   .pcp-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .pcp-box-first{border-bottom:1px solid #000;}
   .pcp-info{display:grid;grid-template-columns:1fr 1fr;border:1px solid #000;border-top:none;
@@ -281,14 +282,14 @@ const Summary = ({ data }: { data: PettyCashPrintData }) => (
 const Footer = ({ data }: { data: PettyCashPrintData }) => (
   <div className="pcp-auth">
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head">{data.requester && <div style={{ fontSize: `${signerNameFontPt(data.requester, 95)}pt` }}>{data.requester}</div>}</div>
+      <div className="pcp-auth-head"><SignerId name={data.requester} boxMm={95} /></div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้ขอเบิก / Requester</div>
       </div>
       <div className="pcp-auth-date">({data.pcDate || '-'})</div>
     </div>
     <div className="pcp-auth-col">
-      <div className="pcp-auth-head">{data.approver && <div style={{ fontSize: `${signerNameFontPt(data.approver, 95)}pt` }}>{data.approver}</div>}</div>
+      <div className="pcp-auth-head"><SignerId name={data.approver} boxMm={95} /></div>
       <div className="pcp-auth-body">
         <div style={{ fontWeight: 600 }}>ผู้อนุมัติ / Approver</div>
       </div>

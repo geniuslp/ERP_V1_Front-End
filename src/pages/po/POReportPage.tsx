@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Select, DatePicker, Button, Space, Row, Col, Table, Empty, message } from 'antd'
+import { Card, Select, DatePicker, Button, Space, Row, Col, Table, Empty, Checkbox, Radio, ConfigProvider, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { HistoryOutlined, InboxOutlined, SearchOutlined, ReloadOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons'
 import axios from 'axios'
@@ -43,9 +43,13 @@ interface HistoryLine {
   amount: number
   remarks: string | null
 }
+type DocFilter = 'PO' | 'WO' | 'ALL'
 interface HistoryGroup {
+  doc_type?: 'PO' | 'WO'
   po_id: number
   po_no: string
+  po_date?: string | null // date the PO / WO was issued (YYYY-MM-DD)
+  delivery_place?: string | null // PO location_text; a WO has none
   status: POStatus
   supplier_name: string | null
   subtotal: number
@@ -54,9 +58,12 @@ interface HistoryGroup {
 
 // One table per PO (its ร้านค้า / เลข PO / สถานะ sit above the column header): lines + a subtotal row; grand total at the end.
 type HistoryRow =
-  | { key: string; kind: 'line'; no: number; line: HistoryLine }
+  | { key: string; kind: 'line'; no: number; line: HistoryLine; place: string; date: string }
   | { key: string; kind: 'subtotal'; amount: number }
   | { key: string; kind: 'grand'; amount: number }
+
+const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '-')
+const docLabel = (g: { doc_type?: string }) => g.doc_type ?? 'PO'
 
 const unitPrice = (n: number) => (n ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 
@@ -72,6 +79,8 @@ const POReportPage: React.FC = () => {
   const [report, setReport] = useState<ReportKey | null>(null)
 
   const [projectCode, setProjectCode] = useState<string | undefined>()
+  const [allProjects, setAllProjects] = useState(false) // "All Project" checkbox: no single project required
+  const [docFilter, setDocFilter] = useState<DocFilter>('ALL')
   const [supplierId, setSupplierId] = useState<number | undefined>()
   const [jobCode, setJobCode] = useState<string | undefined>()
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
@@ -107,6 +116,8 @@ const POReportPage: React.FC = () => {
 
   const reset = () => {
     setProjectCode(undefined)
+    setAllProjects(false)
+    setDocFilter('ALL')
     setSupplierId(undefined)
     setJobCode(undefined)
     setRange(null)
@@ -116,7 +127,7 @@ const POReportPage: React.FC = () => {
 
   const runReport = async () => {
     if (!report) return
-    if (!projectCode) {
+    if (!projectCode && !allProjects) {
       setProjectError(true)
       message.warning('กรุณาเลือกโครงการก่อนแสดงรายงาน')
       return
@@ -126,7 +137,9 @@ const POReportPage: React.FC = () => {
       const res = await axios.get(`${BASE_URL}/po-report/${report === 'HISTORY' ? 'history' : 'pending-receipt'}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         params: {
-          project_code: projectCode,
+          project_code: allProjects ? undefined : projectCode,
+          all_projects: allProjects ? 'true' : undefined,
+          doc_type: docFilter,
           supplier_id: report === 'HISTORY' ? supplierId || undefined : undefined,
           job_code: jobCode || undefined,
           date_from: range?.[0] ? range[0].format('YYYY-MM-DD') : undefined,
@@ -136,10 +149,11 @@ const POReportPage: React.FC = () => {
       const d = res.data?.data
       const groups: HistoryGroup[] = d?.groups ?? []
       setResult({ groups, grandTotal: Number(d?.grand_total ?? 0) })
-      const projectLabel = projects.find((p) => p.value === projectCode)?.label ?? projectCode
+      const projectLabel = allProjects ? 'ทั้งหมด' : projects.find((p) => p.value === projectCode)?.label ?? projectCode ?? ''
       setShownProject(projectLabel)
       const jobLabel = jobCode ? jobTypes.find((j) => j.job_code === jobCode) : undefined
       const conds = [`โครงการ : ${projectLabel}`]
+      conds.push(`ประเภทเอกสาร : ${docFilter === 'ALL' ? 'PO และ WO' : docFilter}`)
       // Only conditions the user actually set are listed ("ทั้งหมด" lines are left out).
       if (report === 'HISTORY' && supplierId) conds.push(`ร้านค้า : ${suppliers.find((x) => x.value === supplierId)?.label ?? supplierId}`)
       if (jobCode) conds.push(`ระบบ (Job) : ${jobLabel ? `${jobLabel.job_code} ${jobLabel.job_name}` : jobCode}`)
@@ -167,8 +181,8 @@ const POReportPage: React.FC = () => {
     const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Report')
-    const head = ['No.', 'Job', 'Cost Code', 'MatCode', 'Description', pending ? 'Qty (ค้างรับ)' : 'Qty', 'Unit', 'Unit/Price', pending ? 'Amount ค้างรับ (Exc. VAT)' : 'Amount (Exc. VAT)', 'Remark']
-    ws.columns = [6, 8, 14, 20, 48, 12, 10, 14, 22, 30].map((width) => ({ width }))
+    const head = ['No.', 'Date PO/WO', 'Job', 'Cost Code', 'MatCode', 'Description', pending ? 'Qty (ค้างรับ)' : 'Qty', 'Unit', 'Unit/Price', pending ? 'Amount ค้างรับ (Exc. VAT)' : 'Amount (Exc. VAT)', 'สถานที่ส่ง', 'Remark']
+    ws.columns = [6, 14, 8, 14, 20, 48, 12, 10, 14, 22, 28, 30].map((width) => ({ width }))
     const LAST = head.length
     const thin = { style: 'thin' as const, color: { argb: 'FF888888' } }
     const border = { top: thin, left: thin, bottom: thin, right: thin }
@@ -191,10 +205,10 @@ const POReportPage: React.FC = () => {
     }
     const totalRow = (label: string, amount: number) => {
       const row = ws.addRow([label])
-      ws.mergeCells(row.number, 1, row.number, 8)
+      ws.mergeCells(row.number, 1, row.number, 9)
       row.getCell(1).alignment = { horizontal: 'right' }
-      row.getCell(9).value = amount
-      row.getCell(9).numFmt = MONEY
+      row.getCell(10).value = amount
+      row.getCell(10).numFmt = MONEY
       for (let c = 1; c <= LAST; c++) {
         row.getCell(c).border = border
         row.getCell(c).font = { bold: true }
@@ -202,7 +216,7 @@ const POReportPage: React.FC = () => {
     }
 
     result.groups.forEach((g) => {
-      merged(`ชื่อร้านค้า ${g.supplier_name ?? '-'}     PO ${g.po_no}     สถานะ ${poApprovalStatusLabel(g.status)}`, 'FFEFF6FF')
+      merged(`ชื่อร้านค้า ${g.supplier_name ?? '-'}     ${docLabel(g)} ${g.po_no}     สถานะ ${poApprovalStatusLabel(g.status)}`, 'FFEFF6FF')
       const hr = ws.addRow(head)
       hr.eachCell((cell) => {
         cell.border = border
@@ -212,16 +226,16 @@ const POReportPage: React.FC = () => {
       })
       g.lines.forEach((l, i) => {
         const r = ws.addRow([
-          i + 1, l.job_code ?? '', l.cost_code ? formatCostCodeDisplay(l.cost_code) : '', l.mat_code ?? '', l.description,
-          Number(l.qty), l.unit_name ?? '', Number(l.unit_price ?? 0), Number(l.amount ?? 0), l.remarks ?? '',
+          i + 1, fmtDate(g.po_date), l.job_code ?? '', l.cost_code ? formatCostCodeDisplay(l.cost_code) : '', l.mat_code ?? '', l.description,
+          Number(l.qty), l.unit_name ?? '', Number(l.unit_price ?? 0), Number(l.amount ?? 0), g.delivery_place ?? '', l.remarks ?? '',
         ])
         r.eachCell({ includeEmpty: true }, (cell, col) => {
           cell.border = border
-          cell.alignment = { vertical: 'top', horizontal: col === 1 ? 'center' : undefined, wrapText: col === 5 || col === 10 }
+          cell.alignment = { vertical: 'top', horizontal: col === 1 ? 'center' : undefined, wrapText: col === 6 || col === 11 || col === 12 }
         })
-        r.getCell(6).numFmt = '#,##0.####'
-        r.getCell(8).numFmt = '#,##0.00##'
-        r.getCell(9).numFmt = MONEY
+        r.getCell(7).numFmt = '#,##0.####'
+        r.getCell(9).numFmt = '#,##0.00##'
+        r.getCell(10).numFmt = MONEY
       })
       totalRow('รวม', g.subtotal)
       ws.addRow([])
@@ -238,7 +252,7 @@ const POReportPage: React.FC = () => {
   }
 
   const groupRows = (g: HistoryGroup): HistoryRow[] => [
-    ...g.lines.map((l, i): HistoryRow => ({ key: `l${g.po_id}-${i}`, kind: 'line', no: i + 1, line: l })),
+    ...g.lines.map((l, i): HistoryRow => ({ key: `l${g.po_id}-${i}`, kind: 'line', no: i + 1, line: l, place: g.delivery_place || '-', date: fmtDate(g.po_date) })),
     { key: `s${g.po_id}`, kind: 'subtotal', amount: g.subtotal },
   ]
 
@@ -246,11 +260,16 @@ const POReportPage: React.FC = () => {
   const historyColumns: ColumnsType<HistoryRow> = [
     {
       title: 'No.', key: 'no', width: 70,
-      onCell: (r) => (r.kind === 'subtotal' || r.kind === 'grand' ? { colSpan: 7 } : {}),
+      onCell: (r) => (r.kind === 'subtotal' || r.kind === 'grand' ? { colSpan: 8 } : {}),
       render: (_, r) => {
         if (r.kind === 'line') return r.no
         return r.kind === 'grand' ? <b>รวมทั้งสิ้น</b> : null
       },
+    },
+    {
+      title: 'Date PO/WO', key: 'date', width: 120, align: 'center',
+      onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
+      render: (_, r) => (r.kind === 'line' ? r.date : null),
     },
     {
       title: 'Job', key: 'job', width: 70,
@@ -291,7 +310,13 @@ const POReportPage: React.FC = () => {
       },
     },
     {
+      title: 'สถานที่ส่ง', key: 'place', width: 180,
+      onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 2 }),
+      render: (_, r) => (r.kind === 'line' ? r.place : null),
+    },
+    {
       title: 'Remark', key: 'remark',
+      onCell: (r) => (r.kind === 'line' ? {} : { colSpan: 0 }),
       render: (_, r) => (r.kind === 'line' ? r.line.remarks ?? '' : null),
     },
   ]
@@ -342,21 +367,36 @@ const POReportPage: React.FC = () => {
         <Card title={current.title} style={cardStyle}>
           <Row gutter={[16, 16]}>
             <Col span={24}>
-              <div style={{ maxWidth: 520 }}>
-              <div style={{ marginBottom: 4, color: '#374151' }}><span style={{ color: '#dc2626' }}>* </span>โครงการ</div>
+              <div>
+              <div style={{ marginBottom: 4, color: '#374151' }}>{!allProjects && <span style={{ color: '#dc2626' }}>* </span>}โครงการ</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <Select
                 showSearch
                 allowClear
-                style={{ width: '100%' }}
+                style={{ width: 520, maxWidth: '100%' }}
                 placeholder="เลือกโครงการ"
                 status={projectError && !projectCode ? 'error' : undefined}
                 loading={projectsLoading}
                 optionFilterProp="label"
                 value={projectCode}
+                disabled={allProjects}
                 onChange={(v) => { setProjectCode(v); if (v) setProjectError(false) }}
                 options={projects}
               />
-              {projectError && !projectCode && (
+              <style>{`.por-allproj .ant-checkbox-inner{background:#1d4ed8;border-color:#1d4ed8}
+.por-allproj .ant-checkbox-wrapper:hover .ant-checkbox-inner{background:#1e40af;border-color:#1e40af}`}</style>
+              <ConfigProvider theme={{ token: { colorPrimary: '#1d4ed8' } }}>
+                <Checkbox
+                  className="por-allproj"
+                  style={{ whiteSpace: 'nowrap' }}
+                  checked={allProjects}
+                  onChange={(e) => { setAllProjects(e.target.checked); if (e.target.checked) { setProjectCode(undefined); setProjectError(false) } }}
+                >
+                  All Project
+                </Checkbox>
+              </ConfigProvider>
+              </div>
+              {projectError && !projectCode && !allProjects && (
                 <div style={{ color: '#dc2626', fontSize: 12, marginTop: 4 }}>กรุณาเลือกโครงการ</div>
               )}
             </div>
@@ -408,6 +448,20 @@ const POReportPage: React.FC = () => {
               />
             </div>
             </Col>
+
+            <Col span={24}>
+              <div style={{ maxWidth: 520 }}>
+                <div style={{ marginBottom: 4, color: '#374151' }}>ประเภทเอกสาร</div>
+                <Radio.Group value={docFilter} onChange={(e) => setDocFilter(e.target.value)}>
+                  <Radio value="PO">PO</Radio>
+                  <Radio value="WO">WO</Radio>
+                  <Radio value="ALL">All</Radio>
+                </Radio.Group>
+                {report === 'PENDING_RECEIPT' && (
+                  <div style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>WO ไม่มีขั้นตอนรับสินค้า จึงไม่มีรายการค้างรับของ WO</div>
+                )}
+              </div>
+            </Col>
           </Row>
 
           <Space style={{ marginTop: 20 }}>
@@ -434,12 +488,12 @@ const POReportPage: React.FC = () => {
             <Empty description={report === 'HISTORY' ? 'ไม่พบใบสั่งซื้อตามเงื่อนไขที่เลือก' : 'ไม่มีรายการค้างรับตามเงื่อนไขที่เลือก'} />
           )}
           {result.groups.map((g) => (
-            <div key={g.po_id} style={{ marginBottom: 20 }}>
+            <div key={`${docLabel(g)}-${g.po_id}`} style={{ marginBottom: 20 }}>
               {/* ร้านค้า / เลข PO / สถานะ sit above this PO's column header */}
               <div style={{ background: '#eff6ff', padding: '8px 12px', borderRadius: '8px 8px 0 0', border: '1px solid #f0f0f0', borderBottom: 'none' }}>
                 <Space size={24} wrap>
                   <span><b>ชื่อร้านค้า</b> {g.supplier_name ?? '—'}</span>
-                  <span><b>PO</b> {g.po_no}</span>
+                  <span><b>{docLabel(g)}</b> {g.po_no}</span>
                   <POApprovalStatusTag status={g.status} />
                 </Space>
               </div>
@@ -451,7 +505,7 @@ const POReportPage: React.FC = () => {
                 dataSource={groupRows(g)}
                 columns={historyColumns}
                 tableLayout="fixed"
-                scroll={{ x: 1170 }}
+                scroll={{ x: 1470 }}
               />
             </div>
           ))}
@@ -465,7 +519,7 @@ const POReportPage: React.FC = () => {
               dataSource={[{ key: 'grand', kind: 'grand', amount: result.grandTotal }]}
               columns={historyColumns}
               tableLayout="fixed"
-              scroll={{ x: 1170 }}
+              scroll={{ x: 1470 }}
             />
           )}
         </Card>

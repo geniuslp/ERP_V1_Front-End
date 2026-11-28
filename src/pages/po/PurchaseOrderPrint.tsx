@@ -1,5 +1,5 @@
 import { jobTypeLabel } from '@/constants/jobTypes'
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import { paginateRows } from '@/utils/printPagination'
 import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useRef, useState } from 'react'
@@ -19,6 +19,7 @@ import { thaiBahtText } from '@/utils/thaiBahtText'
 export interface POUserSignature {
   user_id: number
   full_name: string
+  username?: string // printed in the Authorized Signature box (approval by user ID, no signature image)
   approved_at?: string | null
   signature_data_url: string
 }
@@ -41,6 +42,8 @@ export interface POItem {
   // `disc` is the raw number entered on the line; its unit (percent vs baht)
   // is given by `discType` — never assume percent.
   disc: number; discType?: DiscType; vatPct: number; whtPct: number
+  // ส่วนลดที่ 2 / 3 (%), each taken from what the previous round left (same as erp-api po_calc.go).
+  disc2?: number; disc3?: number
 }
 export interface POData {
   poNo: string; poDate: string; prNo: string; deliveryDate: string
@@ -70,6 +73,10 @@ export interface POData {
   }
   items: POItem[]
   extraDiscAmt: number; shippingAmt: number; remark: string
+  // The PO's whole end-of-bill Special Discount (migration 066) — always shown in the Special Discount row;
+  // the backend already took it out of extraDiscAmt when it was averaged. ส่วนลดที่ 2 / 3 are NOT in it:
+  // they come off each line's Total (lineStepDisc).
+  specialDiscAmt?: number
   useDiscount: boolean; useVat: boolean; useWht: boolean
   // Header-level authoritative amounts from GET /po/:id/print-data — po.vat_amount/
   // wht_amount/total_amount/net_amount. vatAmt replaces the old (broken) per-line
@@ -141,6 +148,8 @@ function normalizeItem(raw: Partial<POItem> & Record<string, any>): POItem {
     unit: raw.unit ?? '',
     pricePerUnit: raw.pricePerUnit ?? 0,
     disc: raw.disc ?? 0,
+    disc2: raw.disc2 ?? 0,
+    disc3: raw.disc3 ?? 0,
     discType: raw.discType ?? 'pct',
     vatPct: raw.vatPct ?? 0,
     whtPct: raw.whtPct ?? 0,
@@ -174,9 +183,24 @@ function normalizeData(raw: POData): POData {
 // (first time or after an edit of an approved PO) or rejected. APPROVED and later statuses print clean.
 const PO_NOT_APPROVED_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'PENDING_REAPPROVAL', 'REJECTED']
 
+// ส่วนลดที่ 2 / 3 in baht: sequential % of what is left after the first discount (its baht amount counts too,
+// exactly like the backend), rounded per round to satang. They come off the line's Total.
+const r2 = (v:number) => Math.round(v*100)/100
+const lineStepDisc = (it:POItem) => {
+  const b = it.qty*it.pricePerUnit
+  let left = b - calcDisc(b, it.disc, it.discType ?? 'pct')
+  let sum = 0
+  for (const p of [it.disc2 ?? 0, it.disc3 ?? 0]) {
+    if (!p) continue
+    const d = r2(left*p/100)
+    sum += d
+    left -= d
+  }
+  return sum
+}
 const lineAmt = (it:POItem) => {
   const b = it.qty*it.pricePerUnit
-  return it.discType==='amt' ? b : b-calcDisc(b,it.disc,'pct')
+  return (it.discType==='amt' ? b : b-calcDisc(b,it.disc,'pct')) - lineStepDisc(it)
 }
 const lineVat = (it:POItem) => lineAmt(it)*it.vatPct/100
 const lineWht = (it:POItem) => lineAmt(it)*it.whtPct/100
@@ -204,7 +228,7 @@ function calcSummary(data:POData) {
   // up as a discount anywhere.
   const lineAmtDiscSum = sumLineAmtDiscounts(
     data.items.map(it=>({ discType: it.discType, disc: it.disc, qty: it.qty, unitPrice: it.pricePerUnit })))
-  const disc = (data.useDiscount ? data.extraDiscAmt : 0) + lineAmtDiscSum
+  const disc = (data.useDiscount ? data.extraDiscAmt : 0) + lineAmtDiscSum + (data.specialDiscAmt ?? 0)
   const afterDisc = subtotal - disc
   const whtRates = [...new Set(data.items.filter(i=>i.whtPct>0).map(i=>i.whtPct))]
   const whtRate = whtRates.length>0 ? whtRates[0] : 0
@@ -237,7 +261,7 @@ const CSS = `
   }
   .po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .po-box-first{border-bottom:1px solid #000;}
   .po-box{border:1px solid #000;border-top:none;}
@@ -393,7 +417,8 @@ const ItemRow = ({row,rowRef}:{row:POItem;rowRef?:React.Ref<HTMLTableRowElement>
     <td style={{textAlign:'right'}}>{row.pricePerUnit?thb(row.pricePerUnit):''}</td>
     {/* amt-type discounts are never shown per line — they're rolled into the
         summary box's Special Discount instead (see calcSummary). */}
-    <td style={{textAlign:'center'}}>{row.disc && row.discType==='pct' ? `${row.disc}%` : ''}</td>
+    {/* Every % round on the line, e.g. "5% + 3% + 2%" (an amt-type first discount is not shown, see above). */}
+    <td style={{textAlign:'center'}}>{[row.discType==='pct' ? row.disc : 0, row.disc2 ?? 0, row.disc3 ?? 0].filter((p)=>p>0).map((p)=>`${p}%`).join(' + ')}</td>
     <td style={{textAlign:'right'}}>{row.desc?thb(lineAmt(row)):''}</td>
   </tr>
 )
@@ -461,12 +486,11 @@ const POFooter = ({data}:{data:POData}) => {
             const creator = i === 0 ? data.created_by_username?.trim() : ''
             return (
               <div key={i} className="auth-col">
-                <div className="auth-head" style={creator && !sig?.signature_data_url && !sig?.full_name ? {position:'relative'} : undefined}>
-                  {sig?.signature_data_url
-                    ? <SignatureImg src={sig.signature_data_url} alt={col.label} />
-                    : sig?.full_name
-                      ? <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>
-                      : creator && <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',lineHeight:1,fontSize:`${signerNameFontPt(creator,48)}pt`}}>{creator}</div>}
+                {/* Approval by user ID: creator / approver usernames, centred in the box; never a signature image. */}
+                <div className="auth-head" style={{position:'relative'}}>
+                  <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <SignerId name={sig ? sig.username || sig.full_name : creator} boxMm={48} />
+                  </div>
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>

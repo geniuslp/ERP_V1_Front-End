@@ -58,8 +58,8 @@ const getRowClassName = (status?: string, poConversionStatus?: string, hasRemain
 const ROW_TINT_LEGEND = [
   { ...ROW_TINT_SWATCH.gray, label: 'รออนุมัติ / ตรวจสอบสต็อก' },
   { ...ROW_TINT_SWATCH.red, label: 'ไม่อนุมัติ' },
-  { ...ROW_TINT_SWATCH.orange, label: 'ออก PO ได้บางส่วน' },
-  { ...ROW_TINT_SWATCH.green, label: 'ออก PO ครบแล้ว' },
+  { ...ROW_TINT_SWATCH.orange, label: 'ออก PO / WO ได้บางส่วน' },
+  { ...ROW_TINT_SWATCH.green, label: 'ออก PO / WO ครบแล้ว' },
 ]
 
 const PR_NO_COLUMN_DEFAULT_WIDTH = 110
@@ -342,18 +342,6 @@ const PRHistoryPage: React.FC = () => {
         v ? <Tag color="blue" style={{ margin: 0 }}>{ORDER_TYPE_LABEL[v] ?? v}</Tag> : <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
-      title: 'ผู้ขอซื้อ',
-      dataIndex: 'requestedBy',
-      key: 'requestedBy',
-      width: requestedByColWidth,
-      ellipsis: true,
-      onHeaderCell: () => ({
-        width: requestedByColWidth,
-        onResize: handleRequestedByColResize,
-      }),
-      render: (v: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
-    },
-    {
       title: 'หมายเหตุ',
       dataIndex: 'remarks',
       key: 'remarks',
@@ -364,6 +352,18 @@ const PRHistoryPage: React.FC = () => {
         onResize: handleRemarksColResize,
       }),
       render: (v: string | null) => v || <span style={{ color: '#9ca3af' }}>—</span>,
+    },
+    {
+      title: 'ผู้ขอซื้อ',
+      dataIndex: 'requestedBy',
+      key: 'requestedBy',
+      width: requestedByColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: requestedByColWidth,
+        onResize: handleRequestedByColResize,
+      }),
+      render: (v: string) => v || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
       title: 'วันที่สร้าง',

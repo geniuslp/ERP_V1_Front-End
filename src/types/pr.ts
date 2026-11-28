@@ -42,6 +42,7 @@ export interface PRPriceHistoryEntry {
   qty: number
   supplier_name: string
   po_no: string
+  po_id?: number
   source_pr_no?: string | null
   project_code?: string | null
   project_name?: string | null

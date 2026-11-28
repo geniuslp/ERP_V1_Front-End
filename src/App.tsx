@@ -26,6 +26,7 @@ const PRDetailPage = lazy(() => import('@/pages/pr/PRDetailPage'))
 const PRApprovalListPage = lazy(() => import('@/pages/pr/PRApprovalListPage'))
 const PRHistoryPage = lazy(() => import('@/pages/pr/PRHistoryPage'))
 const PRReducePage = lazy(() => import('@/pages/reports/of/PRReducePage'))
+const MemoReducePage = lazy(() => import('@/pages/reports/memo/MemoReducePage'))
 const POCreatePage = lazy(() => import('@/pages/po/POCreatePage'))
 const POStatusPage = lazy(() => import('@/pages/po/POStatusPage'))
 const POHistoryPage = lazy(() => import('@/pages/po/POHistoryPage'))
@@ -40,6 +41,7 @@ const WorkOrderCreatePage = lazy(() => import('@/pages/workOrder/WorkOrderCreate
 const WorkOrderDetailPage = lazy(() => import('@/pages/workOrder/WorkOrderDetailPage'))
 const WorkOrderApprovalListPage = lazy(() => import('@/pages/workOrder/WorkOrderApprovalListPage'))
 const PettyCashListPage = lazy(() => import('@/pages/petty-cash/PettyCashListPage'))
+const PettyCashCoverPage = lazy(() => import('@/pages/petty-cash/PettyCashCoverPage'))
 const PettyCashCreatePage = lazy(() => import('@/pages/petty-cash/PettyCashCreatePage'))
 const PettyCashDetailPage = lazy(() => import('@/pages/petty-cash/PettyCashDetailPage'))
 const PettyCashApprovalListPage = lazy(() => import('@/pages/petty-cash/PettyCashApprovalListPage'))
@@ -59,6 +61,9 @@ const CustomerPage = lazy(() => import('@/pages/master/CustomerPage'))
 const WarehouseStockUploadPage = lazy(() => import('@/pages/stock-project/WarehouseStockUploadPage'))
 const StockProjectListPage = lazy(() => import('@/pages/stock-project/StockProjectListPage'))
 const StockProjectDetailPage = lazy(() => import('@/pages/stock-project/StockProjectDetailPage'))
+const AssetRegisterPage = lazy(() => import('@/pages/stock-project/AssetRegisterPage'))
+const RepairRequestListPage = lazy(() => import('@/pages/repair/RepairRequestListPage'))
+const RepairRequestFormPage = lazy(() => import('@/pages/repair/RepairRequestFormPage'))
 const ProjectListPage = lazy(() => import('@/pages/master/ProjectListPage'))
 const ProjectCreateEditPage = lazy(() => import('@/pages/master/ProjectCreateEditPage'))
 const ApprovalMatrix = lazy(() => import('@/pages/admin/ApprovalMatrix'))
@@ -99,6 +104,9 @@ const FinancePaymentDetailPage = lazy(() => import('@/pages/finance/FinancePayme
 const ProjectOverviewPage = lazy(() => import('@/pages/project-overview/ProjectOverviewPage'))
 const HowToVideosPage = lazy(() => import('@/pages/howto/HowToVideosPage'))
 const HowToUploadPage = lazy(() => import('@/pages/howto/HowToUploadPage'))
+const ERPIssueListPage = lazy(() => import('@/pages/howto/ERPIssueListPage'))
+const ERPIssueCreatePage = lazy(() => import('@/pages/howto/ERPIssueCreatePage'))
+const ERPIssueDetailPage = lazy(() => import('@/pages/howto/ERPIssueDetailPage'))
 const ICProjectListPage = lazy(() => import('@/pages/ic/ICProjectListPage'))
 const ICPoReceivePage = lazy(() => import('@/pages/ic/ICPoReceivePage'))
 const ICPoReturnPage = lazy(() => import('@/pages/ic/ICPoReturnPage'))
@@ -153,6 +161,9 @@ const AppRoutes: React.FC = () => (
               <Route path="/reports/of/pr-reduce" element={
                 <RequirePermission menuCode="MENU_OF_RPT_PR_REDUCE" action="read"><PRReducePage /></RequirePermission>
               } />
+              <Route path="/reports/memo/reduce" element={
+                <RequirePermission menuCode="MENU_MEMO_RPT_REDUCE" action="read"><MemoReducePage /></RequirePermission>
+              } />
               <Route path="/po/create" element={
                 <RequirePermission menuCode="MENU_PO_CREATE" action="write"><POCreatePage key="po-create" /></RequirePermission>
               } />
@@ -206,6 +217,9 @@ const AppRoutes: React.FC = () => (
               <Route path="/petty-cash/create" element={
                 <RequirePermission menuCode="MENU_PETTY_CASH_CREATE" action="write"><PettyCashCreatePage key="petty-cash-create" /></RequirePermission>
               } />
+              <Route path="/petty-cash/cover" element={
+                <RequirePermission menuCode="MENU_PETTY_CASH_ADVANCE_CREATE" action="write"><PettyCashCoverPage /></RequirePermission>
+              } />
               <Route path="/petty-cash/approval" element={
                 <RequirePermission menuCode="MENU_PETTY_CASH_APPROVAL" action="read"><PettyCashApprovalListPage /></RequirePermission>
               } />
@@ -229,8 +243,25 @@ const AppRoutes: React.FC = () => (
               <Route path="/master/departments" element={
                 <RequirePermission menuCode="MENU_ADMIN_DEPARTMENTS" action="read"><DepartmentMasterPage /></RequirePermission>
               } />
+              {/* Memo > เอกสารแจ้งซ่อม > 5.1 บันทึกการแจ้งซ่อม (migration 076); 5.2–5.5 not built yet */}
+              <Route path="/repair/requests" element={
+                <RequirePermission menuCode="MENU_REPAIR_REQUEST" action="read"><RepairRequestListPage /></RequirePermission>
+              } />
+              <Route path="/repair/requests/new" element={
+                <RequirePermission menuCode="MENU_REPAIR_REQUEST" action="write"><RepairRequestFormPage key="new" /></RequirePermission>
+              } />
+              <Route path="/repair/requests/:id" element={
+                <RequirePermission menuCode="MENU_REPAIR_REQUEST" action="read"><RepairRequestFormPage /></RequirePermission>
+              } />
+              {/* IC > คลัง (Stock): 2.1 คลังโครงการ / 2.2 คลัง Fac / 2.3 คลัง Asset (migration 074) */}
               <Route path="/master/stock" element={
-                <RequirePermission menuCode="master-stock" action="read"><StockProjectListPage /></RequirePermission>
+                <RequirePermission menuCode="MENU_IC_STOCK_PROJECT" action="read"><StockProjectListPage key="project" kind="project" /></RequirePermission>
+              } />
+              <Route path="/master/stock-fac" element={
+                <RequirePermission menuCode="MENU_IC_STOCK_FAC" action="read"><StockProjectListPage key="fac" kind="fac" /></RequirePermission>
+              } />
+              <Route path="/master/stock-asset" element={
+                <RequirePermission menuCode="MENU_IC_STOCK_ASSET" action="read"><AssetRegisterPage /></RequirePermission>
               } />
               <Route path="/master/warehouse-stock" element={
                 <RequirePermission menuCode="MENU_MASTER_WAREHOUSE_STOCK" action="read"><WarehouseStockUploadPage /></RequirePermission>
@@ -328,6 +359,22 @@ const AppRoutes: React.FC = () => (
               } />
               <Route path="/howto/upload" element={
                 <RequirePermission menuCode="MENU_HOWTO_UPLOAD" action="read"><HowToUploadPage /></RequirePermission>
+              } />
+              {/* ใบแจ้งปัญหาการใช้งาน ERP. The detail page has no menu guard: the API lets the reporter, the assigned
+                  approver (NEW_MODULE, who may not hold the menu) and admins open it. */}
+              <Route path="/howto/issues" element={
+                <RequirePermission menuCode="MENU_ERP_ISSUE" action="read"><ERPIssueListPage /></RequirePermission>
+              } />
+              <Route path="/howto/issues/new" element={
+                <RequirePermission menuCode="MENU_ERP_ISSUE" action="write"><ERPIssueCreatePage /></RequirePermission>
+              } />
+              <Route path="/howto/issues/:id" element={<ERPIssueDetailPage />} />
+              {/* Administration › จัดการใบแจ้งปัญหา ERP: read = every ticket; status / reply / files need update (checked by the API). */}
+              <Route path="/admin/erp-issues" element={
+                <RequirePermission menuCode="MENU_ERP_ISSUE_ADMIN" action="read"><ERPIssueListPage admin /></RequirePermission>
+              } />
+              <Route path="/admin/erp-issues/:id" element={
+                <RequirePermission menuCode="MENU_ERP_ISSUE_ADMIN" action="read"><ERPIssueDetailPage /></RequirePermission>
               } />
               <Route path="/project-overview" element={
                 <RequirePermission menuCode="MENU_PROJECT_OVERVIEW" action="read"><ProjectOverviewPage /></RequirePermission>

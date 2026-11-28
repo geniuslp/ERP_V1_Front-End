@@ -111,10 +111,18 @@ export interface PettyCashRequisition {
   supplier_names?: string | string[] | null
   wht_total?: number | string | null
   net_value?: number | string | null
+  // project shown on the list: the header's, else the first line's; project_count = distinct projects on the doc
+  project_display_code?: string | null
+  project_display_name?: string | null
+  project_count?: number | null
+  // GET /petty-cash (list) only: payment_log total and UNPAID | PARTIAL | PAID against net_value
+  paid_amount?: number | string | null
+  payment_status?: 'UNPAID' | 'PARTIAL' | 'PAID' | null
   amount?: number | string | null
   requested_by_name?: string | null
   requested_by_username?: string | null // printed under the requester signature
   approver_name?: string | null
+  approver_username?: string | null // GET /petty-cash/:id — printed in the approver box (approval by user ID)
   approved_at?: string | null // latest approval date (GET /petty-cash/:id)
   lines?: PettyCashLine[]
   attachments?: PettyCashAttachment[]
@@ -231,6 +239,8 @@ export interface PettyCashListFilter {
   project_code?: string
   date_from?: string
   date_to?: string
+  // PAID = fully paid; UNPAID = not fully paid yet (incl. partly paid)
+  payment_status?: 'PAID' | 'UNPAID'
   page?: number
   page_size?: number
 }

@@ -15,6 +15,12 @@ interface TaxSidebarPanelProps {
   onUseVatChange: (v: boolean) => void
   useWht: boolean
   onUseWhtChange: (v: boolean) => void
+  // ส่วนลดที่ 2 (PO only): omitted = no second checkbox and the first one keeps the plain "ส่วนลด" label.
+  useDisc2?: boolean
+  onUseDisc2Change?: (v: boolean) => void
+  // ส่วนลดที่ 3 (PO only), shown together with ส่วนลดที่ 2.
+  useDisc3?: boolean
+  onUseDisc3Change?: (v: boolean) => void
 }
 
 const sectionTitleStyle: React.CSSProperties = {
@@ -30,6 +36,8 @@ const TaxSidebarPanel: React.FC<TaxSidebarPanelProps> = ({
   useDisc, onUseDiscChange, discType, onDiscTypeChange,
   useVat, onUseVatChange,
   useWht, onUseWhtChange,
+  useDisc2 = false, onUseDisc2Change,
+  useDisc3 = false, onUseDisc3Change,
 }) => {
   const screens = useBreakpoint()
   const isMobile = screens.md === false
@@ -42,7 +50,7 @@ const TaxSidebarPanel: React.FC<TaxSidebarPanelProps> = ({
             onChange={(e) => onUseDiscChange(e.target.checked)}
             style={{ fontWeight: 500 }}
           >
-            ส่วนลด
+            {onUseDisc2Change ? 'ส่วนลดแรก' : 'ส่วนลด'}
           </Checkbox>
           {useDisc && (
             <div style={{ marginTop: 8 }}>
@@ -59,6 +67,40 @@ const TaxSidebarPanel: React.FC<TaxSidebarPanelProps> = ({
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
                 กรอกค่าในแต่ละแถวได้เลย
               </div>
+            </div>
+          )}
+
+          {onUseDisc2Change && (
+            <div style={{ marginTop: 12 }}>
+              <Checkbox
+                checked={useDisc2}
+                onChange={(e) => onUseDisc2Change(e.target.checked)}
+                style={{ fontWeight: 500 }}
+              >
+                ส่วนลดที่ 2
+              </Checkbox>
+              {useDisc2 && (
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, marginLeft: 22 }}>
+                  กรอก % ในแต่ละแถว ลดต่อจากยอดหลังส่วนลดแรก
+                </div>
+              )}
+            </div>
+          )}
+
+          {onUseDisc3Change && (
+            <div style={{ marginTop: 12 }}>
+              <Checkbox
+                checked={useDisc3}
+                onChange={(e) => onUseDisc3Change(e.target.checked)}
+                style={{ fontWeight: 500 }}
+              >
+                ส่วนลดที่ 3
+              </Checkbox>
+              {useDisc3 && (
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, marginLeft: 22 }}>
+                  กรอก % ในแต่ละแถว ลดต่อจากยอดหลังส่วนลดที่ 2
+                </div>
+              )}
             </div>
           )}
 

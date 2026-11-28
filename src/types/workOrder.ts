@@ -106,6 +106,7 @@ export interface WOListItem {
 export interface WOApprovalSignature {
   user_id?: number
   full_name?: string
+  username?: string // printed in the approver box (approval by user ID, no signature image)
   approved_at?: string | null
   signature_data_url?: string
 }

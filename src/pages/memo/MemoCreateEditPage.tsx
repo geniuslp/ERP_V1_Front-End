@@ -111,6 +111,8 @@ const MemoCreateEditPage: React.FC = () => {
   const [approversLoading, setApproversLoading] = useState(false)
   const [requesters, setRequesters] = useState<{ value: number; label: string; dept?: string; username?: string; name?: string }[]>([])
   const [requestersLoading, setRequestersLoading] = useState(false)
+  // The saved requester of the document being edited (may not be in the role-filtered list below).
+  const [savedRequester, setSavedRequester] = useState<{ value: number; label: string } | null>(null)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -262,6 +264,10 @@ const MemoCreateEditPage: React.FC = () => {
       setCanEdit(true)
 
       const siteDeliveryDate = memo.site_delivery_date ?? memo.siteDeliveryDate
+      setSavedRequester({
+        value: Number(memo.requested_by ?? memo.requestedBy),
+        label: memo.requested_by_username || memo.requested_by_name || String(memo.requested_by ?? memo.requestedBy ?? ''),
+      })
       form.setFieldsValue({
         requested_by: memo.requested_by ?? memo.requestedBy,
         project_code: memo.project_code ?? memo.projectCode,
@@ -667,7 +673,9 @@ const MemoCreateEditPage: React.FC = () => {
                 name="requested_by"
                 rules={[{ required: true, message: 'กรุณาเลือกผู้ขอ' }]}
               >
+                {/* Locked: a new document takes the logged-in user, an existing one keeps its saved requester. */}
                 <Select
+                  disabled
                   placeholder="— เลือกผู้ขอ —"
                   loading={requestersLoading}
                   showSearch
@@ -684,7 +692,17 @@ const MemoCreateEditPage: React.FC = () => {
                       )}
                     </div>
                   )}
-                  options={requesters}
+                  options={[
+                    ...requesters,
+                    ...[
+                      savedRequester,
+                      !isEdit && currentUser?.id
+                        ? { value: Number(currentUser.id), label: formatApproverOption(currentUser.username, currentUser.id) }
+                        : null,
+                    ]
+                      .filter((o): o is { value: number; label: string } => !!o && !requesters.some((r) => r.value === o.value))
+                      .map((o) => ({ ...o, dept: undefined as string | undefined })),
+                  ]}
                 />
               </Form.Item>
             </Col>

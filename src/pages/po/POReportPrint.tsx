@@ -21,7 +21,10 @@ export interface POReportPrintLine {
   remarks: string | null
 }
 export interface POReportPrintGroup {
+  doc_type?: string // PO | WO
   po_no: string
+  po_date?: string | null // date the PO / WO was issued (YYYY-MM-DD)
+  delivery_place?: string | null
   status: POStatus
   supplier_name: string | null
   subtotal: number
@@ -57,6 +60,8 @@ const CSS = `
   .por-tot td{font-weight:700;border-top:1.5px solid #000;}
 `
 
+const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '-')
+
 const POReportPrint: React.FC<{ data: POReportPrintData; onDone: () => void }> = ({ data, onDone }) => {
   useEffect(() => {
     const s = document.createElement('style')
@@ -79,8 +84,8 @@ const POReportPrint: React.FC<{ data: POReportPrintData; onDone: () => void }> =
   const amtHead = data.pending ? 'Amount ค้างรับ (Exc. VAT)' : 'Amount (Exc. VAT)'
   const COLS = (
     <colgroup>
-      <col style={{ width: '10mm' }} /><col style={{ width: '14mm' }} /><col style={{ width: '24mm' }} /><col style={{ width: '34mm' }} /><col />
-      <col style={{ width: '24mm' }} /><col style={{ width: '24mm' }} /><col style={{ width: '32mm' }} /><col style={{ width: '40mm' }} />
+      <col style={{ width: '10mm' }} /><col style={{ width: '20mm' }} /><col style={{ width: '14mm' }} /><col style={{ width: '22mm' }} /><col style={{ width: '28mm' }} /><col />
+      <col style={{ width: '20mm' }} /><col style={{ width: '20mm' }} /><col style={{ width: '28mm' }} /><col style={{ width: '26mm' }} /><col style={{ width: '30mm' }} />
     </colgroup>
   )
 
@@ -89,20 +94,21 @@ const POReportPrint: React.FC<{ data: POReportPrintData; onDone: () => void }> =
       <div className="por-title">{data.title}</div>
       <div className="por-cond">{data.conditions.map((c) => <div key={c}>{c}</div>)}</div>
       {data.groups.map((g) => (
-        <div key={g.po_no}>
+        <div key={`${g.doc_type ?? 'PO'}-${g.po_no}`}>
           <div className="por-band">
-            <b>ชื่อร้านค้า</b> {g.supplier_name ?? '—'}&nbsp;&nbsp;&nbsp;<b>PO</b> {g.po_no}&nbsp;&nbsp;&nbsp;
+            <b>ชื่อร้านค้า</b> {g.supplier_name ?? '—'}&nbsp;&nbsp;&nbsp;<b>{g.doc_type ?? 'PO'}</b> {g.po_no}&nbsp;&nbsp;&nbsp;
             <b>สถานะ</b> {poApprovalStatusLabel(g.status)}
           </div>
           <table className="por-tbl">
             {COLS}
             <thead>
-              <tr><th>No.</th><th>Job</th><th>Cost Code</th><th>MatCode</th><th>Description</th><th>{qtyHead}</th><th>Unit/Price</th><th>{amtHead}</th><th>Remark</th></tr>
+              <tr><th>No.</th><th>Date {g.doc_type ?? 'PO'}</th><th>Job</th><th>Cost Code</th><th>MatCode</th><th>Description</th><th>{qtyHead}</th><th>Unit/Price</th><th>{amtHead}</th><th>สถานที่ส่ง</th><th>Remark</th></tr>
             </thead>
             <tbody>
               {g.lines.map((l, i) => (
                 <tr key={i}>
                   <td style={{ textAlign: 'center' }}>{i + 1}</td>
+                  <td style={{ textAlign: 'center' }}>{fmtDate(g.po_date)}</td>
                   <td style={{ textAlign: 'center' }}>{l.job_code ?? '-'}</td>
                   <td>{l.cost_code ? formatCostCodeDisplay(l.cost_code) : '-'}</td>
                   <td>{l.mat_code ?? '-'}</td>
@@ -110,13 +116,14 @@ const POReportPrint: React.FC<{ data: POReportPrintData; onDone: () => void }> =
                   <td className="por-r">{`${Number(l.qty).toLocaleString()} ${l.unit_name ?? ''}`}</td>
                   <td className="por-r">{(l.unit_price ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
                   <td className="por-r">{formatMoney(l.amount)}</td>
+                  <td>{g.delivery_place || '-'}</td>
                   <td>{l.remarks ?? ''}</td>
                 </tr>
               ))}
               <tr className="por-tot">
-                <td colSpan={7} className="por-r">รวม</td>
+                <td colSpan={8} className="por-r">รวม</td>
                 <td className="por-r">{formatMoney(g.subtotal)}</td>
-                <td />
+                <td colSpan={2} />
               </tr>
             </tbody>
           </table>
@@ -127,9 +134,9 @@ const POReportPrint: React.FC<{ data: POReportPrintData; onDone: () => void }> =
           {COLS}
           <tbody>
             <tr className="por-tot">
-              <td colSpan={7} className="por-r">รวมทั้งสิ้น</td>
+              <td colSpan={8} className="por-r">รวมทั้งสิ้น</td>
               <td className="por-r">{formatMoney(data.grandTotal)}</td>
-              <td />
+              <td colSpan={2} />
             </tr>
           </tbody>
         </table>

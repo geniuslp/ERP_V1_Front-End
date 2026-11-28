@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { formatNote, type NoteLine } from '@/utils/formatNote'
 import logo from '@/components/asset/Genius Logo-01.jpg'
 import { numberToThaiText } from '@/utils/thaiBahtText'
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import { WO_CONTRACT_DESCRIPTION_LABEL, WO_CONTRACT_TYPE_LABEL, formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
 import { useJobTypeNames } from '@/hooks/useJobTypeNames'
@@ -40,7 +40,7 @@ const CSS = `
   }
   .wo-std-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
 
   /* Header — PO-print style (logo + company block left, WORK ORDER / หนังสือสั่งจ้าง right), no line under it. */
@@ -363,12 +363,11 @@ const AuthBlock = ({ data }: { data: WOPrintDataLite }) => {
           const showCreator = i === 0 && !!creator
           return (
             <div key={label} className="auth-col">
-              <div className="auth-head" style={showCreator ? { position: 'relative' } : undefined}>
-                {s?.signature_data_url
-                  ? <img src={s.signature_data_url} alt={label} style={{ maxHeight: 75, maxWidth: '90%', height: 'auto', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
-                  : s?.full_name
-                    ? <div style={{ textAlign: 'center', fontSize: `${signerNameFontPt(s.full_name, 48)}pt` }}>{s.full_name}</div>
-                    : showCreator && <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', lineHeight: 1, fontSize: `${signerNameFontPt(creator, 48)}pt` }}>{creator}</div>}
+              {/* Approval by user ID: creator / approver usernames, centred in the box; never a signature image. */}
+              <div className="auth-head" style={{ position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <SignerId name={s ? s.username || s.full_name : showCreator ? creator : ''} boxMm={48} />
+                </div>
               </div>
               <div className="auth-body">
                 <div style={{ fontWeight: 600 }}>{label}</div>

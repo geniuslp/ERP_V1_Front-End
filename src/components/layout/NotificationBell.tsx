@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Badge, Button, Empty, Popover, Tag } from 'antd'
 import {
-  BellOutlined, CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileSearchOutlined,
+  BellOutlined, BugOutlined, CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileSearchOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { AppNotification, NotificationType } from '@/hooks/useNotifications'
@@ -11,6 +11,7 @@ const TYPE_STYLE: Record<NotificationType, { icon: React.ReactNode; color: strin
   APPROVED:         { icon: <CheckCircleOutlined />, color: '#16a34a', bg: '#dcfce7' },
   REJECTED:         { icon: <CloseCircleOutlined />, color: '#dc2626', bg: '#fee2e2' },
   FINANCE_PAYABLE:  { icon: <DollarOutlined />, color: '#1d4ed8', bg: '#dbeafe' },
+  ERP_ISSUE:        { icon: <BugOutlined />, color: '#7c3aed', bg: '#ede9fe' },
 }
 
 interface Props {

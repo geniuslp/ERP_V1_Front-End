@@ -4,7 +4,7 @@ import { useAppSelector } from '@/store'
 
 const BASE_URL: string = (import.meta as any).env?.VITE_API_URL ?? ''
 
-export type NotificationType = 'APPROVAL_REQUEST' | 'APPROVED' | 'REJECTED' | 'FINANCE_PAYABLE'
+export type NotificationType = 'APPROVAL_REQUEST' | 'APPROVED' | 'REJECTED' | 'FINANCE_PAYABLE' | 'ERP_ISSUE'
 
 export interface AppNotification {
   id: number

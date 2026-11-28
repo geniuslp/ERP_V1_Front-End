@@ -913,6 +913,28 @@ Routes ใน `App.tsx`: `/work-order/contractor-log` (สร้างใหม�
 - Deploy order: SQL 063 → backend → frontend (an old backend silently drops the field).
 - The contractor-bill tab still uses 7.1 (advance) for its own ADVANCE deduction logic; that is separate from 7.4.
 
+## 🧭 Session learnings (2026-11-26) — ใบแจ้งปัญหาการใช้งาน ERP (ERP issue tickets) [Frontend + erp-api + SQL 068]
+
+> Verified: API flow tested with real HTTP requests on dev (create with file, NEW_MODULE approve, admin status, scopes, 403s, notifications);
+> `tsc` has no errors in the new files. **Not opened in a browser** (no login available to the session).
+
+- Menu `MENU_ERP_ISSUE` under How To use → `/howto/issues` (list), `/howto/issues/new` (create), `/howto/issues/:id` (detail, no route guard —
+  API allows reporter / assigned approver / admin). Files: `pages/howto/ERPIssue{List,Create,Detail}Page.tsx`, `services/erpIssueService.ts`, `types/erpIssue.ts`.
+- Permissions (changed by SQL 070): `MENU_ERP_ISSUE` (How To use) = reporter side only — read = own tickets, write = create; its update/delete are
+  unused. **Admin side = `MENU_ERP_ISSUE_ADMIN` under Administration → `/admin/erp-issues` (+ `/:id`)**: read = every ticket (list has per-status
+  counts), update = status / reply / files + the "new ticket" bell (links to `/admin/erp-issues/:id`). Granted to ADMIN_CENTER. Same
+  `ERPIssueListPage` (`admin` prop) and `ERPIssueDetailPage` (back link / breadcrumbs follow the URL) serve both sides; API returns `is_admin` / `can_manage`.
+- Reporter + report date are locked (shown disabled, stamped server-side); menu + title + detail required; up to 10 files ≤10 MB, sent in the same
+  multipart POST as the ticket.
+- `issue_type = NEW_MODULE` → `PENDING_APPROVAL` with an approver from `GET /master/eligible-approvers?doc_type=ERP_ISSUE` (roles = copy of PR's,
+  edit in Approval Matrix); menu optional, "ชื่อ Module" required. Approve/reject = generic `PUT /approval/ERP_ISSUE/:id/approve|reject`;
+  approved → `PENDING` (admins notified by DB trigger). Other types → `PENDING` immediately. Admin statuses: PENDING / IN_PROGRESS / PREVIEW ("Preview (Test on UAT)", SQL 071) / RESOLVED / CLOSED.
+- **Admin reply with files (SQL 069):** `PUT /erp-issues/:id/status` also takes multipart (`status`, `admin_remark`, `files`); those files get
+  `erp_issue_attachment.log_id` = that status-log entry (reporter's own files have `log_id` NULL). The detail page shows every admin update
+  (status, message, image thumbnails with preview) in "ผลการดำเนินการจากผู้ดูแลระบบ" for the reporter too; the reporter is notified. Not HTTP-tested.
+- `GET /approval-request/ERP_ISSUE/:id/my-status` is NOT supported (returns an error) — the detail page decides "assigned approver" from
+  `approver_id === user.id` instead; the server enforces it on approve/reject.
+
 ## Known issues / TODO
 - [ ] ยืนยัน tech stack จริง (Vite? CRA? Next.js?) แล้วอัปเดตหัวข้อ Tech stack ด้านบน
 - [ ] เพิ่มหน้าจอ + API integration สำหรับ RFQ, Borrow/Return, Stock Count, Memo (backend table พร้อมแล้ว)

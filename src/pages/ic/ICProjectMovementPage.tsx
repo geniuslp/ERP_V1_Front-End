@@ -126,6 +126,7 @@ const ICProjectMovementPage: React.FC = () => {
   const narrowSecond: React.CSSProperties | undefined = screens.sm ? { width: 'calc(100% * 2 / 3)' } : undefined
 
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const currentUser = useAppSelector((s) => s.auth.user)
   const authHeader = { Authorization: `Bearer ${accessToken}` }
 
   // The document id: from the route for an existing document, or set in state right after the
@@ -268,13 +269,13 @@ const ICProjectMovementPage: React.FC = () => {
     }
   }, [])
 
-  // Default ผู้ขอเบิก from the ผู้จัดทำ picked on the project list page (create mode only).
+  // ผู้ขอเบิก is locked to the logged-in user on a new document (an existing one keeps its saved requester).
   useEffect(() => {
-    if (!docId && preparedBy && !Number.isNaN(Number(preparedBy))) {
-      form.setFieldsValue({ requested_by: Number(preparedBy) })
+    if (!docId && currentUser?.id) {
+      form.setFieldsValue({ requested_by: Number(currentUser.id) })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preparedBy])
+  }, [currentUser])
 
   // GET /ic/projects/:projectCode/movements/:movementId — endpoint not confirmed to
   // exist yet on the backend. TODO: verify with backend; until then, fall back to
@@ -693,6 +694,7 @@ const ICProjectMovementPage: React.FC = () => {
               rules={[{ required: true, message: 'กรุณาระบุผู้ขอเบิก / ผู้ทำรายการ' }]}
             >
               <Select
+                disabled
                 placeholder="- เลือกรายการ -"
                 loading={usersLoading}
                 showSearch
@@ -708,6 +710,16 @@ const ICProjectMovementPage: React.FC = () => {
                   </div>
                 )}
                 options={[
+                  // New document: the logged-in user may not be in the role-filtered list below.
+                  ...(!docId && currentUser?.id != null && !users.some((u) => Number(u.id) === Number(currentUser.id))
+                    ? [{
+                        value: Number(currentUser.id),
+                        label: formatApproverOption(currentUser.username, currentUser.id),
+                        searchLabel: `${currentUser.username ?? ''}`,
+                        name: formatApproverOption(currentUser.username, currentUser.id),
+                        dept: undefined as string | undefined,
+                      }]
+                    : []),
                   ...users.map((u) => ({
                     value: Number(u.id),
                     label: formatApproverOption(u.username, u.id),

@@ -287,8 +287,6 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
   // (the lookup omits null qty, and the picker lists every active material) — is
   // treated as stock 0 once the lookup has finished. Display only: deductStock
   // and the payload are untouched.
-  const isZeroStock = (r: PRItem) => !!r.code && !stockLoading && (stockMap[r.code] ?? 0) <= 0
-
   const addItem = () => {
     const no = items.length + 1
     setItems((prev) => [
@@ -573,7 +571,7 @@ const PRItemsTable = forwardRef<PRItemsTableHandle, PRItemsTableProps>(({
             checked={r.deductStock}
             disabled={!r.code}
             onChange={(checked) => toggleDeductStock(r.key, checked)}
-            style={{ backgroundColor: r.deductStock && !isZeroStock(r) ? '#16a34a' : '#dc2626' }}
+            style={{ backgroundColor: r.deductStock ? '#16a34a' : '#dc2626' }}
           />
         ),
     },

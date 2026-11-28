@@ -2,7 +2,7 @@ import React from 'react'
 import dayjs from 'dayjs'
 import { formatWorkSystem, formatWOProject } from '@/types/workOrder'
 import type { WorkOrder } from '@/types/workOrder'
-import { useJobTypeNames } from '@/hooks/useJobTypeNames'
+import { useJobTypeNames, useJobTypesSettled } from '@/hooks/useJobTypeNames'
 // Both templates are now literal PurchaseOrderPrint.tsx duplicates edited in
 // place, per explicit instruction not to reimplement PO's layout from a
 // description — WorkOrderPrintStandard.tsx (WO_STANDARD, own logo-box header)
@@ -93,6 +93,9 @@ const WorkOrderPrintView: React.FC<Props> = ({ data, template, onReady }) => {
   // advance_pct, dates, etc.) the PO-shaped mapper below doesn't carry.
   // PO_HEADER is untouched and still consumes the PO-mapped shape.
   const jobNames = useJobTypeNames()
+  const namesReady = useJobTypesSettled()
+  // Hold the print until the Job names are loaded, otherwise the dialog can open with bare codes ("AR").
+  if (!namesReady) return null
   if (template === 'WO_STANDARD') return <WorkOrderPrintStandard data={data} onReady={onReady} />
   const mapped = mapWorkOrderToPOStyle(data, jobNames)
   return <WorkOrderPrintPOStyle data={mapped} onReady={onReady} />

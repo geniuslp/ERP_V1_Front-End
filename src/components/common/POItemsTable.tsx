@@ -1,6 +1,6 @@
 import { formatMoney } from '@/utils/formatMoney'
 import React, { useEffect, useState } from 'react'
-import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin, Modal, DatePicker, message } from 'antd'
+import { Table, Button, InputNumber, Input, Space, Tag, Tooltip, Badge, Select, Spin, Modal, DatePicker, Checkbox, message } from 'antd'
 import ConfirmDeleteButton from '@/components/common/ConfirmDeleteButton'
 import {
   SearchOutlined, DeleteOutlined, LinkOutlined, FileTextOutlined,
@@ -16,7 +16,7 @@ import CostCodeSelectionModal, { type CostCodeItem } from '@/components/common/C
 import type { Material } from '@/types'
 import type { POLineItem } from '@/types/po'
 import { useAppSelector } from '@/store'
-import { calcDisc } from '@/utils/poCalc'
+import { calcDisc, calcSpecialAllocs, type SpecialDiscount } from '@/utils/poCalc'
 import { formatItemLabel } from '@/utils/itemLabel'
 import { formatCostCodeDisplay } from '@/utils/costCode'
 import { missingCostRowProps } from '@/utils/validateCostCode'
@@ -307,6 +307,16 @@ interface POItemsTableProps {
   // Set by the parent after a failed submit: rows with no cost code are tinted
   // red. Never set for draft saves.
   highlightMissingCost?: boolean
+  // Special Discount (end-of-bill, step 2): shown under the table. onSpecialDiscChange omitted = read-only.
+  specialDisc?: SpecialDiscount
+  onSpecialDiscChange?: (sp: SpecialDiscount) => void
+  // ส่วนลดที่ 2 column (its own checkbox in the tax panel).
+  useDisc2?: boolean
+  // ส่วนลดที่ 3 column (its own checkbox in the tax panel).
+  useDisc3?: boolean
+  // VAT total typed by hand (null = calculated 7%). onVatManualChange omitted = read-only.
+  vatManual?: number | null
+  onVatManualChange?: (v: number | null) => void
 }
 
 const POItemsTable: React.FC<POItemsTableProps> = ({
@@ -318,6 +328,12 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
   jobTypeCode,
   ohOnly = false,
   highlightMissingCost = false,
+  specialDisc = { type: 'amt', value: 0, avg: false },
+  onSpecialDiscChange,
+  useDisc2 = false,
+  useDisc3 = false,
+  vatManual = null,
+  onVatManualChange,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
@@ -418,9 +434,23 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     onChange(renumber([...items, ...newRows]))
   }
 
+  // Line discount (round 1), ส่วนลด 2 (round 2, % of what round 1 left — mirrors erp-api po_calc.go) and
+  // this line's equal share of the Special Discount (ลดท้ายบิล).
+  const lineDiscOf = (r: POLineItem) =>
+    useDisc ? calcDisc(r.qty * r.unit_price, r.disc ?? 0, r.disc_type ?? discType) : 0
+  const disc2Only = (r: POLineItem) =>
+    useDisc2 && r.disc2 ? Math.round((r.qty * r.unit_price - lineDiscOf(r)) * r.disc2) / 100 : 0
+  const disc3Only = (r: POLineItem) =>
+    useDisc3 && r.disc3 ? Math.round((r.qty * r.unit_price - lineDiscOf(r) - disc2Only(r)) * r.disc3) / 100 : 0
+  // ส่วนลดที่ 2 + 3 in baht (each sequential, same as erp-api po_calc.go stepAmt).
+  const disc2Of = (r: POLineItem) => disc2Only(r) + disc3Only(r)
+  const spCalc = calcSpecialAllocs(items.map((r) => r.qty * r.unit_price - lineDiscOf(r) - disc2Of(r)), specialDisc)
+  const allocOf = (r: POLineItem) => spCalc.allocs[items.findIndex((i) => i.key === r.key)] ?? 0
+  const showAvgInLines = specialDisc.avg && spCalc.special > 0
+
   const taxColumns: any[] = []
 
-  if (useDisc) {
+  if (useDisc || showAvgInLines) {
     taxColumns.push({
       title: 'ส่วนลด',
       key: 'disc',
@@ -431,7 +461,15 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
       render: (_: unknown, r: POLineItem) => {
         // ใช้ disc_type ของ row นั้นๆ ถ้าไม่มีใช้ global discType
         const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
+        const alloc = showAvgInLines ? allocOf(r) : 0
+        const allocNote = alloc > 0 && (
+          <div style={{ fontSize: 11, color: '#7c3aed', textAlign: 'right' }}>
+            + Special {formatMoney(alloc)}
+          </div>
+        )
+        if (!useDisc) return allocNote || null
         return (
+          <>
           <Space.Compact style={{ width: '100%' }}>
             <InputNumber
               size="small"
@@ -461,8 +499,58 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
               }
             />
           </Space.Compact>
+          {allocNote}
+          </>
         )
       },
+    })
+  }
+
+  if (useDisc2) {
+    taxColumns.push({
+      title: 'ส่วนลดที่ 2',
+      key: 'disc2',
+      width: 110,
+      align: 'center' as const,
+      onHeaderCell: () => ({ style: { background: '#f0fdf4', color: '#166534' } }),
+      onCell: () => ({ style: { background: '#f0fdf4' } }),
+      render: (_: unknown, r: POLineItem) => (
+        <>
+          <InputNumber
+            size="small"
+            min={0}
+            max={100}
+            value={r.disc2 ?? 0}
+            addonAfter="%"
+            style={{ width: '100%' }}
+            onChange={(v) => updateItem(r.key, 'disc2', v ?? 0)}
+          />
+        </>
+      ),
+    })
+  }
+
+  if (useDisc3) {
+    taxColumns.push({
+      title: 'ส่วนลดที่ 3',
+      key: 'disc3',
+      width: 110,
+      align: 'center' as const,
+      onHeaderCell: () => ({ style: { background: '#f0fdf4', color: '#166534' } }),
+      onCell: () => ({ style: { background: '#f0fdf4' } }),
+      render: (_: unknown, r: POLineItem) => (
+        <>
+          <InputNumber
+            size="small"
+            min={0}
+            max={100}
+            value={r.disc3 ?? 0}
+            addonAfter="%"
+            style={{ width: '100%' }}
+            onChange={(v) => updateItem(r.key, 'disc3', v ?? 0)}
+          />
+        </>
+      ),
     })
   }
 
@@ -477,7 +565,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
-        const vat = (lineAmt - discAmt) * 0.07
+        const vat = (lineAmt - discAmt - disc2Of(r) - (showAvgInLines ? allocOf(r) : 0)) * 0.07
         return (
           <span style={{ color: '#ca8a04', fontSize: 12 }}>
             +{vat.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
@@ -520,7 +608,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
         const rate = (r.wht_rate ?? 3) / 100
-        const wht = (lineAmt - discAmt) * rate
+        const wht = (lineAmt - discAmt - disc2Of(r) - (showAvgInLines ? allocOf(r) : 0)) * rate
         return (
           <span style={{ color: '#dc2626', fontSize: 12 }}>
             -{wht.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
@@ -530,7 +618,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
     })
   }
 
-  if (useDisc || useVat || useWht) {
+  if (useDisc || useDisc2 || useDisc3 || useVat || useWht || spCalc.special > 0) {
     taxColumns.push({
       title: 'สุทธิ/แถว',
       key: 'net',
@@ -540,7 +628,7 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
         const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
         const lineAmt = r.qty * r.unit_price
         const discAmt = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
-        const afterDisc = lineAmt - discAmt
+        const afterDisc = lineAmt - discAmt - disc2Of(r) - (showAvgInLines ? allocOf(r) : 0)
         const vat = useVat ? afterDisc * 0.07 : 0
         const wht = useWht ? afterDisc * ((r.wht_rate ?? 3) / 100) : 0
         const net = afterDisc + vat - wht
@@ -803,19 +891,27 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
           expandedRowRender: renderDescription,
         }}
         summary={() => {
-          let subtotal = 0, totalDisc = 0, totalVat = 0, totalWht = 0
+          let subtotal = 0, totalDisc = 0, totalDisc2 = 0, totalDisc3 = 0, totalVat = 0, totalWht = 0
 
           items.forEach((r) => {
-            const rowDiscType: 'pct' | 'amt' = r.disc_type ?? discType
             const lineAmt = r.qty * r.unit_price
             subtotal += lineAmt
-            const d = useDisc ? calcDisc(lineAmt, r.disc ?? 0, rowDiscType) : 0
-            const af = lineAmt - d
+            const d = lineDiscOf(r)
+            const d2 = disc2Of(r)
+            const af = lineAmt - d - d2 - allocOf(r)
             totalDisc += d
+            totalDisc2 += disc2Only(r)
+            totalDisc3 += disc3Only(r)
             totalVat += useVat ? af * 0.07 : 0
             totalWht += useWht ? af * ((r.wht_rate ?? 3) / 100) : 0
           })
-          const net = subtotal - totalDisc + totalVat - totalWht
+          // Averaged: the special amount sits inside the line discounts; otherwise its own row.
+          if (showAvgInLines) totalDisc += spCalc.special
+          const specialRow = !specialDisc.avg ? spCalc.special : 0
+          // A hand-typed VAT replaces the calculated total (per-line VAT column stays calculated).
+          const calcVat = Math.round(totalVat * 100) / 100
+          const vatUsed = useVat && vatManual != null ? vatManual : totalVat
+          const net = subtotal - totalDisc - totalDisc2 - totalDisc3 - specialRow + vatUsed - totalWht
           const totalColSpan = baseColCount + 1 + taxColumns.length + 1
 
           return (
@@ -836,21 +932,109 @@ const POItemsTable: React.FC<POItemsTableProps> = ({
                       </span>
                     </div>
 
-                    {useDisc && (
+                    {(useDisc || showAvgInLines) && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด{showAvgInLines ? ' (รวม Special เฉลี่ย)' : ''}</span>
                         <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>
                           - ฿ {totalDisc.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
                     )}
 
-                    {useVat && (
+                    {totalDisc2 > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>VAT 7%</span>
-                        <span style={{ fontSize: 12, fontWeight: 500, color: '#ca8a04' }}>
-                          + ฿ {totalVat.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลดที่ 2</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>
+                          - ฿ {formatMoney(totalDisc2)}
                         </span>
+                      </div>
+                    )}
+                    {totalDisc3 > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 48 }}>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลดที่ 3</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>
+                          - ฿ {formatMoney(totalDisc3)}
+                        </span>
+                      </div>
+                    )}
+
+                    {(onSpecialDiscChange || spCalc.special > 0) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 12 }}>
+                        <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>Special Discount</span>
+                        {onSpecialDiscChange ? (
+                          <Space size={8} align="center">
+                            <Space.Compact>
+                              <InputNumber
+                                size="small"
+                                min={0}
+                                max={specialDisc.type === 'pct' ? 100 : undefined}
+                                precision={2}
+                                placeholder="0.00"
+                                value={specialDisc.value || null}
+                                style={{ width: 110 }}
+                                onChange={(v) => onSpecialDiscChange({ ...specialDisc, value: Number(v ?? 0) })}
+                              />
+                              <Select
+                                size="small"
+                                value={specialDisc.type}
+                                style={{ width: 56 }}
+                                options={[{ label: '%', value: 'pct' }, { label: '฿', value: 'amt' }]}
+                                onChange={(v) => onSpecialDiscChange({ ...specialDisc, type: v, value: 0 })}
+                              />
+                            </Space.Compact>
+                            <Checkbox
+                              checked={specialDisc.avg}
+                              onChange={(e) => onSpecialDiscChange({ ...specialDisc, avg: e.target.checked })}
+                            >
+                              <span style={{ fontSize: 12 }}>Average</span>
+                            </Checkbox>
+                          </Space>
+                        ) : (
+                          <span style={{ fontSize: 12 }}>{specialDisc.avg ? 'เฉลี่ยลงทุกรายการ' : ''}</span>
+                        )}
+                        <span style={{ fontSize: 12, fontWeight: 500, color: '#7c3aed', whiteSpace: 'nowrap' }}>
+                          {specialRow > 0 ? '- ฿ ' + formatMoney(specialRow) : spCalc.special > 0 ? '(' + formatMoney(spCalc.special) + ')' : ''}
+                        </span>
+                      </div>
+                    )}
+                    {spCalc.error && (
+                      <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'right', width: '100%' }}>{spCalc.error}</div>
+                    )}
+
+                    {useVat && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 12 }}>
+                        <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>VAT 7%</span>
+                        {onVatManualChange ? (
+                          <Space size={6} align="center">
+                            {vatManual != null && Math.abs(vatManual - calcVat) >= 0.005 && (
+                              <Tooltip title="ใช้ยอดที่คำนวณอัตโนมัติ">
+                                <Button type="link" size="small" style={{ fontSize: 11, padding: 0 }} onClick={() => onVatManualChange(null)}>
+                                  (คำนวณ ฿ {formatMoney(calcVat)})
+                                </Button>
+                              </Tooltip>
+                            )}
+                            <InputNumber
+                              size="small"
+                              min={0}
+                              precision={2}
+                              placeholder="0.00"
+                              value={vatManual ?? calcVat}
+                              style={{ width: 130, color: '#ca8a04' }}
+                              formatter={(v) => (v == null || `${v}` === '' ? '' : `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ','))}
+                              parser={(v) => (v ?? '').replace(/,/g, '') as unknown as number}
+                              onChange={(v) => {
+                                if (v == null) return onVatManualChange(null)
+                                const n = Math.round(Number(v) * 100) / 100
+                                // typing back the calculated amount = automatic again
+                                onVatManualChange(Math.abs(n - calcVat) < 0.005 ? null : n)
+                              }}
+                            />
+                          </Space>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 500, color: '#ca8a04' }}>
+                            + ฿ {formatMoney(vatUsed)}
+                          </span>
+                        )}
                       </div>
                     )}
 

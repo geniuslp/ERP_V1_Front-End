@@ -94,7 +94,7 @@ interface MemoDetail {
   // GET /memo/:id's requester_signature/approval_signature — both null unless
   // the memo is past DRAFT (requester) / actually APPROVED (approver).
   requesterSignature: { fullName: string; signatureDataUrl: string } | null
-  approvalSignature: { fullName: string; signatureDataUrl: string; approvedAt: string | null } | null
+  approvalSignature: { fullName: string; signatureDataUrl: string; approvedAt: string | null; username?: string } | null
   lines: MemoLineItem[]
   attachments?: MemoAttachmentFile[]
 }
@@ -178,6 +178,7 @@ const mapMemo = (raw: any): MemoDetail => {
       fullName:         raw.approval_signature.full_name ?? '',
       signatureDataUrl: raw.approval_signature.signature_data_url ?? '',
       approvedAt:       raw.approval_signature.approved_at ?? null,
+      username:         raw.approval_signature.username ?? '',
     } : null,
     lines,
     attachments:   raw.attachments,
@@ -350,7 +351,8 @@ const MemoDetailPage: React.FC<MemoDetailPageProps> = ({ showApproveActions = fa
       siteDeliveryDate: memo.siteDeliveryDate ? dayjs(memo.siteDeliveryDate).format('DD/MM/YYYY') : '',
       deliveryLocation: memo.deliveryLocation ?? '',
       createdAt: memo.createdAt ? dayjs(memo.createdAt).format('DD/MM/YYYY') : '',
-      approverName: memo.approverName ?? '',
+      // Approval by user ID: the approver box shows the approver's username, only once the memo is approved.
+      approverName: memo.approvalSignature?.username || (memo.approvalSignature ? memo.approverName ?? '' : ''),
       requesterSignature: memo.requesterSignature,
       approvalSignature: memo.approvalSignature ? {
         ...memo.approvalSignature,

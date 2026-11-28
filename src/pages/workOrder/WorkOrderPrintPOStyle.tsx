@@ -5,7 +5,7 @@ import logo from '../../components/asset/Genius Logo-01.jpg'
 import { calcDisc, type DiscType } from '@/utils/poCalc'
 import { thaiBahtText } from '@/utils/thaiBahtText'
 import { formatPoNoWithRevision } from '@/utils/poNo'
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import dayjs from 'dayjs'
 import type { WOApprovalSignature } from '@/types/workOrder'
 
@@ -165,7 +165,7 @@ const CSS = `
   }
   .wo-po-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .po-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .po-box-first{border-bottom:1px solid #000;}
   .po-box{border:1px solid #000;border-top:none;}
@@ -359,12 +359,11 @@ const POFooter = ({data}:{data:WOPOData}) => {
             const creator = i === 0 ? data.createdByUsername?.trim() : ''
             return (
               <div key={i} className="auth-col">
-                <div className="auth-head" style={creator && !sig?.signature_data_url && !sig?.full_name ? {position:'relative'} : undefined}>
-                  {sig?.signature_data_url
-                    ? <img src={sig.signature_data_url} alt={col.label} style={{maxHeight:75,maxWidth:'90%',height:'auto',width:'auto',objectFit:'contain',display:'block',margin:'0 auto 8px'}} />
-                    : sig?.full_name
-                      ? <div style={{textAlign:'center',fontSize:`${signerNameFontPt(sig.full_name,48)}pt`}}>{sig.full_name}</div>
-                      : creator && <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',lineHeight:1,fontSize:`${signerNameFontPt(creator,48)}pt`}}>{creator}</div>}
+                {/* Approval by user ID: creator / approver usernames, centred in the box; never a signature image. */}
+                <div className="auth-head" style={{position:'relative'}}>
+                  <div style={{position:'absolute',top:0,right:0,bottom:0,left:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <SignerId name={sig ? sig.username || sig.full_name : creator} boxMm={48} />
+                  </div>
                 </div>
                 <div className="auth-body">
                   <div style={{fontWeight:600}}>{col.label}</div>

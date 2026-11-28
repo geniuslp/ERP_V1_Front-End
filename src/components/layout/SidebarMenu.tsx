@@ -8,7 +8,7 @@ import {
   CalendarOutlined, QrcodeOutlined, CheckOutlined, UserOutlined,
   InboxOutlined, RetweetOutlined, FundOutlined, FileProtectOutlined,
   DollarOutlined, CalculatorOutlined, RollbackOutlined, ContainerOutlined,
-  PlayCircleOutlined, UploadOutlined, VideoCameraOutlined,
+  PlayCircleOutlined, UploadOutlined, VideoCameraOutlined, BugOutlined,
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { usePermissionContext } from '@/contexts/PermissionContext'
@@ -117,6 +117,8 @@ const subIconMap: Record<string, React.ReactNode> = {
   MENU_IC_PROJECT: <SearchOutlined />,
   MENU_HOWTO_VIDEOS: <PlayCircleOutlined />,
   MENU_HOWTO_UPLOAD: <UploadOutlined />,
+  MENU_ERP_ISSUE: <BugOutlined />,
+  MENU_ERP_ISSUE_ADMIN: <BugOutlined />,
   MENU_IC_PO_RECEIVE: <InboxOutlined />,
   MENU_IC_PO_RETURN: <RollbackOutlined />,
   // คลัง (Stock) — child of MENU_IC in the DB (menu_path /master/stock). Its menu_code is not

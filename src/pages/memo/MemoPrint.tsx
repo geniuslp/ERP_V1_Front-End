@@ -1,4 +1,4 @@
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import { paginateRows } from '@/utils/printPagination'
 import FormattedNote from '@/components/common/FormattedNote'
 import React, { useEffect, useRef, useState } from 'react'
@@ -106,7 +106,7 @@ const CSS = `
   }
   .memo-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .memo-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .memo-box-first{border-bottom:1px solid #000;}
   .memo-box{border:1px solid #000;border-top:none;}
@@ -141,18 +141,6 @@ const AUTH_COLS: { label: string; width: string; key: 'requestedBy' | 'approverN
   { label: 'ผู้ขอ / Requester', width: '9cm', key: 'requestedBy', sigKey: 'requesterSignature' },
   { label: 'ผู้อนุมัติ / Approver', width: '9cm', key: 'approverName', sigKey: 'approvalSignature' },
 ]
-
-// Signature image, sized to fit inside the existing empty auth-head slot
-// (flex:1, above the label/name) without growing the box — max-height keeps
-// it from ever exceeding that slot's available space in the fixed 28mm
-// footer, so the page layout/pagination never shifts.
-const SignatureImg = ({ src, alt }: { src: string; alt: string }) => (
-  <img
-    src={src}
-    alt={alt}
-    style={{ maxHeight: 75, maxWidth: '90%', height: 'auto', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }}
-  />
-)
 
 const FillerTr = () => (
   <tr style={{ height: '100%' }}>
@@ -251,9 +239,8 @@ const MemoFooter = ({ data }: { data: MemoData }) => (
           return (
             <div key={i} className="auth-col" style={{ width: col.width }}>
               <div className="auth-head">
-                {sig?.signatureDataUrl
-                  ? <SignatureImg src={sig.signatureDataUrl} alt={col.label} />
-                  : <div style={{ textAlign: 'center', fontSize: `${signerNameFontPt(data[col.key], 90)}pt` }}>{data[col.key]}</div>}
+                {/* Approval by user ID: the username, never a signature image. */}
+                <SignerId name={data[col.key]} boxMm={90} />
               </div>
               <div className="auth-body">
                 <div style={{ fontWeight: 600 }}>{col.label}</div>

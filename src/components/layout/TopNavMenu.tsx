@@ -57,7 +57,7 @@ const CSS = `
 .tn-child[class*="tn-c-"] { color: var(--tn-c); box-shadow: inset 3px 0 0 var(--tn-c); }
 .tn-child[class*="tn-c-"]:hover, .tn-child[class*="tn-c-"].tn-child-active { background: var(--tn-c-bg); color: var(--tn-c); }
 .tn-fly-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box; border: 0;
-  background: transparent; font: inherit; text-align: left; }
+  background: transparent; font: inherit; font-size: 14px; text-align: left; }
 .tn-fly-row[aria-expanded="true"] { background: #eff6ff; }
 .tn-fly-row .tn-chev { font-size: 10px; }
 .tn-child:hover { background: #eff6ff; }

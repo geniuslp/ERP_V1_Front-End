@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useProjectOptions } from '@/hooks/useProjectOptions'
 import { storageKey } from '@/config/env'
 import {
-  Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip,
+  Card, Form, Select, DatePicker, Button, Space, message, Row, Col, Input, Modal, Alert, Tooltip, Popconfirm,
 } from 'antd'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { Memo } from '@/types'
 import {
   SaveOutlined, SendOutlined, UploadOutlined, CloseCircleFilled, FileOutlined,
-  PrinterOutlined, ArrowLeftOutlined, PaperClipOutlined,
+  PrinterOutlined, ArrowLeftOutlined, PaperClipOutlined, DeleteOutlined,
 } from '@ant-design/icons'
 import PageHeader from '@/components/common/PageHeader'
 import PermissionButton from '@/components/common/PermissionButton'
@@ -20,6 +20,7 @@ import { useAppSelector } from '@/store'
 import PurchaseOrderPrint, { type POData } from './PurchaseOrderPrint'
 import { poApprovalService } from '@/services/poApprovalService'
 import { getAvailablePRs } from '@/services/poService'
+import type { SpecialDiscount } from '@/utils/poCalc'
 import POItemsTable from '@/components/common/POItemsTable'
 import PRSidebarPanel from '@/pages/po/components/PRSidebarPanel'
 import { resolveFileUrl } from '@/utils/fileUrl'
@@ -114,6 +115,10 @@ const LOCKED_STATUSES = REASON_REQUIRED_STATUSES
 
 const POCreatePage: React.FC = () => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const currentUser = useAppSelector((s) => s.auth.user)
+  // Requester shown in the locked ผู้ขอซื้อ field when it is not in the role-filtered users list
+  // (the saved PO's requester, or the linked PR's requester).
+  const [extraRequester, setExtraRequester] = useState<{ value: number; label: string } | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -239,7 +244,14 @@ const POCreatePage: React.FC = () => {
   const [useDisc, setUseDisc] = useState(false)
   const [discType, setDiscType] = useState<'pct' | 'amt'>('pct')
   const [useVat, setUseVat] = useState(true)
+  // VAT typed by hand (null = calculated 7%) — fixes satang rounding against the supplier's invoice
+  const [vatManual, setVatManual] = useState<number | null>(null)
   const [useWht, setUseWht] = useState(false)
+  // ส่วนลดที่ 2 checkbox — not stored on its own: on load it is on when any line has a discount2.
+  const [useDisc2, setUseDisc2] = useState(false)
+  const [useDisc3, setUseDisc3] = useState(false)
+  // Special Discount (end-of-bill, step 2 of the stepped discount) — see utils/poCalc.ts calcSpecialAllocs.
+  const [specialDisc, setSpecialDisc] = useState<SpecialDiscount>({ type: 'amt', value: 0, avg: false })
 
   // Each row now carries its own explicit disc_type (set on load and on
   // add-row), so the header toggle only changes the default applied to
@@ -436,6 +448,9 @@ const POCreatePage: React.FC = () => {
         setCanEdit(!LOCKED_STATUSES.includes(statusUpper) || isApprovedEditFlow)
         setSavedPoId(raw.po_id ?? id)
 
+        if (raw.requested_by != null && !Number.isNaN(Number(raw.requested_by))) {
+          setExtraRequester({ value: Number(raw.requested_by), label: raw.requested_by_name || String(raw.requested_by) })
+        }
         form.setFieldsValue({
           poNumber: raw.po_no,
           supplier_code: raw.supplier_id,
@@ -522,7 +537,15 @@ const POCreatePage: React.FC = () => {
         setUseDisc(Boolean(raw.use_discount))
         setDiscType(raw.discount_type === 'amt' ? 'amt' : 'pct')
         setUseVat(Boolean(raw.use_vat))
+        setVatManual(raw.vat_amount_manual != null ? Number(raw.vat_amount_manual) : null)
         setUseWht(Boolean(raw.use_wht))
+        setUseDisc2((raw.lines ?? []).some((l: any) => Number(l.discount2 ?? 0) > 0))
+        setUseDisc3((raw.lines ?? []).some((l: any) => Number(l.discount3 ?? 0) > 0))
+        setSpecialDisc({
+          type: raw.special_discount_type === 'pct' ? 'pct' : 'amt',
+          value: Number(raw.special_discount_value ?? 0),
+          avg: Boolean(raw.special_discount_avg),
+        })
 
         const lines = raw.lines ?? []
         setItems(
@@ -540,6 +563,8 @@ const POCreatePage: React.FC = () => {
             is_from_pr: l.pr_line_id != null,
             description: l.description ?? l.remarks ?? undefined,
             disc: l.discount ?? undefined,
+            disc2: l.discount2 ? Number(l.discount2) : undefined,
+            disc3: l.discount3 ? Number(l.discount3) : undefined,
             // Fall back to the header's global type only for legacy rows saved
             // before per-line disc_type existed — never overwrite a row that
             // already has its own explicit type.
@@ -624,6 +649,7 @@ const POCreatePage: React.FC = () => {
         // the numeric FK is `requester_id` — Number()'ing the name string is what
         // produced "NaN" in the ผู้ขอซื้อ field.
         const requestedById = raw.requester_id != null ? Number(raw.requester_id) : null
+        if (requestedById != null) setExtraRequester({ value: requestedById, label: String(raw.requested_by ?? requestedById) })
         // `?? null`, not `?? undefined` — Ant Design's setFieldsValue silently
         // ignores an undefined value (treated as "leave unchanged"), so a
         // missing field on the new PR would leave the OLD PR's value on
@@ -689,6 +715,15 @@ const POCreatePage: React.FC = () => {
     if (!prAutoFill || users.length === 0) return
     form.setFieldValue('requestedBy', prAutoFill.requestedBy)
   }, [users, prAutoFill])
+
+  // ผู้ขอซื้อ is locked: a new PO without a linked PR takes the logged-in user (a PR-linked PO shows
+  // the PR's requester via the auto-fill above; an existing PO keeps its saved requester).
+  useEffect(() => {
+    if (!isEdit && !selectedPrId && currentUser?.id) {
+      form.setFieldValue('requestedBy', Number(currentUser.id))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, selectedPrId, currentUser])
 
   useEffect(() => {
     if (!prAutoFill || approvers.length === 0) return
@@ -993,7 +1028,11 @@ const POCreatePage: React.FC = () => {
           use_discount: useDisc,
           discount_type: discType,
           use_vat: useVat,
+          vat_amount_manual: useVat ? vatManual : null,
           use_wht: useWht,
+          special_discount_type: specialDisc.type,
+          special_discount_value: specialDisc.value || 0,
+          special_discount_avg: specialDisc.avg,
 
           // ── Lines ──
           lines: items.map((item, i) => ({
@@ -1003,6 +1042,8 @@ const POCreatePage: React.FC = () => {
             qty_ordered: item.qty,
             unit_price: item.unit_price,
             discount: item.disc ?? 0,
+            discount2: useDisc2 ? item.disc2 ?? 0 : 0,
+            discount3: useDisc3 ? item.disc3 ?? 0 : 0,
             disc_type: item.disc_type ?? discType,
             wht_rate: useWht ? (item.wht_rate ?? 3) : null,
             description: item.description ?? undefined,
@@ -1192,6 +1233,21 @@ const POCreatePage: React.FC = () => {
       )
     } finally {
       setPrinting(false)
+    }
+  }
+
+  // Delete one of THIS PO's own saved files right away (DELETE /po/:id/attachments/:attach_id, same immediate
+  // behaviour as the WO / Petty Cash attachment lists). Files that came from the linked PR / Memo are read-only.
+  const handleDeleteSavedPoAttachment = async (a: SavedAttachment) => {
+    if (!id) return
+    try {
+      await axios.delete(`${BASE_URL}/po/${id}/attachments/${a.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      setSavedAttachments((prev) => ({ ...prev, po: prev.po.filter((x) => x.id !== a.id) }))
+      message.success('ลบไฟล์แนบเรียบร้อย')
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || err?.response?.data?.error || err?.message || 'ลบไฟล์แนบไม่สำเร็จ')
     }
   }
 
@@ -1406,6 +1462,7 @@ const POCreatePage: React.FC = () => {
                         rules={[{ required: true, message: 'กรุณาเลือกผู้ขอซื้อ' }]}
                       >
                         <Select
+                          disabled
                           placeholder="- เลือกรายการ -"
                           loading={usersLoading || prDetailLoading}
                           showSearch
@@ -1422,7 +1479,17 @@ const POCreatePage: React.FC = () => {
                               )}
                             </div>
                           )}
-                          options={users}
+                          options={[
+                            ...users,
+                            ...[
+                              extraRequester,
+                              !isEdit && currentUser?.id
+                                ? { value: Number(currentUser.id), label: formatApproverOption(currentUser.username, currentUser.id) }
+                                : null,
+                            ]
+                              .filter((o): o is { value: number; label: string } => !!o && !users.some((u) => u.value === o.value))
+                              .map((o) => ({ ...o, username: undefined as string | undefined, name: undefined as string | undefined, dept: undefined as string | undefined })),
+                          ]}
                         />
                       </Form.Item>
                     </Col>
@@ -1660,6 +1727,12 @@ const POCreatePage: React.FC = () => {
                   jobTypeCode={jobTypeCode}
                   ohOnly={isOh}
                   highlightMissingCost={highlightMissingCost}
+                  specialDisc={specialDisc}
+                  onSpecialDiscChange={setSpecialDisc}
+                  vatManual={vatManual}
+                  onVatManualChange={setVatManual}
+                  useDisc2={useDisc2}
+                  useDisc3={useDisc3}
                 />
               </div>
               <TaxSidebarPanel
@@ -1667,6 +1740,10 @@ const POCreatePage: React.FC = () => {
                 onClose={() => setTaxOpen(false)}
                 useDisc={useDisc}
                 onUseDiscChange={setUseDisc}
+                useDisc2={useDisc2}
+                onUseDisc2Change={setUseDisc2}
+                useDisc3={useDisc3}
+                onUseDisc3Change={setUseDisc3}
                 discType={discType}
                 onDiscTypeChange={handleDiscTypeChange}
                 useVat={useVat}
@@ -1742,6 +1819,16 @@ const POCreatePage: React.FC = () => {
                               </a>
                               <span style={{ fontSize: 12, color: '#9ca3af' }}>{formatSize(a.fileSize)}</span>
                             </Space>
+                            {key === 'po' && isEdit && (
+                              <Popconfirm
+                                title="ลบไฟล์นี้?"
+                                okText="ลบ"
+                                cancelText="ยกเลิก"
+                                onConfirm={() => handleDeleteSavedPoAttachment(a)}
+                              >
+                                <Button type="text" danger size="small" icon={<DeleteOutlined />} style={{ marginLeft: 'auto' }} />
+                              </Popconfirm>
+                            )}
                           </div>
                         ))}
                       </Space>

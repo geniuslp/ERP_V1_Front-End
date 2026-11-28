@@ -7,11 +7,42 @@ import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '@/store'
 import type { PRListItem, PRLineWithPOStatus, PRPriceHistoryEntry } from '@/types/pr'
 import { ORDER_TYPE_LABEL } from '@/constants/orderTypes'
+import { formatCostCodeDisplay } from '@/utils/costCode'
+import { Resizable, type ResizeCallbackData } from 'react-resizable'
+import 'react-resizable/css/styles.css'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080/api/v1'
 
 const LIST_WIDTH = 340
-const DETAIL_WIDTH = 'min(1300px, 92vw)'
+const DETAIL_WIDTH = 'min(1700px, 98vw)'
+
+// Same react-resizable header-cell pattern as PRHistoryPage.tsx (no shared component exists in this codebase).
+interface ResizableTitleProps extends React.HTMLAttributes<HTMLElement> {
+  onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void
+  width?: number
+}
+const ResizableTitle: React.FC<ResizableTitleProps> = (props) => {
+  const { onResize, width, ...restProps } = props
+  if (!width || !onResize) return <th {...restProps} />
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[60, 0]}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', right: -5, bottom: 0, top: 0, width: 10, cursor: 'col-resize', zIndex: 1 }}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  )
+}
 
 interface PRSidebarPanelProps {
   open: boolean
@@ -92,6 +123,27 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [openHistoryId, setOpenHistoryId] = useState<number | null>(null)
   const [selectedPrices, setSelectedPrices] = useState<Record<number, number>>({})
+
+  // Detail view width: the user can drag the panel's left edge to widen/narrow it (null = default width).
+  const [colWidths, setColWidths] = useState<Record<string, number>>({})
+  const [detailW, setDetailW] = useState<number | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const detailWidth = detailW != null ? `${detailW}px` : DETAIL_WIDTH
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setDragging(true)
+    const onMove = (ev: MouseEvent) => {
+      const w = window.innerWidth - ev.clientX
+      setDetailW(Math.max(700, Math.min(window.innerWidth, w)))
+    }
+    const onUp = () => {
+      setDragging(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   // Always reopen to the list view (same as MemoSidebarPanel's list→detail
   // flow starting fresh each time the panel opens).
@@ -243,7 +295,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
     )
   }
 
-  const columns = [
+  const baseColumns = [
     {
       title: '',
       key: 'select',
@@ -269,19 +321,50 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       },
     },
     {
-      title: 'No.',
+      title: 'Item',
       dataIndex: 'line_no',
       width: 50,
       align: 'center' as const,
     },
     {
+      title: 'รหัสต้นทุน',
+      key: 'cost_code',
+      width: 120,
+      render: (_: unknown, r: PRLineWithPOStatus) =>
+        r.cost_code ? (
+          <Tooltip title={r.cost_subgroup_name ?? ''}>
+            <span style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+              {formatCostCodeDisplay(r.cost_code)}
+            </span>
+          </Tooltip>
+        ) : (
+          <span style={{ color: '#9ca3af', fontSize: 12 }}>-</span>
+        ),
+    },
+    {
       title: 'รหัสวัสดุ',
       dataIndex: 'mat_code',
-      width: 140,
+      width: 190,
+      render: (v: string) => <span style={{ whiteSpace: 'nowrap' }}>{v}</span>,
     },
     {
       title: 'รายละเอียด',
       dataIndex: 'mat_name',
+      width: 460,
+      render: (_: unknown, r: PRLineWithPOStatus) => {
+        const text = `${r.mat_name ?? ''}${r.spec_name ? ' ' + r.spec_name : ''}`
+        return (
+          <span title={text} style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {text}
+          </span>
+        )
+      },
+    },
+    {
+      title: 'จำนวน',
+      dataIndex: 'qty_requested',
+      width: 90,
+      align: 'center' as const,
     },
     {
       title: 'หน่วย',
@@ -290,28 +373,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       align: 'center' as const,
     },
     {
-      title: 'Cost Code',
-      key: 'cost_code',
-      width: 130,
-      render: (_: unknown, r: PRLineWithPOStatus) =>
-        r.job_code ? (
-          <Tooltip title={r.cost_subgroup_name ?? ''}>
-            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-              {r.job_code}{r.job_name ? ` — ${r.job_name}` : ''}
-            </span>
-          </Tooltip>
-        ) : (
-          <span style={{ color: '#9ca3af', fontSize: 12 }}>-</span>
-        ),
-    },
-    {
-      title: 'จำนวนที่ขอ',
-      dataIndex: 'qty_requested',
-      width: 90,
-      align: 'center' as const,
-    },
-    {
-      title: 'คงเหลือสั่งได้',
+      title: 'คงเหลือ',
       dataIndex: 'qty_remaining',
       width: 140,
       align: 'center' as const,
@@ -392,7 +454,7 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       },
     },
     {
-      title: 'PO ที่อ้างอิง',
+      title: 'PO Ref.',
       dataIndex: 'referenced_pos',
       width: 200,
       render: (_: unknown, r: PRLineWithPOStatus) => {
@@ -413,8 +475,21 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                   </Tag>
                 ))}
               </Space>
-            ) : (
+            ) : !r.price_history?.[0]?.po_no ? (
               <span style={{ fontSize: 13 }}>-</span>
+            ) : null}
+            {r.price_history?.[0]?.po_no && (
+              <Tooltip title="PO ล่าสุดที่ซื้อวัสดุนี้">
+                <a
+                  style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => {
+                    const id = r.price_history?.[0]?.po_id
+                    if (id) navigate(`/po/approval/${id}`)
+                  }}
+                >
+                  ล่าสุด: {r.price_history[0].po_no}
+                </a>
+              </Tooltip>
             )}
             {state === 'partial' && (
               <Tag color="orange" style={{ margin: 0 }}>สั่งบางส่วน</Tag>
@@ -424,6 +499,23 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
       },
     },
   ]
+
+  // Every column except the checkbox one is drag-resizable; widths live in colWidths (falls back to the default above).
+  const columns = (baseColumns as any[]).map((c) => {
+    const k = String(c.key ?? c.dataIndex)
+    if (k === 'select') return c
+    const w: number = colWidths[k] ?? c.width ?? 120
+    return {
+      ...c,
+      width: w,
+      onHeaderCell: () => ({
+        width: w,
+        onResize: (_e: React.SyntheticEvent, d: ResizeCallbackData) =>
+          setColWidths((prev) => ({ ...prev, [k]: Math.max(60, d.size.width) })),
+      }),
+    }
+  })
+  const tableScrollX = columns.reduce((sum, c) => sum + (c.width as number), 0)
 
   return (
     <>
@@ -439,16 +531,24 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
           top: 0,
           right: 0,
           height: '100vh',
-          width: open ? (view === 'detail' ? DETAIL_WIDTH : LIST_WIDTH) : 0,
-          minWidth: open ? (view === 'detail' ? DETAIL_WIDTH : LIST_WIDTH) : 0,
+          width: open ? (view === 'detail' ? detailWidth : LIST_WIDTH) : 0,
+          minWidth: open ? (view === 'detail' ? detailWidth : LIST_WIDTH) : 0,
           overflow: 'hidden',
           background: '#ffffff',
           zIndex: 1000,
           boxShadow: open ? '-4px 0 20px rgba(15,45,94,0.15)' : 'none',
-          transition: 'width .25s cubic-bezier(.4,0,.2,1), min-width .25s cubic-bezier(.4,0,.2,1)',
+          transition: dragging ? 'none' : 'width .25s cubic-bezier(.4,0,.2,1), min-width .25s cubic-bezier(.4,0,.2,1)',
+          userSelect: dragging ? 'none' : undefined,
         }}
       >
-        <div style={{ width: view === 'detail' ? DETAIL_WIDTH : LIST_WIDTH, height: '100%', position: 'relative' }}>
+        {open && view === 'detail' && (
+          <div
+            onMouseDown={startResize}
+            title="ลากเพื่อปรับขนาด"
+            style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 8, cursor: 'ew-resize', zIndex: 5 }}
+          />
+        )}
+        <div style={{ width: view === 'detail' ? detailWidth : LIST_WIDTH, height: '100%', position: 'relative' }}>
 
           {/* ── LIST VIEW ── */}
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -564,7 +664,8 @@ const PRSidebarPanel: React.FC<PRSidebarPanelProps> = ({
                 columns={columns}
                 pagination={false}
                 size="small"
-                scroll={{ x: 1200, y: 480 }}
+                components={{ header: { cell: ResizableTitle } }}
+                scroll={{ x: tableScrollX, y: 480 }}
                 onRow={(record) => ({ style: { backgroundColor: rowBg[getRowState(record)] } })}
                 locale={{ emptyText: <Empty description="ไม่มีรายการคงเหลือให้ดึง" /> }}
               />

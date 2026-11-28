@@ -1,4 +1,4 @@
-import { signerNameFontPt } from '@/utils/signerName'
+import SignerId from '@/components/print/SignerId'
 import FormattedNote from '@/components/common/FormattedNote'
 import { paginateRows } from '@/utils/printPagination'
 import React, { useEffect, useRef, useState } from 'react'
@@ -69,6 +69,8 @@ export interface PRData {
   // Who opened the PR: the username (e.g. Weerayooth.k), printed under "ผู้ขอซื้อ / Requester" even when there is
   // no signature image (DRAFT, or the requester never uploaded one). Falls back to the signature's full name.
   requesterName?: string
+  // Approver's username, printed in the "Authorized Signature" box (approval by user ID). Absent until approved.
+  approverName?: string
   items: PRItem[]
 }
 
@@ -135,7 +137,7 @@ const CSS = `
   }
   .pr-page{width:210mm;height:297mm;padding:6mm 8mm 12mm 8mm;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;position:relative;}
   .pr-watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-38deg);
-    font-size:130pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
+    font-size:205pt;font-weight:800;letter-spacing:10px;color:#000;opacity:0.12;
     white-space:nowrap;pointer-events:none;user-select:none;z-index:0;font-family:'Cordia New','Sarabun',sans-serif;}
   .pr-box-first{border-bottom:1px solid #000;}
   .pr-box{border:1px solid #000;border-top:none;}
@@ -297,12 +299,8 @@ const PRFooter = ({ data }: { data: PRData }) => (
       <div className="pr-box" style={{ display: 'flex', flex: 1 }}>
         <div className="auth-col" style={{ width: AUTH_COL_WIDTH }}>
           <div className="auth-head">
-            {/* Signature image when there is one; otherwise the creator's name (smaller type) in the same upper box. */}
-            {data.requesterSignature?.signatureDataUrl ? (
-              <SignatureImg src={data.requesterSignature.signatureDataUrl} alt="ผู้ขอซื้อ" />
-            ) : (data.requesterName || data.requesterSignature?.fullName) && (
-              <div style={{ textAlign: 'center', fontSize: `${signerNameFontPt(data.requesterName || data.requesterSignature?.fullName, 48.5)}pt` }}>{data.requesterName || data.requesterSignature?.fullName}</div>
-            )}
+            {/* Approval by user ID: the requester's username, never a signature image. */}
+            <SignerId name={data.requesterName || data.requesterSignature?.fullName} boxMm={48.5} />
           </div>
           <div className="auth-body">
             <div style={{ fontWeight: 600 }}>ผู้ขอซื้อ / Requester</div>
@@ -311,7 +309,9 @@ const PRFooter = ({ data }: { data: PRData }) => (
         </div>
         {AUTH_COLS.map((col, i) => (
           <div key={i} className="auth-col" style={{ width: col.width }}>
-            <div className="auth-head" />
+            <div className="auth-head">
+              {col.label === 'Authorized Signature' && <SignerId name={data.approverName} boxMm={48.5} />}
+            </div>
             <div className="auth-body">
               <div style={{ fontWeight: 600 }}>{col.label}</div>
             </div>

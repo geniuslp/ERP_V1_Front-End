@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { Card, Table, Input, Select, DatePicker, Button, Space, Tooltip, Popconfirm, message } from 'antd'
 import {
   SearchOutlined, ReloadOutlined, EyeOutlined,
-  EditOutlined, FileAddOutlined, DeleteOutlined,
+  EditOutlined, FileAddOutlined, DeleteOutlined, FlagFilled, FlagOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
@@ -45,6 +45,8 @@ const getRowClassName = (record: Memo): string => {
 const MEMO_NO_COLUMN_DEFAULT_WIDTH = 180
 const PROJECT_COLUMN_DEFAULT_WIDTH = 240
 const JOB_COLUMN_DEFAULT_WIDTH = 100
+const FLAG_COLUMN_DEFAULT_WIDTH = 80
+const REMARK_COLUMN_DEFAULT_WIDTH = 220
 const REQUESTED_BY_COLUMN_DEFAULT_WIDTH = 140
 const APPROVER_COLUMN_DEFAULT_WIDTH = 140
 const APPROVED_AT_COLUMN_DEFAULT_WIDTH = 150
@@ -96,9 +98,13 @@ const mapMemo = (m: any): Memo => ({
   ...m,
   id:           String(m.id),
   memoNo:       m.memo_no         ?? m.memoNo        ?? '',
-  requestedBy:  m.requested_by_name ?? m.requestedBy ?? '',
+  // The list shows user IDs (username), not full names.
+  // Edit By = last editor via the edit form; empty (shown as "-") when the memo was never edited.
+  requestedBy:  m.edited_by_username ?? '',
   requestedById: m.requested_by ?? m.requestedById ?? null,
-  approverName: m.approver_name     ?? m.approverName ?? undefined,
+  approverName: m.approver_username ?? m.approverName ?? undefined,
+  isFlagged:    !!(m.is_flagged ?? m.isFlagged),
+  note:         m.note            ?? undefined,
   projectCode:  m.project_code    ?? m.projectCode    ?? undefined,
   projectName:  m.project_name    ?? m.projectName    ?? undefined,
   jobCode:      m.job_code        ?? m.jobCode        ?? null,
@@ -118,6 +124,7 @@ const MemoListPage: React.FC = () => {
   const canManage = (m: Memo) => isAdmin || (authUser != null && String((m as any).requestedById ?? '') === String(authUser.id))
   const [data, setData] = useState<Memo[]>([])
   const [loading, setLoading] = useState(false)
+  const [flaggedOnly, setFlaggedOnly] = useState(false) // header flag icon toggles: red = only flagged memos
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<MemoStatus | undefined>(undefined)
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
@@ -127,6 +134,14 @@ const MemoListPage: React.FC = () => {
   const [memoNoColWidth, setMemoNoColWidth] = useState(MEMO_NO_COLUMN_DEFAULT_WIDTH)
   const [projectColWidth, setProjectColWidth] = useState(PROJECT_COLUMN_DEFAULT_WIDTH)
   const [jobColWidth, setJobColWidth] = useState(JOB_COLUMN_DEFAULT_WIDTH)
+  const [flagColWidth, setFlagColWidth] = useState(FLAG_COLUMN_DEFAULT_WIDTH)
+  const [remarkColWidth, setRemarkColWidth] = useState(REMARK_COLUMN_DEFAULT_WIDTH)
+  const handleFlagColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setFlagColWidth(data.size.width)
+  }
+  const handleRemarkColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setRemarkColWidth(data.size.width)
+  }
   const handleJobColResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setJobColWidth(data.size.width)
   }
@@ -206,6 +221,22 @@ const MemoListPage: React.FC = () => {
     }
   }
 
+  // Red flag = "important". Shared by all users; updated optimistically and rolled back if the call fails.
+  const toggleFlag = async (record: Memo) => {
+    const next = !(record as any).isFlagged
+    const apply = (v: boolean) =>
+      setData((prev) => prev.map((m) => (m.id === record.id ? ({ ...m, isFlagged: v } as Memo) : m)))
+    apply(next)
+    try {
+      await axios.patch(`${BASE_URL}/memo/${record.id}/flag`, { is_flagged: next }, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+    } catch (err: any) {
+      apply(!next)
+      message.error(err?.response?.data?.message || err?.response?.data?.error || 'บันทึกธงไม่สำเร็จ')
+    }
+  }
+
   const handleReset = () => {
     setSearch('')
     setStatus(undefined)
@@ -218,7 +249,7 @@ const MemoListPage: React.FC = () => {
 
   const columns = [
     {
-      title: 'เลขที่ใบบันทึกขอซื้อ (Memo)',
+      title: 'Memo No.',
       dataIndex: 'memoNo',
       key: 'memoNo',
       width: memoNoColWidth,
@@ -236,7 +267,7 @@ const MemoListPage: React.FC = () => {
       ),
     },
     {
-      title: 'โครงการ',
+      title: 'Project',
       key: 'projectName',
       width: projectColWidth,
       ellipsis: true,
@@ -263,7 +294,30 @@ const MemoListPage: React.FC = () => {
       render: (val?: string | null) => val || '-',
     },
     {
-      title: 'ผู้สร้าง',
+      title: '(Memo) Remark',
+      dataIndex: 'note',
+      key: 'note',
+      width: remarkColWidth,
+      ellipsis: true,
+      onHeaderCell: () => ({
+        width: remarkColWidth,
+        onResize: handleRemarkColResize,
+      }),
+      render: (val?: string | null) => val || <span style={{ color: '#9ca3af' }}>—</span>,
+    },
+    {
+      title: 'Created Date',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: createdAtColWidth,
+      onHeaderCell: () => ({
+        width: createdAtColWidth,
+        onResize: handleCreatedAtColResize,
+      }),
+      render: (val: string) => <DateTimeText value={val} />,
+    },
+    {
+      title: 'Edit By',
       dataIndex: 'requestedBy',
       key: 'requestedBy',
       width: requestedByColWidth,
@@ -271,9 +325,10 @@ const MemoListPage: React.FC = () => {
         width: requestedByColWidth,
         onResize: handleRequestedByColResize,
       }),
+      render: (val?: string) => val || '-',
     },
     {
-      title: 'ผู้อนุมัติ',
+      title: 'Approve By',
       dataIndex: 'approverName',
       key: 'approverName',
       width: approverColWidth,
@@ -284,7 +339,7 @@ const MemoListPage: React.FC = () => {
       render: (val?: string) => val || <span style={{ color: '#9ca3af' }}>—</span>,
     },
     {
-      title: 'วันที่อนุมัติ',
+      title: 'Approve Date',
       dataIndex: 'approvedAt',
       key: 'approvedAt',
       width: approvedAtColWidth,
@@ -293,17 +348,6 @@ const MemoListPage: React.FC = () => {
         onResize: handleApprovedAtColResize,
       }),
       render: (val?: string | null) => <DateTimeText value={val} />,
-    },
-    {
-      title: 'วันที่สร้าง',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: createdAtColWidth,
-      onHeaderCell: () => ({
-        width: createdAtColWidth,
-        onResize: handleCreatedAtColResize,
-      }),
-      render: (val: string) => <DateTimeText value={val} />,
     },
     {
       title: 'จัดการ',
@@ -369,6 +413,39 @@ const MemoListPage: React.FC = () => {
         </Space>
       ),
     },
+    {
+      title: (
+        <Tooltip title={flaggedOnly ? 'แสดงทั้งหมด' : 'แสดงเฉพาะธงแดง'}>
+          <span
+            role="button"
+            onClick={() => setFlaggedOnly((v) => !v)}
+            style={{ cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+          >
+            {flaggedOnly ? <FlagFilled style={{ color: '#dc2626' }} /> : <FlagOutlined style={{ color: '#9ca3af' }} />}
+          </span>
+        </Tooltip>
+      ),
+      key: 'flag',
+      width: flagColWidth,
+      align: 'center' as const,
+      onHeaderCell: () => ({
+        width: flagColWidth,
+        onResize: handleFlagColResize,
+      }),
+      render: (_: unknown, record: Memo) => (
+        <Tooltip title={(record as any).isFlagged ? 'เอาธงออก' : 'ติดธงแดง'}>
+          <Button
+            type="text"
+            size="small"
+            aria-label="flag"
+            icon={(record as any).isFlagged
+              ? <FlagFilled style={{ color: '#dc2626', fontSize: 18 }} />
+              : <FlagOutlined style={{ color: '#9ca3af', fontSize: 18 }} />}
+            onClick={() => toggleFlag(record)}
+          />
+        </Tooltip>
+      ),
+    },
   ]
 
   return (
@@ -431,9 +508,9 @@ const MemoListPage: React.FC = () => {
           loading={loading}
           columns={columns}
           components={{ header: { cell: ResizableTitle } }}
-          dataSource={data}
+          dataSource={flaggedOnly ? data.filter((m) => (m as any).isFlagged) : data}
           size="small"
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1700 }}
           rowClassName={(record) => getRowClassName(record)}
           pagination={{
             pageSize: 10,

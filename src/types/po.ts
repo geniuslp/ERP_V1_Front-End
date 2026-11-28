@@ -193,6 +193,14 @@ export interface PODetail {
   use_discount?: boolean
   discount_type?: 'pct' | 'amt'
   discount_amount?: number
+  // Special Discount (end-of-bill, step 2 — migration 066). special_discount_amount is the whole amount;
+  // when special_discount_avg it is ALSO inside discount_amount (spread over the lines).
+  special_discount_type?: 'pct' | 'amt'
+  special_discount_value?: number
+  special_discount_avg?: boolean
+  special_discount_amount?: number
+  // Sum of the lines' ส่วนลด 2 (second-round %) in baht.
+  step_discount_amount?: number
   use_vat?: boolean
   use_wht?: boolean
   wht_amount?: number
@@ -258,6 +266,10 @@ export interface POLineItem {
   description?: string
   disc?: number
   disc_type?: 'pct' | 'amt'
+  // ส่วนลด 2 (%): second-round discount taken from what is left after disc (5% then 3% = 7.85%).
+  disc2?: number
+  // ส่วนลดที่ 3 (%): third-round discount taken from what is left after disc2.
+  disc3?: number
   wht_rate?: 1 | 3 | 5 | null
   // Cost Code selection for this line — same cost_subgroup_id persisted on
   // purchase_order_line as POLine above. Auto-filled from the source PR

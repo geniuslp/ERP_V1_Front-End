@@ -543,7 +543,10 @@ const POApprovalDetailPage: React.FC = () => {
               // (purchase_order_line.disc_type/discount). Same rollup
               // PurchaseOrderPrint.tsx's "Special Discount" summary uses, so
               // the two can't disagree.
-              const headerDisc = po.use_discount ? po.discount_amount ?? 0 : 0
+              // discount_amount also holds the Special Discount when it is averaged into the lines —
+              // take it back out and count the whole Special Discount once (same as the print).
+              const special = po.special_discount_amount ?? 0
+              const headerDisc = po.use_discount ? (po.discount_amount ?? 0) - (po.special_discount_avg ? special : 0) : 0
               const lineAmtDisc = sumLineAmtDiscounts(
                 (po.lines ?? []).map((l) => ({
                   discType: l.disc_type,
@@ -552,7 +555,7 @@ const POApprovalDetailPage: React.FC = () => {
                   unitPrice: l.unit_price,
                 })),
               )
-              const afterDiscount = po.total_amount - (headerDisc + lineAmtDisc)
+              const afterDiscount = po.total_amount - (headerDisc + lineAmtDisc + special + (po.step_discount_amount ?? 0))
               return `${afterDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`
             })()}
           </Descriptions.Item>
@@ -624,7 +627,8 @@ const POApprovalDetailPage: React.FC = () => {
             (ยอดรวมก่อนลด / ส่วนลด / VAT 7% / WHT / ยอดรวมสุทธิ). Uses the amounts stored on the PO. */}
         {(() => {
           const money = (v: number) => `฿ ${(v ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          const headerDisc = po.use_discount ? po.discount_amount ?? 0 : 0
+          const special = po.special_discount_amount ?? 0
+          const headerDisc = po.use_discount ? (po.discount_amount ?? 0) - (po.special_discount_avg ? special : 0) : 0
           const lineAmtDisc = sumLineAmtDiscounts(
             (po.lines ?? []).map((l) => ({ discType: l.disc_type, disc: l.discount ?? 0, qty: l.qty_ordered, unitPrice: l.unit_price })),
           )
@@ -641,6 +645,22 @@ const POApprovalDetailPage: React.FC = () => {
                   <div style={rowStyle}>
                     <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลด</span>
                     <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>- {money(totalDisc)}</span>
+                  </div>
+                )}
+                {(po.step_discount_amount ?? 0) > 0 && (
+                  <div style={rowStyle}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>ส่วนลดที่ 2 / 3</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#22c55e' }}>- {money(po.step_discount_amount ?? 0)}</span>
+                  </div>
+                )}
+                {special > 0 && (
+                  <div style={rowStyle}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>
+                      Special Discount
+                      {po.special_discount_type === 'pct' ? ` ${po.special_discount_value ?? 0}%` : ''}
+                      {po.special_discount_avg ? ' (เฉลี่ยลงทุกรายการ)' : ''}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#7c3aed' }}>- {money(special)}</span>
                   </div>
                 )}
                 {po.use_vat && (

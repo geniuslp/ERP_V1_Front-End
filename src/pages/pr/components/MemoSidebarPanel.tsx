@@ -27,6 +27,8 @@ interface MemoLineRow extends MemoLineInput {
   taken: boolean
   taken_by_pr_id?: number | null
   taken_by_pr_no?: string | null
+  // whole line reduced to 0 on "รายการลดยอด MEMO" (also comes with taken = true)
+  reduced_out?: boolean
 }
 
 interface MemoSidebarPanelProps {
@@ -251,7 +253,7 @@ const MemoSidebarPanel: React.FC<MemoSidebarPanelProps> = ({
             <div>{v}</div>
             {st === 'taken' && (
               <Tag color="default" style={{ margin: '2px 0 0', fontSize: 11, color: '#374151' }}>
-                In {r.taken_by_pr_no ?? `PR #${r.taken_by_pr_id}`}
+                {r.reduced_out ? 'ลดยอดหมดแล้ว' : <>In {r.taken_by_pr_no ?? `PR #${r.taken_by_pr_id}`}</>}
               </Tag>
             )}
             {st === 'selected' && <Tag color="blue" style={{ margin: '2px 0 0', fontSize: 11 }}>Selected</Tag>}

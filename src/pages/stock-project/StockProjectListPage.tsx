@@ -17,9 +17,14 @@ const cardStyle: React.CSSProperties = {
 interface StockProject {
   project_code: string
   project_name: string
+  source?: 'WAREHOUSE' | 'PROJECT'
 }
 
-const StockProjectListPage: React.FC = () => {
+// kind = which menu opened the page: "project" = 2.1 คลังโครงการ (normal projects), "fac" = 2.2 คลัง Fac
+// (warehouse projects, source WAREHOUSE). Same page and balance view, only the project list differs.
+const KIND_TITLE = { project: 'คลังโครงการ', fac: 'คลัง Fac' } as const
+
+const StockProjectListPage: React.FC<{ kind?: 'project' | 'fac' }> = ({ kind = 'project' }) => {
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
 
   const [options, setOptions] = useState<{ value: string; label: string }[]>([])
@@ -40,7 +45,9 @@ const StockProjectListPage: React.FC = () => {
         const rows = Array.isArray(payload) ? payload : payload?.data ?? payload?.rows ?? []
         if (!cancelled) {
           setOptions(
-            (Array.isArray(rows) ? rows : []).map((p: StockProject) => ({
+            (Array.isArray(rows) ? rows : [])
+              .filter((p: StockProject) => (kind === 'fac' ? p.source === 'WAREHOUSE' : p.source !== 'WAREHOUSE'))
+              .map((p: StockProject) => ({
               value: p.project_code,
               label: `${p.project_code} ${p.project_name}`,
             }))
@@ -54,20 +61,20 @@ const StockProjectListPage: React.FC = () => {
     }
     load()
     return () => { cancelled = true }
-  }, [accessToken])
+  }, [accessToken, kind])
 
   return (
     <div>
       <PageHeader
-        title="คลัง (Stock)"
-        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Inventory Control' }, { title: 'คลัง (Stock)' }]}
+        title={KIND_TITLE[kind]}
+        breadcrumbs={[{ title: 'หน้าหลัก' }, { title: 'Inventory Control' }, { title: 'คลัง (Stock)' }, { title: KIND_TITLE[kind] }]}
       />
       <Card style={cardStyle}>
         <Select
           showSearch
           allowClear
           loading={loading}
-          placeholder="เลือกโครงการ"
+          placeholder={kind === 'fac' ? 'เลือกคลัง Fac' : 'เลือกโครงการ'}
           options={options}
           value={projectCode}
           onChange={setProjectCode}

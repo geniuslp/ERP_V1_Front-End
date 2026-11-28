@@ -25,11 +25,13 @@ export const PARAM_REQUIRED_MENU_CODES = ['MENU_IC_PO_RECEIVE', 'MENU_IC_PO_RETU
 
 // "รายงาน OF" pages that are listed in the menu but not built yet: shown greyed out, not clickable.
 // Remove a code from this list when its page is added (the route already has to exist in App.tsx).
-export const COMING_SOON_MENU_CODES = ['MENU_OF_RPT_PR_ITEMS', 'MENU_OF_RPT_PETTY_CASH', 'MENU_OF_RPT_DELETED']
+export const COMING_SOON_MENU_CODES = ['MENU_OF_RPT_PR_ITEMS', 'MENU_OF_RPT_PETTY_CASH', 'MENU_OF_RPT_DELETED', 'MENU_MEMO_RPT_ALL', 'MENU_MEMO_RPT_DELETED',
+  // เอกสารแจ้งซ่อม 5.2–5.5 (only 5.1 is built)
+  'MENU_REPAIR_ANALYSIS', 'MENU_REPAIR_PARTS', 'MENU_REPAIR_HANDOVER', 'MENU_REPAIR_PM']
 export const COMING_SOON_TITLE = 'ยังไม่เปิดใช้งาน'
 
 // Groups shown as one numbered entry whose pages slide out to the side on hover (desktop dropdown).
-export const FLYOUT_GROUP_CODES = ['MENU_OF_REPORT']
+export const FLYOUT_GROUP_CODES = ['MENU_OF_REPORT', 'MENU_PETTY_CASH_GROUP', 'MENU_MEMO_REPORT', 'master-stock', 'MENU_REPAIR']
 
 export function useNavTree() {
   const { can, hasRole, loading, menus } = usePermissionContext()
@@ -123,7 +125,10 @@ const NAV_COLOR_RULES: Record<string, { prefix: string; color: NavColor }[]> = {
     { prefix: 'MENU_OF_', color: 'of' }, // "รายงาน OF" group and its pages
     { prefix: 'MENU_PR', color: 'pr' },
   ],
-  MENU_IC: [{ prefix: 'master-stock', color: 'stock' }], // "คลัง" (its menu_code is not MENU_-prefixed)
+  MENU_IC: [
+    { prefix: 'master-stock', color: 'stock' }, // "คลัง" group (its menu_code is not MENU_-prefixed)
+    { prefix: 'MENU_IC_STOCK', color: 'stock' }, // its pages: คลังโครงการ / คลัง Fac / คลัง Asset
+  ],
   MENU_PO: [
     { prefix: 'MENU_WO', color: 'wo' },
     { prefix: 'MENU_PO_COST_BUDGET', color: 'budget' }, // must stay before the generic MENU_PO rule

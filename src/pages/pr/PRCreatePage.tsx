@@ -154,6 +154,9 @@ const PRCreatePage: React.FC = () => {
   // PUT the existing record instead of POSTing a duplicate.
   const [prId, setPrId] = useState<number | null>(isEdit && id ? Number(id) : null)
   const accessToken = useAppSelector((s) => s.auth.tokens?.accessToken)
+  const currentUser = useAppSelector((s) => s.auth.user)
+  // Saved requester of the PR being edited (may not be in the role-filtered users list).
+  const [savedRequester, setSavedRequester] = useState<{ value: number; label: string } | null>(null)
   const [form] = Form.useForm()
   const attachmentsRef = useRef<AttachedFile[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
@@ -265,6 +268,14 @@ const PRCreatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobOptions])
 
+  // The requester is locked to the logged-in user on a new PR (an existing PR keeps its saved requester).
+  useEffect(() => {
+    if (!isEdit && currentUser?.id) {
+      form.setFieldValue('requested_by', Number(currentUser.id))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, currentUser])
+
   useEffect(() => {
     const fetchUsers = async () => {
       setUsersLoading(true)
@@ -363,6 +374,12 @@ const PRCreatePage: React.FC = () => {
               ? poLinkedTooltip(linkedPoNoText(pos))
               : null,
         )
+        {
+          const rid = raw.requester_id ?? raw.requested_by
+          if (rid != null && !Number.isNaN(Number(rid))) {
+            setSavedRequester({ value: Number(rid), label: raw.requester_username || raw.requested_by_username || String(raw.requested_by ?? rid) })
+          }
+        }
         form.setFieldsValue({
           pr_date: raw.pr_date ? dayjs(raw.pr_date).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
           location_text: raw.location_text,
@@ -888,6 +905,7 @@ const PRCreatePage: React.FC = () => {
                   rules={[{ required: true, message: 'กรุณาเลือกผู้ขอซื้อ' }]}
                 >
                   <Select
+                    disabled
                     placeholder="- เลือกรายการ -"
                     style={{ width: '100%' }}
                     loading={usersLoading}
@@ -903,13 +921,23 @@ const PRCreatePage: React.FC = () => {
                         )}
                       </div>
                     )}
-                    options={users.map((u) => ({
-                      value: Number(u.id),
-                      label: formatApproverOption(u.username, u.id),
-                      searchLabel: `${u.username ?? ''} ${u.fullName ?? ''} ${u.department ?? ''}`,
-                      name: formatApproverOption(u.username, u.id),
-                      dept: u.department,
-                    }))}
+                    options={[
+                      ...users.map((u) => ({
+                        value: Number(u.id),
+                        label: formatApproverOption(u.username, u.id),
+                        searchLabel: `${u.username ?? ''} ${u.fullName ?? ''} ${u.department ?? ''}`,
+                        name: formatApproverOption(u.username, u.id),
+                        dept: u.department as string | undefined,
+                      })),
+                      ...[
+                        savedRequester,
+                        !isEdit && currentUser?.id
+                          ? { value: Number(currentUser.id), label: formatApproverOption(currentUser.username, currentUser.id) }
+                          : null,
+                      ]
+                        .filter((o): o is { value: number; label: string } => !!o && !users.some((u) => Number(u.id) === o.value))
+                        .map((o) => ({ value: o.value, label: o.label, searchLabel: o.label, name: o.label, dept: undefined as string | undefined })),
+                    ]}
                   />
                 </Form.Item>
               </Field>

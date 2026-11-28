@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useEffect, useState } from 'react'
+import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react'
 import { storageKey } from '@/config/env'
 import { useAppSelector } from '@/store'
 import { approvalConfigService } from '@/services/approvalConfig.service'
@@ -99,11 +99,18 @@ export const PermissionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   setEffectivePermissions(eff)
 }, [accessToken, user?.id])
 
+  // `loading` is only for the FIRST load. fetchAll re-runs whenever the access token changes — and the
+  // token is silently refreshed (services/api.ts) whenever any request gets a 401, e.g. the notification
+  // bell refetching after a live push such as "document approved". Turning `loading` back on then made
+  // RequirePermission swap the page for a Skeleton and remount it, which wiped whatever the user was
+  // typing (looked like the page refreshing by itself). Later reloads now update the data in place.
+  const loadedOnce = useRef(false)
   const fetchAll = useCallback(async () => {
-    setLoading(true)
+    if (!loadedOnce.current) setLoading(true)
     try {
       await Promise.all([fetchApprovalRules(), fetchMenusAndPermissions()])
     } finally {
+      loadedOnce.current = true
       setLoading(false)
     }
   }, [fetchApprovalRules, fetchMenusAndPermissions])

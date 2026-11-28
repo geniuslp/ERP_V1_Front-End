@@ -43,6 +43,20 @@ export function useJobTypes(): JobTypeApiRow[] {
   return rows
 }
 
+// True once the job-type request has finished (success OR failure). Print layouts wait for this so the dialog never
+// opens while names are still loading (which printed bare codes such as "AR" instead of "AR - Architec").
+export function useJobTypesSettled(): boolean {
+  const token = useAppSelector((s) => s.auth.tokens?.accessToken) ?? ''
+  const [settled, setSettled] = useState(cache !== null)
+  useEffect(() => {
+    if (!token || cache) { if (cache) setSettled(true); return }
+    let cancelled = false
+    loadJobTypes(token).then(() => { if (!cancelled) setSettled(true) })
+    return () => { cancelled = true }
+  }, [token])
+  return settled
+}
+
 export function useJobTypeNames(): Record<string, string> {
   const rows = useJobTypes()
   return Object.fromEntries(rows.map((r) => [r.job_code, r.job_name]))

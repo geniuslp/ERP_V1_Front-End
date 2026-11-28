@@ -87,6 +87,7 @@ interface PRDetail {
   requestedBy: string
   requesterUsername: string // printed under the requester signature
   approverName: string | null
+  approverUsername: string // printed in the print's Authorized Signature box once approved
   // Comment the approver left when rejecting (latest REJECTED status-log row).
   rejectReason: string | null
   locationText: string
@@ -127,6 +128,7 @@ const mapPR = (raw: any): PRDetail => ({
   requestedBy:  raw.requested_by   ?? '—',
   requesterUsername: raw.requester_username ?? '',
   approverName: raw.approver_name  ?? null,
+  approverUsername: raw.approver_username ?? '',
   rejectReason: raw.reject_reason  ?? null,
   locationText: raw.location_text  ?? '—',
   projectCode:  raw.project_code   ?? null,
@@ -420,6 +422,8 @@ const PRDetailPage: React.FC = () => {
       requesterName: pr.requesterUsername || (pr.requestedBy && pr.requestedBy !== '—' ? pr.requestedBy : undefined),
       requesterSignature: pr.requesterSignature,
       approvedAt: pr.approvedAt ? dayjs(pr.approvedAt).format('DD/MM/YYYY') : undefined,
+      // Approval by user ID: shown only once the PR is approved (approvedAt is cleared otherwise).
+      approverName: pr.approvedAt ? pr.approverUsername || pr.approverName || undefined : undefined,
       items: pr.lines.map((l) => ({
         no: String(l.lineNo),
         costCode: l.costCode ?? '',
